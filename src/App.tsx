@@ -9,7 +9,6 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { SiteDataProvider } from './contexts/SiteDataContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
-import { Chatbot } from './components/Chatbot';
 import { Home } from './pages/Home';
 import { Events } from './pages/Events';
 import { Team } from './pages/Team';
@@ -33,7 +32,6 @@ export default function App() {
           </Routes>
         </main>
         <Footer />
-        <Chatbot />
       </div>
     </Router>
     </SiteDataProvider>

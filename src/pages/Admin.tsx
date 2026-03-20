@@ -212,7 +212,7 @@ function LeadersEditor() {
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelClasses}>Image Path</label>
-                  <input className={inputClasses} value={leader.image} onChange={(e) => update(idx, 'image', e.target.value)} placeholder="/Team/Name.JPG" />
+                  <input className={inputClasses} value={leader.image} onChange={(e) => update(idx, 'image', e.target.value)} placeholder="/team-assets/Name.JPG" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelClasses}>Bio</label>
@@ -316,7 +316,7 @@ function StarMembersEditor() {
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelClasses}>Image Path</label>
-                  <input className={inputClasses} value={leader.image} onChange={(e) => update(idx, 'image', e.target.value)} placeholder="/Team/Name.JPG" />
+                  <input className={inputClasses} value={leader.image} onChange={(e) => update(idx, 'image', e.target.value)} placeholder="/team-assets/Name.JPG" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelClasses}>Reason for Star Status</label>
@@ -611,6 +611,81 @@ function FooterEditor() {
   );
 }
 
+// ── Home Editor ────────────────────────────────────────────────────
+
+function HomeEditor() {
+  const { home, updateHome, resetSection } = useSiteData();
+  const [config, setConfig] = useState(home);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => { setConfig(home); }, [home]);
+
+  const save = async () => {
+    await updateHome(config);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <Section title="Home Page Content" icon={Settings} onReset={() => resetSection('home')}>
+      <div className="space-y-6">
+        {/* Hero */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Hero Section</h3>
+          <div>
+            <label className={labelClasses}>Hero Title</label>
+            <textarea className={inputClasses + ' h-20'} value={config.hero.title} onChange={(e) => setConfig({ ...config, hero: { ...config.hero, title: e.target.value } })} />
+          </div>
+          <div>
+            <label className={labelClasses}>Hero Subtitle</label>
+            <textarea className={inputClasses + ' h-24'} value={config.hero.subtitle} onChange={(e) => setConfig({ ...config, hero: { ...config.hero, subtitle: e.target.value } })} />
+          </div>
+          <div>
+            <label className={labelClasses}>Logo Style</label>
+            <select className={inputClasses} value={config.hero.logoVariant} onChange={(e) => setConfig({ ...config, hero: { ...config.hero, logoVariant: e.target.value as any } })}>
+              <option value="full">Full Logo (Large)</option>
+              <option value="icon">Icon Only</option>
+            </select>
+          </div>
+        </div>
+
+        {/* About */}
+        <div className="space-y-3 pt-4 border-t border-subtle">
+          <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Mission & Vision</h3>
+          <div>
+            <label className={labelClasses}>About Title</label>
+            <input className={inputClasses} value={config.about.title} onChange={(e) => setConfig({ ...config, about: { ...config.about, title: e.target.value } })} />
+          </div>
+          <div>
+            <label className={labelClasses}>About Description</label>
+            <textarea className={inputClasses + ' h-24'} value={config.about.description} onChange={(e) => setConfig({ ...config, about: { ...config.about, description: e.target.value } })} />
+          </div>
+        </div>
+
+        {/* Impact */}
+        <div className="space-y-3 pt-4 border-t border-subtle">
+          <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Impact Pillars</h3>
+          <div>
+            <label className={labelClasses}>Environmental Sustainability</label>
+            <textarea className={inputClasses} value={config.impact.sustainability} onChange={(e) => setConfig({ ...config, impact: { ...config.impact, sustainability: e.target.value } })} />
+          </div>
+          <div>
+            <label className={labelClasses}>Renewable Energy</label>
+            <textarea className={inputClasses} value={config.impact.renewable} onChange={(e) => setConfig({ ...config, impact: { ...config.impact, renewable: e.target.value } })} />
+          </div>
+          <div>
+            <label className={labelClasses}>Global Impact</label>
+            <textarea className={inputClasses} value={config.impact.global} onChange={(e) => setConfig({ ...config, impact: { ...config.impact, global: e.target.value } })} />
+          </div>
+        </div>
+      </div>
+      <button onClick={save} className={btnPrimary + ' mt-6'}>
+        <Save className="w-4 h-4" /> {saved ? 'Saved ✓' : 'Save Changes'}
+      </button>
+    </Section>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────
 
 export function Admin() {
@@ -656,6 +731,7 @@ export function Admin() {
 
         {/* Sections */}
         <div className="space-y-6">
+          <HomeEditor />
           <LeadersEditor />
           <StarMembersEditor />
           <EventsEditor />

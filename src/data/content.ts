@@ -29,7 +29,7 @@ export const LATEST_EVENTS: Event[] = [
     date: "2026-03-12",
     time: "2:00 PM - 4:00 PM",
     location: "Lore Academy",
-    image: "/Events/english_corner.jpg",
+    image: "/events-assets/english_corner.jpg",
     status: "Past",
     noRegistration: true
   }

@@ -5,7 +5,7 @@ import { Logo } from '../components/Logo';
 import { useSiteData } from '../contexts/SiteDataContext';
 
 export function Home() {
-  const { events: LATEST_EVENTS, achievements: ACHIEVEMENTS } = useSiteData();
+  const { events: LATEST_EVENTS, achievements: ACHIEVEMENTS, home } = useSiteData();
 
   // Get latest items
   const latestEvent = [...LATEST_EVENTS].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
@@ -28,7 +28,7 @@ export function Home() {
               transition={{ duration: 0.5 }}
               className="flex justify-center mb-8"
             >
-              <Logo variant="full" className="h-40 w-40 md:h-72 md:w-72" />
+              <Logo variant={home.hero.logoVariant} className="h-40 w-40 md:h-72 md:w-72" />
             </motion.div>
             <motion.h1 
               initial={{ y: 20, opacity: 0 }}
@@ -36,8 +36,7 @@ export function Home() {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="text-4xl md:text-6xl font-extrabold text-primary tracking-tight mb-6"
             >
-              Engineers For Renewable Energy <br />
-              <span className="text-accent">Innovation & Environmental Sustainability</span>
+              {home.hero.title}
             </motion.h1>
             <motion.p 
               initial={{ y: 20, opacity: 0 }}
@@ -45,7 +44,7 @@ export function Home() {
               transition={{ duration: 0.5, delay: 0.4 }}
               className="mt-4 text-xl text-muted max-w-2xl mx-auto"
             >
-              Welcome to E.R.I.S.E. Scientific Club. We are a community of passionate students at the Higher National School of Renewable Energies, Environment, and Sustainable Development in Batna, Algeria.
+              {home.hero.subtitle}
             </motion.p>
             <motion.div 
               initial={{ y: 20, opacity: 0 }}
@@ -68,9 +67,9 @@ export function Home() {
       <section className="py-20 bg-surface">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-primary sm:text-4xl">Our Mission & Vision</h2>
+            <h2 className="text-3xl font-bold text-primary sm:text-4xl">{home.about.title}</h2>
             <p className="mt-4 text-lg text-muted max-w-3xl mx-auto">
-              E.R.I.S.E. is dedicated to fostering innovation, promoting environmental sustainability, and preparing the next generation of engineers to tackle global energy challenges.
+              {home.about.description}
             </p>
           </div>
 
@@ -80,21 +79,21 @@ export function Home() {
                 <Leaf className="w-8 h-8" />
               </div>
               <h3 className="text-xl font-bold text-primary mb-4">Environmental Sustainability</h3>
-              <p className="text-secondary">Promoting eco-friendly practices and raising awareness about environmental conservation within our community and beyond.</p>
+              <p className="text-secondary">{home.impact.sustainability}</p>
             </div>
             <div className="bg-secondary rounded-2xl p-8 text-center hover:shadow-lg transition-shadow border border-subtle">
               <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center mx-auto mb-6 btn-on-accent">
                 <Zap className="w-8 h-8" />
               </div>
               <h3 className="text-xl font-bold text-primary mb-4">Renewable Energy</h3>
-              <p className="text-secondary">Exploring and developing innovative solutions in solar, wind, and other renewable energy sources to power a sustainable future.</p>
+              <p className="text-secondary">{home.impact.renewable}</p>
             </div>
             <div className="bg-secondary rounded-2xl p-8 text-center hover:shadow-lg transition-shadow border border-subtle">
               <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center mx-auto mb-6 btn-on-accent">
                 <Globe className="w-8 h-8" />
               </div>
               <h3 className="text-xl font-bold text-primary mb-4">Global Impact</h3>
-              <p className="text-secondary">Connecting with international organizations and participating in global initiatives to contribute to worldwide sustainability goals.</p>
+              <p className="text-secondary">{home.impact.global}</p>
             </div>
           </div>
         </div>
@@ -109,7 +108,7 @@ export function Home() {
             <Link to="/events" className="group bg-surface rounded-2xl shadow-sm border border-subtle overflow-hidden hover:shadow-xl transition-all flex flex-col">
               <div className="h-48 relative overflow-hidden">
                 <img 
-                  src={latestEvent?.image || `${import.meta.env.BASE_URL}Team/Events.jpg`} 
+                  src={latestEvent?.image || `${import.meta.env.BASE_URL}events-assets/english_corner.jpg`} 
                   alt="Event" 
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   referrerPolicy="no-referrer" 

@@ -26,6 +26,12 @@ export interface FooterConfig {
   address: string;
 }
 
+export interface HomeConfig {
+  hero: { title: string; subtitle: string; logoVariant: "icon" | "full" };
+  about: { title: string; description: string };
+  impact: { sustainability: string; renewable: string; global: string };
+}
+
 interface SiteData {
   user: User | null | undefined; // undefined means loading
   leaders: Leader[];
@@ -34,13 +40,15 @@ interface SiteData {
   starMembers: Leader[];
   registration: RegistrationConfig;
   footer: FooterConfig;
+  home: HomeConfig;
   updateLeaders: (leaders: Leader[]) => Promise<void>;
   updateEvents: (events: Event[]) => Promise<void>;
   updateAchievements: (achievements: Achievement[]) => Promise<void>;
   updateStarMembers: (stars: Leader[]) => Promise<void>;
   updateRegistration: (config: RegistrationConfig) => Promise<void>;
   updateFooter: (config: FooterConfig) => Promise<void>;
-  resetSection: (section: 'leaders' | 'events' | 'achievements' | 'starMembers' | 'registration' | 'footer') => Promise<void>;
+  updateHome: (config: HomeConfig) => Promise<void>;
+  resetSection: (section: 'leaders' | 'events' | 'achievements' | 'starMembers' | 'registration' | 'footer' | 'home') => Promise<void>;
 }
 
 // ── Default Data ───────────────────────────────────────────────────
@@ -49,56 +57,56 @@ export const DEFAULT_LEADERS: Leader[] = [
   {
     name: 'Mohammed Harkati',
     role: 'President',
-    image: '/Team/Mohamed.JPG',
+    image: '/team-assets/Mohamed.JPG',
     bio: 'Strategically leading E.R.I.S.E. towards innovative energy solutions and fostering a culture of excellence within the club.',
     socials: { linkedin: '#', mail: 'mailto:#' }
   },
   {
     name: 'Maria Aridje Ben-Issa',
     role: 'Vice President',
-    image: '/Team/Maria.JPG',
+    image: '/team-assets/Maria.JPG',
     bio: 'Passionate environmentalist dedicated to promoting circular economy principles and sustainable engineering practices.',
     socials: { linkedin: '#', mail: 'mailto:#' }
   },
   {
     name: 'Chahed Wissal Ben-Mechri',
     role: 'General Secretary',
-    image: '/Team/Chahed.JPG',
+    image: '/team-assets/Chahed.JPG',
     bio: 'Ensuring organizational excellence and streamlining communication to drive the club\'s administrative mission forward.',
     socials: { linkedin: '#', github: '#' }
   },
   {
     name: 'Ayoub Berbache',
     role: 'Head of Media',
-    image: '/Team/Ayoub.JPG',
+    image: '/team-assets/Ayoub.JPG',
     bio: 'Leading E.R.I.S.E.\'s creative direction and media presence, ensuring our environmental mission is communicated effectively through impactful visuals and digital storytelling.',
     socials: { linkedin: '#', github: '#' }
   },
   {
     name: 'Mohammed Adel Batira',
     role: 'Head of Projects',
-    image: '/Team/Adel.jpg',
+    image: '/team-assets/Adel.jpg',
     bio: 'Overseeing technical initiatives and project execution with a focus on cutting-edge renewable energy technologies.',
     socials: { linkedin: '#', github: '#' }
   },
   {
     name: 'Nourhan Hamani',
     role: 'Head of Organization',
-    image: '/Team/Nourhan.JPG',
+    image: '/team-assets/Nourhan.JPG',
     bio: 'Expertly coordinating club events and logistics to ensure impactful outreach and organized community engagement.',
     socials: { linkedin: '#', mail: 'mailto:#' }
   },
   {
     name: 'Ahmed Ilyes Lakhdar',
     role: 'Head of Sports and Activities',
-    image: '/Team/Ilyes.JPG',
+    image: '/team-assets/Ilyes.JPG',
     bio: 'Promoting student well-being and team spirit through engaging sports initiatives and club-wide activities.',
     socials: { linkedin: '#', github: '#' }
   },
   {
     name: 'Zakaria Takhnouni',
     role: 'Head of Internal Relationships',
-    image: '/Team/Zakaria.JPG',
+    image: '/team-assets/Zakaria.JPG',
     bio: 'Fostering collaboration and maintaining strong communication within the club to ensure a cohesive and motivated team environment.',
     socials: { linkedin: '#', github: '#' }
   },
@@ -107,6 +115,23 @@ export const DEFAULT_LEADERS: Leader[] = [
 export const DEFAULT_FOOTER: FooterConfig = {
   email: 'erise.club@gmail.com',
   address: 'Higher National School of Renewable Energies, Environment and Sustainable Development, Batna, Algeria',
+};
+
+export const DEFAULT_HOME: HomeConfig = {
+  hero: { 
+    title: "Engineers For Renewable Energy Innovation & Environmental Sustainability",
+    subtitle: "Welcome to E.R.I.S.E. Scientific Club. We are a community of passionate students at the Higher National School of Renewable Energies, Environment, and Sustainable Development in Batna, Algeria.",
+    logoVariant: "full"
+  },
+  about: {
+    title: "Our Mission & Vision",
+    description: "E.R.I.S.E. is dedicated to fostering innovation, promoting environmental sustainability, and preparing the next generation of engineers to tackle global energy challenges."
+  },
+  impact: {
+    sustainability: "Promoting eco-friendly practices and raising awareness about environmental conservation within our community and beyond.",
+    renewable: "Exploring and developing innovative solutions in solar, wind, and other renewable energy sources to power a sustainable future.",
+    global: "Connecting with international organizations and participating in global initiatives to contribute to worldwide sustainability goals."
+  }
 };
 
 // ── Context ────────────────────────────────────────────────────────
@@ -125,6 +150,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     link: DEFAULT_REGISTRATION_LINK,
   });
   const [footer, setFooter] = useState<FooterConfig>(DEFAULT_FOOTER);
+  const [home, setHome] = useState<HomeConfig>(DEFAULT_HOME);
 
   // Authentication Listener
   useEffect(() => {
@@ -165,6 +191,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
       listenToDoc('starMembers', setStarMembers, []);
       listenToDoc('registration', setRegistration, { isOpen: DEFAULT_IS_REGISTRATION_OPEN, link: DEFAULT_REGISTRATION_LINK });
       listenToDoc('footer', setFooter, DEFAULT_FOOTER);
+      listenToDoc('home', setHome, DEFAULT_HOME);
     } else {
       console.warn("Firebase not configured. Using local default data only.");
       setUser(null); // Mark loading complete
@@ -189,8 +216,9 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
   const updateStarMembers = async (data: Leader[]) => await updateFirebaseDoc('starMembers', data);
   const updateRegistration = async (data: RegistrationConfig) => await updateFirebaseDoc('registration', data);
   const updateFooter = async (data: FooterConfig) => await updateFirebaseDoc('footer', data);
+  const updateHome = async (data: HomeConfig) => await updateFirebaseDoc('home', data);
 
-  const resetSection = async (section: 'leaders' | 'events' | 'achievements' | 'starMembers' | 'registration' | 'footer') => {
+  const resetSection = async (section: 'leaders' | 'events' | 'achievements' | 'starMembers' | 'registration' | 'footer' | 'home') => {
     switch (section) {
       case 'leaders': await updateLeaders(DEFAULT_LEADERS); break;
       case 'events': await updateEvents(LATEST_EVENTS); break;
@@ -198,13 +226,14 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
       case 'starMembers': await updateStarMembers([]); break;
       case 'registration': await updateRegistration({ isOpen: DEFAULT_IS_REGISTRATION_OPEN, link: DEFAULT_REGISTRATION_LINK }); break;
       case 'footer': await updateFooter(DEFAULT_FOOTER); break;
+      case 'home': await updateHome(DEFAULT_HOME); break;
     }
   };
 
   return (
     <SiteDataContext.Provider value={{
-      user, leaders, events, achievements, starMembers, registration, footer,
-      updateLeaders, updateEvents, updateAchievements, updateStarMembers, updateRegistration, updateFooter, resetSection,
+      user, leaders, events, achievements, starMembers, registration, footer, home,
+      updateLeaders, updateEvents, updateAchievements, updateStarMembers, updateRegistration, updateFooter, updateHome, resetSection,
     }}>
       {children}
     </SiteDataContext.Provider>

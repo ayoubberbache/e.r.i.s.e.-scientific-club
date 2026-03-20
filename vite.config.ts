@@ -6,9 +6,8 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
-    // In production (GitHub Pages) the site is served at /<repo-name>/
-    // In development it's served at /, so we use '/' for dev.
-    base: mode === 'production' ? '/e.r.i.s.e.-scientific-club/' : '/',
+    // Base path should be '/' for root domain deployments like Vercel
+    base: '/',
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

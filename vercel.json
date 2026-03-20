@@ -4,6 +4,6 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/((?!assets/|favicon.ico|logo-.*).* )", "destination": "/index.html" }
+    { "source": "/:path*", "destination": "/index.html" }
   ]
 }

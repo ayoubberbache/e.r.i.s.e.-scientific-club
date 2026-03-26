@@ -39,7 +39,7 @@ export const LEADERS: Leader[] = [
   {
     name: 'Mohamed Harkati',
     role: 'President',
-    image: '/team-assets/Mohamed.jpg',
+    image: '/team-assets/Mohamed.JPG',
     specialty: 'Renewable Energies Engineering Student',
     skills: ['Leadership & Strategy', 'Renewable Energy Systems', 'Project Coordination', 'Public Speaking'],
     socials: { 
@@ -50,7 +50,7 @@ export const LEADERS: Leader[] = [
   {
     name: 'Maria Aridje Benaissa',
     role: 'Vice President',
-    image: '/team-assets/Maria.jpg',
+    image: '/team-assets/Maria.JPG',
     specialty: 'Renewable Energies Engineering Student',
     skills: ['Leadership & Team Coordination', 'Graphic Design (Beginner)', 'Soft Skills', 'Event Planning', 'Community Engagement', 'Problem Solving', 'UI Design'],
     socials: { 
@@ -61,7 +61,7 @@ export const LEADERS: Leader[] = [
   {
     name: 'Chehd Wissal Ben mecheri',
     role: 'General Secretary',
-    image: '/team-assets/Chahed.jpg',
+    image: '/team-assets/Chahed.JPG',
     specialty: 'AI and Industrial Networks Engineering Student',
     skills: ['Python', 'HTML', 'Data Analysis', 'Report Writing', 'Content Organization', 'Problem Solving'],
     socials: { 

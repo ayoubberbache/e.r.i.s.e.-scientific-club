@@ -52,7 +52,7 @@ export const LEADERS: Leader[] = [
     role: 'Vice President',
     image: '/team-assets/Maria.JPG',
     specialty: 'Renewable Energies Engineering Student',
-    skills: ['Leadership & Team Coordination', 'Graphic Design (Beginner)', 'Soft Skills', 'Event Planning', 'Community Engagement', 'Problem Solving', 'UI Design'],
+    skills: ['Leadership & Team Coordination', 'Graphic Design (Beginner)', 'Soft Skills', 'Event Planning'],
     socials: { 
       linkedin: 'https://www.linkedin.com/in/maria-aridje-benaissa-bb4033259/', 
       mail: 'mailto:mariaaridje16@gmail.com' 

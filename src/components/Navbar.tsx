@@ -3,20 +3,19 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Sun, Moon } from 'lucide-react';
 import { Logo } from './Logo';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSiteData } from '../contexts/SiteDataContext';
+import { REGISTRATION } from '../data/siteData';
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
-  const { registration } = useSiteData();
 
   const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Events', path: '/events' },
     { name: 'Team', path: '/team' },
     { name: 'Achievements', path: '/achievements' },
-    ...(registration.isOpen ? [{ name: 'Join Us', path: registration.link, isExternal: true }] : []),
+    ...(REGISTRATION.isOpen ? [{ name: 'Join Us', path: REGISTRATION.link, isExternal: true }] : []),
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -26,11 +25,11 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-20">
           <div className="flex items-center">
-            <Link to="/" className="flex-shrink-0 flex items-center gap-3">
-              <Logo variant="full" className="h-14 w-auto" />
+            <Link to="/" className="flex items-center gap-3 group">
+              <Logo variant="full" className="h-12 md:h-14 w-auto" />
               <div className="hidden sm:block">
                 <p className="text-[10px] text-muted max-w-[200px] leading-tight">
-                  Engineers For renewable Energy Innovation & Environmental sustainability
+                  Engineers For renewable Energy Innovation &amp; Environmental sustainability
                 </p>
               </div>
             </Link>

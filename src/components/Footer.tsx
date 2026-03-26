@@ -1,12 +1,10 @@
 import React from 'react';
-import { Mail, Phone, MapPin } from 'lucide-react';
+import { Mail, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from './Logo';
-import { useSiteData } from '../contexts/SiteDataContext';
+import { CONTACT } from '../data/siteData';
 
 export function Footer() {
-  const { footer } = useSiteData();
-
   return (
     <footer className="bg-secondary text-primary pt-16 pb-8 border-t border-default">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -18,7 +16,7 @@ export function Footer() {
               <Logo variant="full" className="h-12 w-auto" />
             </div>
             <p className="text-sm text-muted leading-relaxed mb-6">
-              Engineers For renewable Energy Innovation & Environmental sustainability. 
+              Engineers For renewable Energy Innovation &amp; Environmental sustainability. 
               A scientific club at the Higher National School of Renewable Energies, Environment, and Sustainable Development (Batna, Algeria).
             </p>
           </div>
@@ -28,7 +26,7 @@ export function Footer() {
             <h3 className="text-primary font-semibold mb-6 uppercase tracking-wider text-sm">Quick Links</h3>
             <ul className="space-y-4 text-sm">
               <li><Link to="/" className="hover:text-accent transition-colors">Home</Link></li>
-              <li><Link to="/events" className="hover:text-accent transition-colors">Events & Calendar</Link></li>
+              <li><Link to="/events" className="hover:text-accent transition-colors">Events &amp; Calendar</Link></li>
               <li><Link to="/team" className="hover:text-accent transition-colors">Our Team</Link></li>
               <li><Link to="/achievements" className="hover:text-accent transition-colors">Achievements</Link></li>
             </ul>
@@ -40,11 +38,11 @@ export function Footer() {
             <ul className="space-y-4 text-sm">
               <li className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-accent shrink-0" />
-                <span>{footer.address}</span>
+                <span>{CONTACT.address}</span>
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="w-5 h-5 text-accent shrink-0" />
-                <a href={`mailto:${footer.email}`} className="hover:text-primary transition-colors">{footer.email}</a>
+                <a href={`mailto:${CONTACT.email}`} className="hover:text-primary transition-colors">{CONTACT.email}</a>
               </li>
             </ul>
           </div>
@@ -57,7 +55,7 @@ export function Footer() {
                 <img src={`${import.meta.env.BASE_URL}instagram.png`} alt="Instagram" className="w-6 h-6 object-contain" />
                 <span className="text-sm">Instagram</span>
               </a>
-              <a href={`mailto:${footer.email}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="Gmail">
+              <a href={`mailto:${CONTACT.email}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity" title="Gmail">
                 <img src={`${import.meta.env.BASE_URL}gmail.png`} alt="Gmail" className="w-6 h-6 object-contain" />
                 <span className="text-sm">Gmail</span>
               </a>

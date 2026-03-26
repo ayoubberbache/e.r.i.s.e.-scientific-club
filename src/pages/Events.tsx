@@ -1,17 +1,25 @@
 import React, { useState } from 'react';
-import { Calendar as CalendarIcon, MapPin, Clock, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useSiteData } from '../contexts/SiteDataContext';
+ import { Calendar as CalendarIcon, MapPin, Clock, ArrowRight, ChevronLeft, ChevronRight, X } from 'lucide-react';
+ import { EVENTS } from '../data/siteData';
+ import { Logo } from '../components/Logo';
 
 export function Events() {
-  const { events: LATEST_EVENTS } = useSiteData();
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  const formatImageUrl = (path?: string) => {
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    return `${baseUrl}${cleanPath}`;
+  };
 
   // Helper to sort and categorize events
-  const categorizedEvents = LATEST_EVENTS.reduce((acc, event) => {
+  const categorizedEvents = EVENTS.reduce((acc, event) => {
     const eventDate = new Date(event.date);
-    // Set both dates to beginning of day for fair comparison
     const comparisonDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const eventComparisonDate = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
     
@@ -29,25 +37,11 @@ export function Events() {
 
   const displayEvents = activeTab === 'upcoming' ? categorizedEvents.upcoming : categorizedEvents.past;
 
-  // Monthly events for "Upcoming this month" list should stick to current displayed month in calendar
-  const monthlyUpcomingEvents = categorization(LATEST_EVENTS).upcoming.filter(event => {
+  // Monthly events for "Upcoming this month" list
+  const monthlyUpcomingEvents = categorizedEvents.upcoming.filter(event => {
     const d = new Date(event.date);
     return d.getMonth() === currentMonth.getMonth() && d.getFullYear() === currentMonth.getFullYear();
   });
-
-  // Helper function to re-categorize for the monthly view if needed
-  function categorization(events: any[]) {
-    return events.reduce((acc, event) => {
-      const eventDate = new Date(event.date);
-      const comparisonDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      if (new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()) >= comparisonDate) {
-        acc.upcoming.push(event);
-      } else {
-        acc.past.push(event);
-      }
-      return acc;
-    }, { upcoming: [] as any[], past: [] as any[] });
-  }
 
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
@@ -58,22 +52,15 @@ export function Events() {
   };
 
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  
-  // Simple calendar generation
   const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
   
   const days = [];
-  for (let i = 0; i < firstDayOfMonth; i++) {
-    days.push(null);
-  }
-  for (let i = 1; i <= daysInMonth; i++) {
-    days.push(i);
-  }
+  for (let i = 0; i < firstDayOfMonth; i++) days.push(null);
+  for (let i = 1; i <= daysInMonth; i++) days.push(i);
 
-  // Derive events for the calendar view (All events)
   const calendarEvents: Record<number, string[]> = {};
-  LATEST_EVENTS.forEach(event => {
+  EVENTS.forEach(event => {
     const d = new Date(event.date);
     if (d.getMonth() === currentMonth.getMonth() && d.getFullYear() === currentMonth.getFullYear()) {
       const day = d.getDate();
@@ -88,7 +75,7 @@ export function Events() {
         
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-extrabold text-primary tracking-tight sm:text-5xl">
+          <h1 className="text-4xl font-extrabold text-primary tracking-tight sm:text-5xl flex items-center justify-center gap-3">
             Events & <span className="text-accent">Calendar</span>
           </h1>
           <p className="mt-4 text-xl text-muted max-w-2xl mx-auto">
@@ -117,50 +104,81 @@ export function Events() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
           
           {/* Events List */}
-          <div className="lg:col-span-2 space-y-8">
+          <div className="lg:col-span-2 space-y-12">
             <h2 className="text-2xl font-bold text-primary flex items-center gap-2 capitalize">
-              <CalendarIcon className="w-6 h-6 text-accent" /> {activeTab} Events
+              <CalendarIcon className="w-6 h-6 text-accent" /> {activeTab} Feed
             </h2>
             
-            <div className="space-y-6">
+            <div className="space-y-10 max-w-2xl mx-auto lg:mx-0">
               {displayEvents.length > 0 ? (
                 displayEvents.map((event) => (
-                  <div key={event.id} className="bg-surface rounded-2xl shadow-sm border border-subtle overflow-hidden flex flex-col md:flex-row hover:shadow-md transition-shadow">
-                    <div className="md:w-1/3 h-48 md:h-auto relative overflow-hidden">
-                      <img 
-                        src={event.image} 
-                        alt={event.title} 
-                        className="w-full h-full object-cover" 
-                        referrerPolicy="no-referrer" 
-                      />
-                      <div className="absolute top-4 left-4 bg-surface/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-accent shadow-sm">
-                        {event.status}
+                  <div key={event.id} className="bg-surface rounded-2xl shadow-sm border border-subtle overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+                    
+                    {/* Post Header */}
+                    <div className="p-4 flex items-center gap-3 border-b border-subtle">
+                      <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center overflow-hidden border border-subtle">
+                        <Logo variant="icon" className="w-6 h-6" />
                       </div>
-                    </div>
-                    <div className="p-6 md:w-2/3 flex flex-col justify-between">
                       <div>
-                        <h3 className="text-xl font-bold text-primary mb-2">{event.title}</h3>
-                        <p className="text-secondary text-sm mb-4 line-clamp-2">{event.description}</p>
-                        
-                        <div className="space-y-2 text-sm text-muted">
-                          <div className="flex items-center gap-2">
-                            <CalendarIcon className="w-4 h-4 text-accent" />
-                            <span>{event.date}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-accent" />
-                            <span>{event.time}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-accent" />
-                            <span>{event.location}</span>
-                          </div>
+                        <h3 className="text-sm font-bold text-primary leading-tight">E.R.I.S.E. Scientific Club</h3>
+                        <div className="flex items-center gap-2 text-[10px] text-muted uppercase tracking-wider">
+                          <span>{event.date}</span>
+                          <span>•</span>
+                          <span className="text-accent font-bold">{event.status}</span>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Post Content */}
+                    <div className="p-5">
+                      <h3 className="text-xl font-bold text-primary mb-3">{event.title}</h3>
+                      <p className="text-secondary text-sm leading-relaxed mb-4">{event.description}</p>
+                    </div>
+
+                    {/* Post Media (Collage or Single) */}
+                    <div className="relative aspect-video bg-secondary/30 border-y border-subtle overflow-hidden">
+                      {event.images && event.images.length >= 4 ? (
+                        <div className="grid grid-cols-2 grid-rows-2 h-full gap-1 cursor-pointer" onClick={() => setSelectedImage(event.images![0])}>
+                          {event.images.slice(0, 4).map((img, i) => (
+                            <div key={i} className="relative group overflow-hidden">
+                              <img 
+                                src={formatImageUrl(img)} 
+                                alt={`${event.title} ${i + 1}`} 
+                                className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${event.title.includes('Lore Academy') ? 'blur-md grayscale' : ''}`} 
+                                onClick={(e) => { e.stopPropagation(); setSelectedImage(img); }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <img 
+                          src={formatImageUrl(event.image)} 
+                          alt={event.title} 
+                          className={`w-full h-full object-cover cursor-pointer ${event.title.includes('Lore Academy') ? 'blur-md grayscale' : ''}`} 
+                          onClick={() => setSelectedImage(event.image)}
+                        />
+                      )}
+                    </div>
+
+                    {/* Post Footer */}
+                    <div className="p-5 border-t border-subtle bg-dominant/30">
+                      <div className="flex flex-wrap gap-4 text-xs text-secondary font-medium">
+                        {event.time && (
+                          <div className="flex items-center gap-1.5 bg-surface px-3 py-1.5 rounded-full border border-subtle">
+                            <Clock className="w-3.5 h-3.5 text-accent" />
+                            <span>{event.time}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5 bg-surface px-3 py-1.5 rounded-full border border-subtle">
+                          <MapPin className="w-3.5 h-3.5 text-accent" />
+                          <span>{event.location}</span>
+                        </div>
+                      </div>
+                      
                       {!event.noRegistration && activeTab === 'upcoming' && (
                         <div className="mt-6 flex justify-end">
-                          <button className="text-accent font-medium flex items-center gap-1 hover:gap-2 transition-all">
-                            Register Now <ArrowRight className="w-4 h-4" />
+                          <button className="px-6 py-2 bg-accent text-white rounded-lg text-sm font-bold hover:bg-accent-muted transition-all shadow-md">
+                            Register Now
                           </button>
                         </div>
                       )}
@@ -266,6 +284,28 @@ export function Events() {
 
         </div>
       </div>
+
+      {/* Lightbox Modal */}
+      {selectedImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setSelectedImage(null)}
+        >
+          <button 
+            className="absolute top-6 right-6 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            onClick={() => setSelectedImage(null)}
+            title="Close"
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <img 
+            src={formatImageUrl(selectedImage)} 
+            alt="Full size" 
+            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

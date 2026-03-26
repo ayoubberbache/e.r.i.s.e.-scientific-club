@@ -14,9 +14,9 @@ export function Logo({
 
   // Light mode = dark teal E + text
   // Dark mode = cyan E + text
-  const logoSrc = theme === 'dark' 
+  const logoSrc = (theme === 'dark' 
     ? `${import.meta.env.BASE_URL}logo-cyan-full.png` 
-    : `${import.meta.env.BASE_URL}logo-teal-full.png`;
+    : `${import.meta.env.BASE_URL}logo-teal-full.png`);
 
   // Uses CSS variable --logo-color (inverted per theme)
   const colorStyle = { color: 'var(--logo-color)' };

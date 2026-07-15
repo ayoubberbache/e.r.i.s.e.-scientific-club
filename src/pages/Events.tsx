@@ -1,35 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
  import { Calendar as CalendarIcon, MapPin, Clock, ArrowRight, ChevronLeft, ChevronRight, X } from 'lucide-react';
- import { EVENTS } from '../data/siteData';
  import { Logo } from '../components/Logo';
+ import { supabase } from '../lib/supabase';
 
 export function Events() {
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [dbEvents, setDbEvents] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function fetchEvents() {
+      try {
+        const { data, error } = await supabase.from('events').select('*');
+        if (error || !data || data.length === 0) {
+          setDbEvents([]);
+        } else {
+          setDbEvents(data);
+        }
+      } catch (err) {
+        setDbEvents([]);
+      }
+    }
+    fetchEvents();
+  }, []);
 
   const formatImageUrl = (path?: string) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    const baseUrl = import.meta.env.BASE_URL || '/';
-    return `${baseUrl}${cleanPath}`;
+    return supabase.storage.from('public_images').getPublicUrl(cleanPath).data.publicUrl;
   };
 
   // Helper to sort and categorize events
-  const categorizedEvents = EVENTS.reduce((acc, event) => {
-    const eventDate = new Date(event.date);
-    const comparisonDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const eventComparisonDate = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
-    
-    if (eventComparisonDate >= comparisonDate) {
-      acc.upcoming.push(event);
-    } else {
-      acc.past.push(event);
-    }
-    return acc;
-  }, { upcoming: [] as any[], past: [] as any[] });
+  const categorizedEvents = useMemo(() => {
+    return dbEvents.reduce((acc, event) => {
+      const eventDate = new Date(event.date);
+      const comparisonDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const eventComparisonDate = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+      
+      if (eventComparisonDate >= comparisonDate) {
+        acc.upcoming.push(event);
+      } else {
+        acc.past.push(event);
+      }
+      return acc;
+    }, { upcoming: [] as any[], past: [] as any[] });
+  }, [dbEvents]);
 
   // Sort upcoming chronologically, past reverse chronologically
   categorizedEvents.upcoming.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -60,7 +78,7 @@ export function Events() {
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
 
   const calendarEvents: Record<number, string[]> = {};
-  EVENTS.forEach(event => {
+  dbEvents.forEach(event => {
     const d = new Date(event.date);
     if (d.getMonth() === currentMonth.getMonth() && d.getFullYear() === currentMonth.getFullYear()) {
       const day = d.getDate();

@@ -1,20 +1,55 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Mail, Linkedin, Github, Users, Star, Trophy } from 'lucide-react';
-import { LEADERS, REGISTRATION } from '../data/siteData';
+import { REGISTRATION } from '../data/siteData';
+import ProfileCard from '../components/ProfileCard';
+import { supabase } from '../lib/supabase';
 
 export function Team() {
+  const [dbLeaders, setDbLeaders] = useState<any[]>([]);
+  const [dbStarMembers, setDbStarMembers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchLeaders() {
+      try {
+        const { data, error } = await supabase.from('leaders').select('*');
+        if (error || !data || data.length === 0) {
+          // Fallback to static data
+          setDbLeaders([]);
+        } else {
+          // Ensure socials object is constructed properly if fetching flat columns
+          const formatted = data.map(d => ({
+            ...d,
+            socials: { linkedin: d.linkedin, mail: d.mail, github: d.github }
+          }));
+          setDbLeaders(formatted);
+        }
+
+        // Fetch Star Members
+        const { data: starData } = await supabase.from('star_members').select('*');
+        if (starData) {
+          setDbStarMembers(starData);
+        }
+      } catch (err) {
+        setDbLeaders([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchLeaders();
+  }, []);
+
   const formatImageUrl = (path?: string) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    const baseUrl = import.meta.env.BASE_URL || '/';
-    return `${baseUrl}${cleanPath}`;
+    return supabase.storage.from('public_images').getPublicUrl(cleanPath).data.publicUrl;
   };
 
   // Shuffle leaders on mount
   const shuffledLeaders = useMemo(() => {
-    return [...LEADERS].sort(() => Math.random() - 0.5);
-  }, []);
+    return [...dbLeaders].sort(() => Math.random() - 0.5);
+  }, [dbLeaders]);
 
   return (
     <div className="min-h-screen bg-dominant">
@@ -50,59 +85,74 @@ export function Team() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {shuffledLeaders.map((leader, idx) => (
-              <div key={idx} className="group bg-secondary rounded-2xl p-4 text-center hover:bg-accent-tint transition-all shadow-md border border-subtle hover:border-accent">
-                <div className="relative aspect-3/4 w-full mx-auto mb-6 overflow-hidden rounded-xl border-2 border-surface shadow-md group-hover:border-accent transition-colors bg-dominant">
-                  <img 
-                    src={formatImageUrl(leader.image)} 
-                    alt={leader.name} 
-                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 will-change-transform"
-                    fetchPriority="high"
-                    decoding="sync"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-6">
-                    <div className="flex gap-4">
-                      {leader.socials.linkedin && (
-                        <a href={leader.socials.linkedin.startsWith('http') ? leader.socials.linkedin : '#'} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors">
-                          <Linkedin className="w-5 h-5" />
-                        </a>
-                      )}
-                      {leader.socials.mail && (
-                        <a href={leader.socials.mail} className="p-2 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors">
-                          <Mail className="w-5 h-5" />
-                        </a>
-                      )}
-                      {leader.socials.github && (
-                        <a href={leader.socials.github.startsWith('http') ? leader.socials.github : '#'} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/20 backdrop-blur-md rounded-lg text-white hover:bg-white/40 transition-colors">
-                          <Github className="w-5 h-5" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
+              <div key={idx} className="flex flex-col items-center h-full gap-5">
+                <div className="text-center min-h-[40px] flex flex-col justify-end pb-2">
+                  <h3 className="text-xl font-bold text-primary leading-tight">{leader.name}</h3>
                 </div>
-                
-                <h3 className="text-xl font-bold text-primary mb-1">{leader.name}</h3>
-                <p className="text-accent font-semibold text-xs uppercase tracking-wider mb-2">{leader.role}</p>
-                
-                {leader.specialty && (
-                  <div className="mb-4 px-3 py-1 bg-accent-tint/30 rounded-lg inline-block">
-                    <p className="text-accent text-[10px] font-bold leading-tight uppercase tracking-widest">{leader.specialty}</p>
-                  </div>
-                )}
-
-                {leader.skills && leader.skills.length > 0 && (
-                  <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                    {leader.skills.map((skill, sIdx) => (
-                      <span key={sIdx} className="px-2 py-0.5 bg-dominant text-secondary text-[10px] rounded-md border border-subtle">
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <ProfileCard
+                  name={leader.name}
+                  title={leader.role}
+                  handle={leader.socials.linkedin ? "linkedin" : "member"}
+                  status={leader.specialty || "Active"}
+                  contactText="Connect"
+                  avatarUrl={formatImageUrl(leader.image)}
+                  miniAvatarUrl={formatImageUrl(leader.image)}
+                  showUserInfo={true}
+                  enableTilt={true}
+                  enableMobileTilt={true}
+                  socials={leader.socials}
+                  onContactClick={() => {
+                    if (leader.socials.linkedin) window.open(leader.socials.linkedin, '_blank');
+                    else if (leader.socials.mail) window.location.href = leader.socials.mail;
+                  }}
+                  behindGlowEnabled={true}
+                  innerGradient="linear-gradient(145deg,#1F29378c 0%,#3B82F644 100%)" // matches dark theme better
+                  className="w-full"
+                />
               </div>
             ))}
           </div>
         </div>
       </section>
+
+      {/* Star Members */}
+      {dbStarMembers.length > 0 && (
+        <section className="py-24 bg-dominant border-t border-subtle">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-4 mb-12">
+              <div className="w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center text-white shadow-lg shadow-yellow-500/20">
+                <Star className="w-6 h-6 fill-current" />
+              </div>
+              <div>
+                <h2 className="text-3xl font-bold text-primary">Star Members</h2>
+                <p className="text-secondary">Outstanding contributions and achievements</p>
+              </div>
+              <div className="h-px bg-subtle flex-1 ml-4 hidden md:block" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+              {dbStarMembers.map((member, idx) => (
+                <div key={idx} className="bg-surface rounded-2xl border border-subtle p-6 flex flex-col items-center text-center shadow-lg hover:shadow-xl hover:border-accent/30 transition-all group">
+                  <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-dominant shadow-inner mb-6 relative group-hover:scale-105 transition-transform duration-300">
+                    <img 
+                      src={formatImageUrl(member.image)} 
+                      alt={member.name} 
+                      className="w-full h-full object-cover" 
+                      onError={(e) => { 
+                        (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(member.name)}&backgroundColor=121420&textColor=4ce0b3` 
+                      }} 
+                    />
+                  </div>
+                  <h3 className="text-xl font-bold text-primary mb-2">{member.name}</h3>
+                  <div className="px-4 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-semibold">
+                    {member.organization}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Impact Section */}
       <section className="py-24 bg-dominant">
@@ -127,7 +177,7 @@ export function Team() {
               </div>
               
               <div className="hidden lg:block h-64 overflow-hidden rounded-3xl border border-subtle">
-                <img src="/team-assets/our team.JPG" alt="Team" className="w-full h-full object-cover" />
+                <img src="/team-assets/our team.jpg" alt="Team" className="w-full h-full object-cover" />
               </div>
             </div>
           </div>

@@ -1,21 +1,31 @@
 import React from 'react';
-import { ArrowRight, Target, Users, Zap, Award, BookOpen } from 'lucide-react';
+import { ArrowRight, Target, Users, Zap, Award, BookOpen, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { HOME, EVENTS, ACHIEVEMENTS } from '../data/siteData';
+import { HOME } from '../data/siteData';
 import { Logo } from '../components/Logo';
-
+import { ZaitonaViewer } from '../components/ZaitonaModel';
+import { supabase } from '../lib/supabase';
 
 export function Home() {
-  // Get latest items
-  const latestEvent = EVENTS[0];
-  const latestAchievement = ACHIEVEMENTS[0];
+  const [latestEvent, setLatestEvent] = React.useState<any>(null);
+  const [latestAchievement, setLatestAchievement] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    async function fetchLatest() {
+      const { data: eventData } = await supabase.from('events').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+      if (eventData) setLatestEvent(eventData);
+
+      const { data: achData } = await supabase.from('achievements').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+      if (achData) setLatestAchievement(achData);
+    }
+    fetchLatest();
+  }, []);
 
   const formatImageUrl = (path?: string) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    const baseUrl = import.meta.env.BASE_URL || '/';
-    return `${baseUrl}${cleanPath}`;
+    return supabase.storage.from('public_images').getPublicUrl(cleanPath).data.publicUrl;
   };
 
   return (
@@ -49,6 +59,36 @@ export function Home() {
             <p className="text-xl text-secondary mb-12 leading-relaxed max-w-2xl mx-auto animate-fade-in">
               {HOME.hero.subtitle}
             </p>
+
+            {/* Zaitona 3D Mascot Brand */}
+            <div className="mb-16 bg-surface/30 rounded-3xl border border-subtle overflow-hidden relative shadow-2xl animate-fade-in max-w-5xl mx-auto flex flex-col md:flex-row items-center">
+              <div className="w-full md:w-1/2 p-8 md:p-12 text-left">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-bold mb-4 uppercase tracking-wider">
+                  <Star className="w-4 h-4" /> Club Mascot
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold text-primary mb-4 leading-tight">
+                  Meet <span className="text-accent">Zaitona</span>
+                </h2>
+                <p className="text-secondary leading-relaxed mb-6">
+                  Zaitona represents the spirit of E.R.I.S.E. — deeply rooted in our Algerian heritage and continuously reaching towards a sustainable future. Like the resilient olive tree, our club aims to foster growth, provide enduring energy solutions, and cultivate an environment where innovation thrives.
+                </p>
+                <div className="flex gap-4">
+                  <div className="px-4 py-2 rounded-lg bg-dominant border border-subtle flex flex-col items-center justify-center">
+                    <span className="text-xl font-bold text-primary">Roots</span>
+                    <span className="text-xs text-muted uppercase">Heritage</span>
+                  </div>
+                  <div className="px-4 py-2 rounded-lg bg-dominant border border-subtle flex flex-col items-center justify-center">
+                    <span className="text-xl font-bold text-primary">Growth</span>
+                    <span className="text-xs text-muted uppercase">Innovation</span>
+                  </div>
+                </div>
+              </div>
+              <div className="w-full md:w-1/2 h-[400px] md:h-[500px] relative bg-gradient-to-br from-accent/5 to-transparent">
+                <React.Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-accent animate-pulse">Loading Zaitona...</div>}>
+                  <ZaitonaViewer />
+                </React.Suspense>
+              </div>
+            </div>
 
             {/* Impact Cards integrated into Hero */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 animate-fade-in text-left">

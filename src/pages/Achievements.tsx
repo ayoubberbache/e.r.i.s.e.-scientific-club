@@ -1,18 +1,33 @@
-import React from 'react';
- import { Trophy, Award, Star, Zap, Users, Target, X } from 'lucide-react';
- import { ACHIEVEMENTS } from '../data/siteData';
- import { Logo } from '../components/Logo';
- import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Trophy, Award, Star, Zap, Users, Target, X, Calendar } from 'lucide-react';
+import { Logo } from '../components/Logo';
+import { supabase } from '../lib/supabase';
 
 export function Achievements() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [dbAchievements, setDbAchievements] = useState<any[]>([]);
+  
+  useEffect(() => {
+    async function fetchAchievements() {
+      try {
+        const { data, error } = await supabase.from('achievements').select('*');
+        if (error || !data || data.length === 0) {
+          setDbAchievements([]);
+        } else {
+          setDbAchievements(data);
+        }
+      } catch (err) {
+        setDbAchievements([]);
+      }
+    }
+    fetchAchievements();
+  }, []);
 
   const formatImageUrl = (path?: string) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-    const baseUrl = import.meta.env.BASE_URL || '/';
-    return `${baseUrl}${cleanPath}`;
+    return supabase.storage.from('public_images').getPublicUrl(cleanPath).data.publicUrl;
   };
 
   return (
@@ -36,8 +51,8 @@ export function Achievements() {
 
         {/* Achievements Feed */}
         <div className="space-y-12 max-w-2xl mx-auto">
-          {ACHIEVEMENTS.length > 0 ? (
-            ACHIEVEMENTS.map((achievement) => (
+          {dbAchievements.length > 0 ? (
+            dbAchievements.map((achievement) => (
               <div key={achievement.id} className="bg-surface rounded-2xl shadow-sm border border-subtle overflow-hidden flex flex-col hover:shadow-md transition-shadow">
                 
                 {/* Post Header */}

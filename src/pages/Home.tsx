@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { HOME } from '../data/siteData';
 import { Logo } from '../components/Logo';
 import { ZaitonaViewer } from '../components/ZaitonaModel';
+import { RegistrationButton } from '../components/RegistrationButton';
 import { supabase } from '../lib/supabase';
 
 export function Home() {
@@ -59,6 +60,11 @@ export function Home() {
             <p className="text-xl text-secondary mb-12 leading-relaxed max-w-2xl mx-auto animate-fade-in">
               {HOME.hero.subtitle}
             </p>
+
+            {/* Registration CTA */}
+            <div className="mb-14 animate-fade-in">
+              <RegistrationButton />
+            </div>
 
             {/* Zaitona 3D Mascot Brand */}
             <div className="mb-16 bg-surface/30 rounded-3xl border border-subtle overflow-hidden relative shadow-2xl animate-fade-in max-w-5xl mx-auto flex flex-col md:flex-row items-center">

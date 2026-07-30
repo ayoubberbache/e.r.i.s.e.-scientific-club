@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Sun, Moon } from 'lucide-react';
 import { Logo } from './Logo';
 import { useTheme } from '../contexts/ThemeContext';
-import { REGISTRATION } from '../data/siteData';
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,7 +14,6 @@ export function Navbar() {
     { name: 'Events', path: '/events' },
     { name: 'Team', path: '/team' },
     { name: 'Achievements', path: '/achievements' },
-    ...(REGISTRATION.isOpen ? [{ name: 'Join Us', path: REGISTRATION.link, isExternal: true }] : []),
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -38,29 +36,17 @@ export function Navbar() {
           {/* Desktop Menu */}
           <div className="hidden md:flex md:items-center md:space-x-8">
             {navLinks.map((link) => (
-              link.isExternal ? (
-                <a
-                  key={link.name}
-                  href={link.path}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium border-transparent text-muted hover:border-default hover:text-secondary transition-colors"
-                >
-                  {link.name}
-                </a>
-              ) : (
-                <Link
-                  key={link.name}
-                  to={link.path}
-                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${
-                    isActive(link.path)
-                      ? 'border-accent text-accent'
-                      : 'border-transparent text-muted hover:border-default hover:text-secondary'
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              )
+              <Link
+                key={link.name}
+                to={link.path}
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${
+                  isActive(link.path)
+                    ? 'border-accent text-accent'
+                    : 'border-transparent text-muted hover:border-default hover:text-secondary'
+                }`}
+              >
+                {link.name}
+              </Link>
             ))}
             <button
               onClick={toggleTheme}
@@ -96,31 +82,18 @@ export function Navbar() {
         <div className="md:hidden">
           <div className="pt-2 pb-3 space-y-1">
             {navLinks.map((link) => (
-              link.isExternal ? (
-                <a
-                  key={link.name}
-                  href={link.path}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setIsOpen(false)}
-                  className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-base font-medium text-muted hover:bg-accent-tint hover:border-default hover:text-secondary"
-                >
-                  {link.name}
-                </a>
-              ) : (
-                <Link
-                  key={link.name}
-                  to={link.path}
-                  onClick={() => setIsOpen(false)}
-                  className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
-                    isActive(link.path)
-                      ? 'bg-accent-tint border-accent text-accent'
-                      : 'border-transparent text-muted hover:bg-accent-tint hover:border-default hover:text-secondary'
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              )
+              <Link
+                key={link.name}
+                to={link.path}
+                onClick={() => setIsOpen(false)}
+                className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
+                  isActive(link.path)
+                    ? 'bg-accent-tint border-accent text-accent'
+                    : 'border-transparent text-muted hover:bg-accent-tint hover:border-default hover:text-secondary'
+                }`}
+              >
+                {link.name}
+              </Link>
             ))}
           </div>
         </div>

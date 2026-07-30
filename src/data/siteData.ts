@@ -44,12 +44,8 @@ export const CONTACT = {
   address: 'Higher National School of Renewable Energies, Environment and Sustainable Development, Batna, Algeria',
 };
 
-// ── Registration ─────────────────────────────────────────────────────────────
-
-export const REGISTRATION = {
-  isOpen: false,
-  link: '#',
-};
+// Registration is now managed dynamically via the `site_settings` table in Supabase.
+// See RegistrationButton component and AdminDashboard for the toggle.
 
 // ── Home Content ─────────────────────────────────────────────────────────────
 

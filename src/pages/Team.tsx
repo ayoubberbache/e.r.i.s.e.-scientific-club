@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Mail, Linkedin, Github, Users, Star, Trophy } from 'lucide-react';
-import { REGISTRATION } from '../data/siteData';
+import { RegistrationButton } from '../components/RegistrationButton';
 import ProfileCard from '../components/ProfileCard';
 import { supabase } from '../lib/supabase';
 
@@ -165,15 +165,9 @@ export function Team() {
               <div>
                 <h2 className="text-3xl md:text-4xl font-bold text-primary mb-6">Join Our Mission</h2>
                 <p className="text-lg text-secondary leading-relaxed mb-8">
-                  {REGISTRATION.isOpen 
-                    ? "We are always looking for passionate students to join E.R.I.S.E. whether you're interested in technical projects, media, or event organization, there's a place for you here."
-                    : "Registrations are currently closed. Follow us on social media to stay updated on our next recruitment cycle!"}
+                  We are always looking for passionate students to join E.R.I.S.E. — whether you're interested in technical projects, media, or event organization, there's a place for you here.
                 </p>
-                {REGISTRATION.isOpen && (
-                  <button className="px-8 py-4 bg-accent text-white rounded-xl font-bold hover:bg-accent-muted transition-all active:scale-95 shadow-lg shadow-accent/20">
-                    Apply to Join
-                  </button>
-                )}
+                <RegistrationButton />
               </div>
               
               <div className="hidden lg:block h-64 overflow-hidden rounded-3xl border border-subtle">

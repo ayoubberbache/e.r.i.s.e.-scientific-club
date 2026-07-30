@@ -15,6 +15,7 @@
   },
   "env": {
     "VITE_SUPABASE_URL": "https://ygougrhejaesbtifacdk.supabase.co",
-    "VITE_SUPABASE_ANON_KEY": "sb_publishable_MIl6WWMSsnArxxjzOTB4hw_FK1sBh3z"
+    "VITE_SUPABASE_ANON_KEY": "sb_publishable_MIl6WWMSsnArxxjzOTB4hw_FK1sBh3z",
+    "RESEND_API_KEY": "@resend_api_key"
   }
 }

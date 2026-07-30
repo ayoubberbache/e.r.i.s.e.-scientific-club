@@ -1,6 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// Simple in-memory rate limiting map (IP -> timestamps array)
+// In-memory rate limiting map (IP -> timestamps array)
 const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes window
 const MAX_REQUESTS_PER_WINDOW = 5; // Max 5 emails per IP per 15 minutes
@@ -8,8 +6,6 @@ const MAX_REQUESTS_PER_WINDOW = 5; // Max 5 emails per IP per 15 minutes
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
   const timestamps = rateLimitMap.get(ip) || [];
-  
-  // Filter out timestamps older than the window
   const validTimestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
   
   if (validTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
@@ -32,7 +28,7 @@ function escapeHtml(unsafe: any): string {
     .replace(/'/g, '&#039;');
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   // 1. CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -47,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 2. DDoS & Spam Protection — IP Rate Limiting
-  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || 'unknown';
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || 'unknown';
   if (isRateLimited(clientIp)) {
     return res.status(429).json({ error: 'Too many requests. Please try again later.' });
   }
@@ -65,7 +61,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  // Length checks against payload overflow attacks
   if (
     typeof full_name !== 'string' || full_name.length > 100 ||
     typeof email !== 'string' || email.length > 150 ||

@@ -3,9 +3,10 @@ import { ArrowRight, Target, Users, Zap, Award, BookOpen, Star } from 'lucide-re
 import { Link } from 'react-router-dom';
 import { HOME } from '../data/siteData';
 import { Logo } from '../components/Logo';
-import { ZaitonaViewer } from '../components/ZaitonaModel';
 import { RegistrationButton } from '../components/RegistrationButton';
 import { supabase } from '../lib/supabase';
+
+const ZaitonaViewer = React.lazy(() => import('../components/ZaitonaModel').then(m => ({ default: m.ZaitonaViewer })));
 
 export function Home() {
   const [latestEvent, setLatestEvent] = React.useState<any>(null);
@@ -13,11 +14,15 @@ export function Home() {
 
   React.useEffect(() => {
     async function fetchLatest() {
-      const { data: eventData } = await supabase.from('events').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
-      if (eventData) setLatestEvent(eventData);
+      try {
+        const { data: eventData } = await supabase.from('events').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+        if (eventData) setLatestEvent(eventData);
 
-      const { data: achData } = await supabase.from('achievements').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
-      if (achData) setLatestAchievement(achData);
+        const { data: achData } = await supabase.from('achievements').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+        if (achData) setLatestAchievement(achData);
+      } catch (err) {
+        console.warn('Error fetching latest content:', err);
+      }
     }
     fetchLatest();
   }, []);
@@ -28,6 +33,8 @@ export function Home() {
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
     return supabase.storage.from('public_images').getPublicUrl(cleanPath).data.publicUrl;
   };
+
+  const isLoreAcademy = Boolean(latestEvent?.title && typeof latestEvent.title === 'string' && latestEvent.title.includes('Lore Academy'));
 
   return (
     <div className="bg-dominant">
@@ -114,13 +121,9 @@ export function Home() {
                 </div>
               ))}
             </div>
-            
-            {/* Hero buttons removed */}
           </div>
         </div>
       </section>
-
-      {/* About Section removed */}
 
       {/* Quick Access */}
       <section className="py-24 bg-dominant border-y border-subtle">
@@ -132,7 +135,7 @@ export function Home() {
                 <img 
                   src={formatImageUrl(latestEvent?.image || 'events-assets/english_corner.jpg')} 
                   alt="Event" 
-                  className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${latestEvent?.title.includes('Lore Academy') ? 'blur-md grayscale' : ''}`} 
+                  className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${isLoreAcademy ? 'blur-md grayscale' : ''}`} 
                 />
                 <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors" />
               </div>

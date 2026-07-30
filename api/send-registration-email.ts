@@ -1,7 +1,39 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Simple in-memory rate limiting map (IP -> timestamps array)
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes window
+const MAX_REQUESTS_PER_WINDOW = 5; // Max 5 emails per IP per 15 minutes
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const timestamps = rateLimitMap.get(ip) || [];
+  
+  // Filter out timestamps older than the window
+  const validTimestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+  
+  if (validTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+    return true;
+  }
+  
+  validTimestamps.push(now);
+  rateLimitMap.set(ip, validTimestamps);
+  return false;
+}
+
+// Escape HTML characters to prevent HTML injection in emails
+function escapeHtml(unsafe: any): string {
+  if (typeof unsafe !== 'string') return '';
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
+  // 1. CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -14,25 +46,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // 2. DDoS & Spam Protection — IP Rate Limiting
+  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || 'unknown';
+  if (isRateLimited(clientIp)) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_API_KEY) {
     console.error('RESEND_API_KEY is not set');
     return res.status(500).json({ error: 'Email service not configured' });
   }
 
-  const { full_name, email, phone, study_year, specialization, departments } = req.body;
+  // 3. Payload Validation
+  const { full_name, email, phone, study_year, specialization, departments } = req.body || {};
 
   if (!full_name || !email || !phone || !study_year) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  const specLine = specialization
-    ? `<tr><td style="padding:8px 16px;font-weight:600;color:#5a7a8a;width:140px;">Specialization</td><td style="padding:8px 16px;color:#0a1628;">${specialization}</td></tr>`
-    : '';
+  // Length checks against payload overflow attacks
+  if (
+    typeof full_name !== 'string' || full_name.length > 100 ||
+    typeof email !== 'string' || email.length > 150 ||
+    typeof phone !== 'string' || phone.length > 30 ||
+    typeof study_year !== 'number' || study_year < 1 || study_year > 5
+  ) {
+    return res.status(400).json({ error: 'Invalid field length or format' });
+  }
 
-  const deptList = Array.isArray(departments) && departments.length > 0
-    ? departments.join(', ')
+  // 4. Sanitize strings for email HTML rendering
+  const cleanName = escapeHtml(full_name.trim());
+  const cleanEmail = escapeHtml(email.trim());
+  const cleanPhone = escapeHtml(phone.trim());
+  const cleanSpec = specialization ? escapeHtml(String(specialization).trim()) : null;
+  const cleanDepts = Array.isArray(departments) 
+    ? departments.map(d => escapeHtml(String(d))).join(', ')
     : 'None selected';
+
+  const specLine = cleanSpec
+    ? `<tr><td style="padding:8px 16px;font-weight:600;color:#5a7a8a;width:140px;">Specialization</td><td style="padding:8px 16px;color:#0a1628;">${cleanSpec}</td></tr>`
+    : '';
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -56,15 +110,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <table style="width:100%;border-collapse:collapse;border-radius:12px;overflow:hidden;border:1px solid #e0f2f5;">
         <tr style="background:#e8f7fa;">
           <td style="padding:12px 16px;font-weight:600;color:#5a7a8a;width:140px;">Full Name</td>
-          <td style="padding:12px 16px;color:#0a1628;font-weight:700;font-size:16px;">${full_name}</td>
+          <td style="padding:12px 16px;color:#0a1628;font-weight:700;font-size:16px;">${cleanName}</td>
         </tr>
         <tr>
           <td style="padding:8px 16px;font-weight:600;color:#5a7a8a;width:140px;">Email</td>
-          <td style="padding:8px 16px;color:#0a1628;"><a href="mailto:${email}" style="color:#0d5c63;">${email}</a></td>
+          <td style="padding:8px 16px;color:#0a1628;"><a href="mailto:${cleanEmail}" style="color:#0d5c63;">${cleanEmail}</a></td>
         </tr>
         <tr style="background:#f8fcfd;">
           <td style="padding:8px 16px;font-weight:600;color:#5a7a8a;width:140px;">Phone</td>
-          <td style="padding:8px 16px;color:#0a1628;">${phone}</td>
+          <td style="padding:8px 16px;color:#0a1628;">${cleanPhone}</td>
         </tr>
         <tr>
           <td style="padding:8px 16px;font-weight:600;color:#5a7a8a;width:140px;">Study Year</td>
@@ -73,7 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ${specLine}
         <tr style="background:#f8fcfd;">
           <td style="padding:8px 16px;font-weight:600;color:#5a7a8a;width:140px;">Departments</td>
-          <td style="padding:8px 16px;color:#0a1628;">${deptList}</td>
+          <td style="padding:8px 16px;color:#0a1628;">${cleanDepts}</td>
         </tr>
         <tr>
           <td style="padding:8px 16px;font-weight:600;color:#5a7a8a;width:140px;">Registered At</td>
@@ -104,7 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         from: 'E.R.I.S.E. Club <onboarding@resend.dev>',
         to: ['ayoubberbache79@gmail.com'],
-        subject: `🎓 New Registration: ${full_name} — Year ${study_year}`,
+        subject: `🎓 New Registration: ${cleanName} — Year ${study_year}`,
         html: htmlContent,
       }),
     });

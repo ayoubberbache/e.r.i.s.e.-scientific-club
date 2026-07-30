@@ -1,19 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Sun, Moon } from 'lucide-react';
+import { Menu, X, Sun, Moon, UserPlus } from 'lucide-react';
 import { Logo } from './Logo';
 import { useTheme } from '../contexts/ThemeContext';
+import { supabase } from '../lib/supabase';
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    async function fetchRegStatus() {
+      try {
+        const { data } = await supabase
+          .from('site_settings')
+          .select('value')
+          .eq('key', 'registration_open')
+          .single();
+
+        if (data) {
+          setIsRegistrationOpen(data.value === 'true');
+        }
+      } catch {
+        setIsRegistrationOpen(false);
+      }
+    }
+
+    fetchRegStatus();
+  }, [location.pathname]);
 
   const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Events', path: '/events' },
     { name: 'Team', path: '/team' },
     { name: 'Achievements', path: '/achievements' },
+    ...(isRegistrationOpen ? [{ name: 'Register', path: '/register', isHighlight: true }] : []),
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -36,17 +59,28 @@ export function Navbar() {
           {/* Desktop Menu */}
           <div className="hidden md:flex md:items-center md:space-x-8">
             {navLinks.map((link) => (
-              <Link
-                key={link.name}
-                to={link.path}
-                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${
-                  isActive(link.path)
-                    ? 'border-accent text-accent'
-                    : 'border-transparent text-muted hover:border-default hover:text-secondary'
-                }`}
-              >
-                {link.name}
-              </Link>
+              link.isHighlight ? (
+                <Link
+                  key={link.name}
+                  to={link.path}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-white text-sm font-bold shadow-md shadow-accent/20 hover:bg-accent-muted transition-all active:scale-95"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  {link.name}
+                </Link>
+              ) : (
+                <Link
+                  key={link.name}
+                  to={link.path}
+                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${
+                    isActive(link.path)
+                      ? 'border-accent text-accent'
+                      : 'border-transparent text-muted hover:border-default hover:text-secondary'
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              )
             ))}
             <button
               onClick={toggleTheme}

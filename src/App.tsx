@@ -8,12 +8,13 @@ import { Events } from './pages/Events';
 import { Team } from './pages/Team';
 import { Achievements } from './pages/Achievements';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { RegistrationNotification } from './components/RegistrationNotification';
 
 export default function App() {
   return (
     <ThemeProvider>
     <Router>
-      <div className="flex flex-col min-h-screen font-sans">
+      <div className="flex flex-col min-h-screen font-sans relative">
         <Navbar />
         <main className="flex-grow">
           <Routes>
@@ -26,6 +27,7 @@ export default function App() {
           </Routes>
         </main>
         <Footer />
+        <RegistrationNotification />
       </div>
     </Router>
     </ThemeProvider>

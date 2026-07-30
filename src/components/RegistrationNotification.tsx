@@ -11,18 +11,22 @@ export function RegistrationNotification() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Don't show if already dismissed this session
-    if (sessionStorage.getItem(DISMISSED_KEY)) return;
+    // Safe storage check
+    try {
+      if (sessionStorage.getItem(DISMISSED_KEY)) return;
+    } catch {
+      // storage access blocked
+    }
 
     async function check() {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('site_settings')
           .select('value')
           .eq('key', 'registration_open')
-          .single();
+          .maybeSingle();
 
-        if (data?.value === 'true') {
+        if (!error && data?.value === 'true') {
           setTimeout(() => setVisible(true), 1500);
         }
       } catch {
@@ -35,12 +39,20 @@ export function RegistrationNotification() {
 
   const dismiss = () => {
     setVisible(false);
-    sessionStorage.setItem(DISMISSED_KEY, 'true');
+    try {
+      sessionStorage.setItem(DISMISSED_KEY, 'true');
+    } catch {
+      // ignore
+    }
   };
 
   const handleRegister = () => {
     setVisible(false);
-    sessionStorage.setItem(DISMISSED_KEY, 'true');
+    try {
+      sessionStorage.setItem(DISMISSED_KEY, 'true');
+    } catch {
+      // ignore
+    }
     navigate('/register');
   };
 

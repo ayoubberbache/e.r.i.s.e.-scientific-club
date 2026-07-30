@@ -1,5 +1,4 @@
-import React from 'react';
-import '@google/model-viewer';
+import React, { useEffect, useState } from 'react';
 
 declare global {
   namespace JSX {
@@ -21,6 +20,25 @@ declare global {
 }
 
 export function ZaitonaViewer() {
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    import('@google/model-viewer')
+      .then(() => setLoaded(true))
+      .catch((err) => {
+        console.warn('Could not load 3D model viewer:', err);
+        setLoaded(false);
+      });
+  }, []);
+
+  if (!loaded) {
+    return (
+      <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-dominant/30 rounded-2xl">
+        <div className="text-sm font-semibold text-accent animate-pulse">Loading Zaitona 3D...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 w-full h-full flex items-center justify-center">
       <model-viewer

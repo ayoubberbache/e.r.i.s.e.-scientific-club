@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ERISE Scientific Club - Team Leader Poster Generator</title>
+  <link rel="stylesheet" href="poster.css">
+  <!-- Base64 asset fallback for local file:// export compatibility -->
+  <script src="assets.js"></script>
+  <!-- html2canvas for high-res PNG export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- SIDEBAR EDITING CONTROLS -->
+    <div class="sidebar">
+      <h2>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 20h9"></path>
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+        </svg>
+        Poster Controls
+      </h2>
+
+      <!-- Preset Selector -->
+      <div class="form-group">
+        <label>Team Member Preset</label>
+        <select id="presetSelect" onchange="loadPreset(this.value)">
+          <option value="ayoub" selected>Ayoub Berbache (Technical Lead)</option>
+          <option value="custom">Custom Leader / Blank Template</option>
+        </select>
+      </div>
+
+      <!-- Color Theme -->
+      <div class="form-group">
+        <label>Brand Theme</label>
+        <select id="themeSelect" onchange="updateTheme(this.value)">
+          <option value="light" selected>Classic ERISE Blue (Light)</option>
+          <option value="dark">Dark Tech Navy</option>
+          <option value="cyan">Electric Cyber Cyan</option>
+        </select>
+      </div>
+
+      <!-- Canvas Aspect Ratio -->
+      <div class="form-group">
+        <label>Post Format</label>
+        <select id="formatSelect" onchange="updateFormat(this.value)">
+          <option value="square" selected>Instagram Square (1080 x 1080 px)</option>
+          <option value="portrait">Instagram Portrait (1080 x 1350 px)</option>
+        </select>
+      </div>
+
+      <hr style="border-color: #334155; margin: 4px 0;">
+
+      <!-- Text Inputs -->
+      <div class="form-group">
+        <label>Name Line 1 (Optional)</label>
+        <input type="text" id="inputName1" value="AYOUB" placeholder="Line 1 (e.g. AHMED)" oninput="renderPoster()">
+      </div>
+
+      <div class="form-group">
+        <label>Name Line 2 (Optional)</label>
+        <input type="text" id="inputName2" value="BERBACHE" placeholder="Line 2 (e.g. AMINE)" oninput="renderPoster()">
+      </div>
+
+      <div class="form-group">
+        <label>Name Line 3 (Optional)</label>
+        <input type="text" id="inputName3" value="" placeholder="Line 3 (e.g. BENALI)" oninput="renderPoster()">
+      </div>
+
+      <div class="form-group">
+        <label>Role / Position Title (Optional)</label>
+        <input type="text" id="inputRole" value="Technical Lead" placeholder="Leave empty for none" oninput="renderPoster()">
+      </div>
+
+      <hr style="border-color: #334155; margin: 4px 0;">
+
+      <!-- Text Scaling Controls -->
+      <div class="form-group">
+        <label>Role Text Scale (Font Size)</label>
+        <div class="slider-row">
+          <input type="range" id="fontSizeRole" min="30" max="130" value="72" oninput="renderPoster()">
+          <span class="slider-value" id="fontSizeRoleVal">72px</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Name Text Scale (Font Size)</label>
+        <div class="slider-row">
+          <input type="range" id="fontSizeName" min="40" max="220" value="130" oninput="renderPoster()">
+          <span class="slider-value" id="fontSizeNameVal">130px</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Name Line Spacing</label>
+        <div class="slider-row">
+          <input type="range" id="nameLineHeight" min="0.65" max="1.25" step="0.02" value="0.88" oninput="renderPoster()">
+          <span class="slider-value" id="nameLineHeightVal">0.88</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Role Vertical Position (Y)</label>
+        <div class="slider-row">
+          <input type="range" id="roleY" min="150" max="500" value="350" oninput="renderPoster()">
+          <span class="slider-value" id="roleYVal">350px</span>
+        </div>
+      </div>
+
+      <hr style="border-color: #334155; margin: 4px 0;">
+
+      <!-- Text Colors -->
+      <div class="form-group">
+        <label>Role Text Color</label>
+        <input type="color" id="textColorRole" value="#0073C8" oninput="renderPoster()" style="height: 40px; cursor: pointer; padding: 2px;">
+      </div>
+
+      <div class="form-group">
+        <label>Name Text Color</label>
+        <input type="color" id="textColorName" value="#0073C8" oninput="renderPoster()" style="height: 40px; cursor: pointer; padding: 2px;">
+      </div>
+
+      <!-- Logo Size Control -->
+      <div class="form-group">
+        <label>Logo Scale (Size)</label>
+        <div class="slider-row">
+          <input type="range" id="logoScale" min="40" max="220" value="110" oninput="renderPoster()">
+          <span class="slider-value" id="logoScaleVal">110px</span>
+        </div>
+      </div>
+
+      <hr style="border-color: #334155; margin: 4px 0;">
+
+      <!-- Photo Controls -->
+      <div class="form-group">
+        <label>Photo Cutout (PNG)</label>
+        <input type="file" id="photoFileInput" accept="image/*" onchange="handlePhotoUpload(event)">
+      </div>
+
+      <div class="form-group">
+        <label>Photo Style</label>
+        <select id="photoStyleSelect" onchange="updatePhotoStyleSrc(); renderPoster();">
+          <option value="color" selected>Original Color</option>
+          <option value="grayscale">Black & White (Studio Contrast)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Photo Scale</label>
+        <div class="slider-row">
+          <input type="range" id="photoScale" min="50" max="250" value="125" oninput="renderPoster()">
+          <span class="slider-value" id="scaleVal">125%</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Photo X-Offset (Horizontal)</label>
+        <div class="slider-row">
+          <input type="range" id="photoX" min="-300" max="300" value="0" oninput="renderPoster()">
+          <span class="slider-value" id="xVal">0px</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Photo Y-Offset (Vertical)</label>
+        <div class="slider-row">
+          <input type="range" id="photoY" min="-300" max="300" value="0" oninput="renderPoster()">
+          <span class="slider-value" id="yVal">0px</span>
+        </div>
+      </div>
+
+      <!-- Export Button -->
+      <button class="btn-primary" onclick="exportPoster()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Download Instagram Post (PNG)
+      </button>
+
+    </div>
+
+    <!-- MAIN PREVIEW CANVAS AREA -->
+    <div class="preview-area">
+      <div class="preview-wrapper" id="previewWrapper">
+        
+        <!-- THE 1080x1080 POSTER CANVAS -->
+        <div id="poster-canvas" class="theme-light">
+          
+          <!-- Ambient Glow Flare -->
+          <div class="ambient-glow"></div>
+
+          <!-- Bottom Left Halftone Pattern -->
+          <div class="halftone-pattern"></div>
+
+          <!-- Right Grid Capsule Pill Backdrop -->
+          <div class="grid-capsule">
+            <div class="capsule-accent-bar"></div>
+          </div>
+
+          <!-- Top Header Bar -->
+          <div class="poster-header">
+            <div class="logo-box">
+              <img id="posterLogo" src="assets/erise-logo.png" alt="ERISE Logo" onerror="this.src='../logo-icon.png'">
+            </div>
+          </div>
+
+          <!-- Content Section (Top Left) -->
+          <div class="content-section">
+            <div class="role-title-box">
+              <h1 class="role-main-title" id="displayRole">Technical Lead</h1>
+            </div>
+          </div>
+
+          <!-- Layer 1 Name Typography (Behind Cutout Photo) -->
+          <div class="name-container">
+            <span class="name-line-1" id="displayName1">AYOUB</span>
+            <span class="name-line-2-outline" id="displayName2Outline">BERBACHE</span>
+            <span class="name-line-3-outline" id="displayName3Outline"></span>
+          </div>
+
+          <!-- Cutout Photo Layer -->
+          <div class="photo-container">
+            <img id="displayPhoto" src="assets/ayoub-photo.png" alt="Team Leader Photo">
+          </div>
+
+          <!-- Layer 2 Name Typography Front (In front of Photo) -->
+          <div class="name-container-front">
+            <span style="opacity:0;" id="displayName1Placeholder">AYOUB</span>
+            <span class="name-front-fill" id="displayName2">BERBACHE</span>
+            <span class="name-front-fill" id="displayName3"></span>
+          </div>
+
+        </div> <!-- END POSTER CANVAS -->
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Scale preview wrapper to fit screen smoothly
+    function fitPreview() {
+      const area = document.querySelector('.preview-area');
+      const canvas = document.getElementById('poster-canvas');
+      const wrapper = document.getElementById('previewWrapper');
+      
+      const availableWidth = area.clientWidth - 80;
+      const availableHeight = area.clientHeight - 80;
+      
+      const canvasWidth = canvas.offsetWidth;
+      const canvasHeight = canvas.offsetHeight;
+      
+      const scale = Math.min(availableWidth / canvasWidth, availableHeight / canvasHeight, 1);
+      wrapper.style.transform = `scale(${scale})`;
+      wrapper.style.transformOrigin = 'center center';
+    }
+
+    window.addEventListener('resize', fitPreview);
+    setTimeout(fitPreview, 100);
+
+    // Update Poster Content from Inputs
+    function renderPoster() {
+      const n1Input = document.getElementById('inputName1');
+      const n2Input = document.getElementById('inputName2');
+      const n3Input = document.getElementById('inputName3');
+      const roleInput = document.getElementById('inputRole');
+
+      const name1 = n1Input ? n1Input.value.trim() : '';
+      const name2 = n2Input ? n2Input.value.trim() : '';
+      const name3 = n3Input ? n3Input.value.trim() : '';
+      const role = roleInput ? roleInput.value.trim() : '';
+
+      const elName1 = document.getElementById('displayName1');
+      const elName1Placeholder = document.getElementById('displayName1Placeholder');
+      const elName2Outline = document.getElementById('displayName2Outline');
+      const elName2 = document.getElementById('displayName2');
+      const elName3Outline = document.getElementById('displayName3Outline');
+      const elName3 = document.getElementById('displayName3');
+      const elRole = document.getElementById('displayRole');
+
+      if (elName1) elName1.textContent = name1.toUpperCase();
+      if (elName1Placeholder) elName1Placeholder.textContent = name1.toUpperCase();
+
+      if (elName2Outline) elName2Outline.textContent = name2.toUpperCase();
+      if (elName2) elName2.textContent = name2.toUpperCase();
+
+      if (elName3Outline) elName3Outline.textContent = name3.toUpperCase();
+      if (elName3) elName3.textContent = name3.toUpperCase();
+
+      if (elRole) elRole.textContent = role;
+
+      // Name Line-Height Spacing
+      const lhElem = document.getElementById('nameLineHeight');
+      if (lhElem) {
+        const lhVal = lhElem.value;
+        const lhValElem = document.getElementById('nameLineHeightVal');
+        if (lhValElem) lhValElem.textContent = lhVal;
+        const nameContainers = document.querySelectorAll('.name-container, .name-container-front');
+        nameContainers.forEach(c => c.style.lineHeight = lhVal);
+      }
+
+      // Text Scaling (Font Sizes)
+      const roleSizeElem = document.getElementById('fontSizeRole');
+      if (roleSizeElem) {
+        const rSize = roleSizeElem.value;
+        const rSizeVal = document.getElementById('fontSizeRoleVal');
+        if (rSizeVal) rSizeVal.textContent = rSize + 'px';
+        if (elRole) elRole.style.fontSize = rSize + 'px';
+      }
+
+      const nameSizeElem = document.getElementById('fontSizeName');
+      if (nameSizeElem) {
+        const nSize = nameSizeElem.value;
+        const nSizeVal = document.getElementById('fontSizeNameVal');
+        if (nSizeVal) nSizeVal.textContent = nSize + 'px';
+        const nameContainers = document.querySelectorAll('.name-container, .name-container-front');
+        nameContainers.forEach(c => c.style.fontSize = nSize + 'px');
+      }
+
+      // Text Colors
+      const roleColorElem = document.getElementById('textColorRole');
+      if (roleColorElem && elRole) {
+        elRole.style.color = roleColorElem.value;
+      }
+
+      const nameColorElem = document.getElementById('textColorName');
+      if (nameColorElem) {
+        const nColor = nameColorElem.value;
+        if (elName1) elName1.style.color = nColor;
+        if (elName2) elName2.style.color = nColor;
+        if (elName3) elName3.style.color = nColor;
+        if (elName2Outline) elName2Outline.style.webkitTextStrokeColor = nColor;
+        if (elName3Outline) elName3Outline.style.webkitTextStrokeColor = nColor;
+      }
+
+      // Role vertical position adjustment
+      const roleYElem = document.getElementById('roleY');
+      if (roleYElem) {
+        const roleYVal = roleYElem.value;
+        const roleYValElem = document.getElementById('roleYVal');
+        if (roleYValElem) roleYValElem.textContent = roleYVal + 'px';
+        const contentSec = document.querySelector('.content-section');
+        if (contentSec) contentSec.style.top = roleYVal + 'px';
+      }
+
+      // Logo size adjustment
+      const logoScaleElem = document.getElementById('logoScale');
+      if (logoScaleElem) {
+        const logoSize = logoScaleElem.value;
+        const logoValElem = document.getElementById('logoScaleVal');
+        if (logoValElem) logoValElem.textContent = logoSize + 'px';
+        const posterLogo = document.getElementById('posterLogo');
+        if (posterLogo) posterLogo.style.height = logoSize + 'px';
+      }
+
+      // Photo transform adjustments
+      const photoScaleElem = document.getElementById('photoScale');
+      const photoXElem = document.getElementById('photoX');
+      const photoYElem = document.getElementById('photoY');
+      const photoStyleElem = document.getElementById('photoStyleSelect');
+
+      const scale = photoScaleElem ? photoScaleElem.value : 125;
+      const posX = photoXElem ? photoXElem.value : 0;
+      const posY = photoYElem ? photoYElem.value : 0;
+      const photoStyle = photoStyleElem ? photoStyleElem.value : 'color';
+
+      const scaleVal = document.getElementById('scaleVal');
+      const xVal = document.getElementById('xVal');
+      const yVal = document.getElementById('yVal');
+
+      if (scaleVal) scaleVal.textContent = scale + '%';
+      if (xVal) xVal.textContent = posX + 'px';
+      if (yVal) yVal.textContent = posY + 'px';
+
+      const img = document.getElementById('displayPhoto');
+      if (img) {
+        let filterStr = 'drop-shadow(0 15px 30px rgba(0, 0, 0, 0.35))';
+        if (photoStyle === 'grayscale') {
+          filterStr += ' grayscale(100%) contrast(110%)';
+        }
+        img.style.filter = filterStr;
+        img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale / 100})`;
+      }
+    }
+
+    let currentRawPhotoDataUrl = window.DEFAULT_PHOTO_B64 || 'assets/ayoub-photo.png';
+
+    // Ensure Base64 image sources are loaded for local file:// export compatibility
+    function ensureBase64Images() {
+      const logoImg = document.getElementById('posterLogo');
+      const photoImg = document.getElementById('displayPhoto');
+
+      if (window.DEFAULT_LOGO_B64 && logoImg && (!logoImg.src || !logoImg.src.startsWith('data:'))) {
+        logoImg.src = window.DEFAULT_LOGO_B64;
+      }
+      if (window.DEFAULT_PHOTO_B64 && photoImg && (!photoImg.src || !photoImg.src.startsWith('data:'))) {
+        currentRawPhotoDataUrl = window.DEFAULT_PHOTO_B64;
+        updatePhotoStyleSrc();
+      }
+    }
+
+    function updatePhotoStyleSrc() {
+      const img = document.getElementById('displayPhoto');
+      if (!img) return;
+
+      const photoStyleElem = document.getElementById('photoStyleSelect');
+      const styleVal = photoStyleElem ? photoStyleElem.value : 'color';
+
+      if (styleVal === 'grayscale' && currentRawPhotoDataUrl) {
+        const tempCanvas = document.createElement('canvas');
+        const tempImg = new Image();
+        tempImg.onload = function() {
+          tempCanvas.width = tempImg.naturalWidth || 600;
+          tempCanvas.height = tempImg.naturalHeight || 800;
+          const ctx = tempCanvas.getContext('2d');
+          ctx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
+          ctx.drawImage(tempImg, 0, 0);
+          img.src = tempCanvas.toDataURL('image/png');
+          img.style.filter = 'drop-shadow(0 15px 30px rgba(0, 0, 0, 0.35))';
+        };
+        tempImg.src = currentRawPhotoDataUrl;
+      } else {
+        img.src = currentRawPhotoDataUrl;
+        img.style.filter = 'drop-shadow(0 15px 30px rgba(0, 0, 0, 0.35))';
+      }
+    }
+
+    // Photo Upload Handler
+    function handlePhotoUpload(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          currentRawPhotoDataUrl = e.target.result;
+          updatePhotoStyleSrc();
+          renderPoster();
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    // Theme Switcher
+    function updateTheme(themeName) {
+      const canvas = document.getElementById('poster-canvas');
+      canvas.className = ''; // Reset
+      if (themeName === 'dark') {
+        canvas.classList.add('theme-dark');
+      } else if (themeName === 'cyan') {
+        canvas.classList.add('theme-cyan');
+      } else {
+        canvas.classList.add('theme-light');
+      }
+    }
+
+    // Format Switcher (Square 1:1 vs Portrait 4:5)
+    function updateFormat(formatName) {
+      const canvas = document.getElementById('poster-canvas');
+      if (formatName === 'portrait') {
+        canvas.classList.add('portrait');
+      } else {
+        canvas.classList.remove('portrait');
+      }
+      fitPreview();
+    }
+
+    // Presets
+    function loadPreset(presetKey) {
+      if (presetKey === 'ayoub') {
+        const n1 = document.getElementById('inputName1');
+        const n2 = document.getElementById('inputName2');
+        const n3 = document.getElementById('inputName3');
+        if (n1) n1.value = 'AYOUB';
+        if (n2) n2.value = 'BERBACHE';
+        if (n3) n3.value = '';
+        const rInput = document.getElementById('inputRole');
+        if (rInput) rInput.value = 'Technical Lead';
+        if (window.DEFAULT_PHOTO_B64) {
+          currentRawPhotoDataUrl = window.DEFAULT_PHOTO_B64;
+        } else {
+          currentRawPhotoDataUrl = 'assets/ayoub-photo.png';
+        }
+        updatePhotoStyleSrc();
+        if (document.getElementById('logoScale')) document.getElementById('logoScale').value = 110;
+        if (document.getElementById('roleY')) document.getElementById('roleY').value = 350;
+        if (document.getElementById('photoScale')) document.getElementById('photoScale').value = 125;
+        if (document.getElementById('photoX')) document.getElementById('photoX').value = 0;
+        if (document.getElementById('photoY')) document.getElementById('photoY').value = 0;
+      }
+      renderPoster();
+    }
+
+    // High-Res PNG Export function
+    function exportPoster() {
+      ensureBase64Images();
+      const canvasElem = document.getElementById('poster-canvas');
+      const wrapper = document.getElementById('previewWrapper');
+
+      // Save transform scale & temporarily set to 1:1 for pixel-perfect capture
+      const origTransform = wrapper.style.transform;
+      wrapper.style.transform = 'none';
+
+      const n1Elem = document.getElementById('inputName1');
+      const n2Elem = document.getElementById('inputName2');
+      const n1 = n1Elem && n1Elem.value.trim() ? n1Elem.value.trim() : 'Team';
+      const n2 = n2Elem && n2Elem.value.trim() ? n2Elem.value.trim() : 'Leader';
+      const filename = `ERISE_${n1}_${n2}_Poster.png`.replace(/\s+/g, '_');
+
+      html2canvas(canvasElem, {
+        scale: 2, // 2x density for ultra crisp 2160x2160 output
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: null,
+        logging: false
+      }).then(canvas => {
+        wrapper.style.transform = origTransform;
+        fitPreview();
+
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = canvas.toDataURL('image/png', 1.0);
+        link.click();
+      }).catch(err => {
+        wrapper.style.transform = origTransform;
+        fitPreview();
+        console.error('Export Error:', err);
+        alert('Export error occurred. Please ensure all inputs are valid.');
+      });
+    }
+
+    // Fallback native canvas exporter
+    function fallbackExport(filename) {
+      const poster = document.getElementById('poster-canvas');
+      const w = poster.offsetWidth;
+      const h = poster.offsetHeight;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w * 2;
+      canvas.height = h * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(2, 2);
+
+      // Background
+      const isDark = poster.classList.contains('theme-dark');
+      const isCyan = poster.classList.contains('theme-cyan');
+      let bgColor = '#F4F7FD';
+      let textColor = '#0073C8';
+      let textMainColor = '#0A1628';
+      let pillGradStart = '#0073C8';
+      let pillGradEnd = '#004D87';
+
+      if (isDark) {
+        bgColor = '#0A1628';
+        textColor = '#00E5FF';
+        textMainColor = '#FFFFFF';
+        pillGradStart = '#0073C8';
+        pillGradEnd = '#003660';
+      } else if (isCyan) {
+        bgColor = '#041824';
+        textColor = '#00E5FF';
+        textMainColor = '#FFFFFF';
+        pillGradStart = '#00E5FF';
+        pillGradEnd = '#0073C8';
+      }
+
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid Capsule Pill
+      const pillX = w - 470;
+      const pillY = 90;
+      const pillW = 380;
+      const pillH = 940;
+      const pillR = 190;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(pillX + pillR, pillY);
+      ctx.lineTo(pillX + pillW - pillR, pillY);
+      ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
+      ctx.lineTo(pillX + pillW, pillY + pillH);
+      ctx.lineTo(pillX, pillY + pillH);
+      ctx.lineTo(pillX, pillY + pillR);
+      ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
+      ctx.closePath();
+
+      const pillGrad = ctx.createLinearGradient(pillX, pillY, pillX, pillY + pillH);
+      pillGrad.addColorStop(0, pillGradStart);
+      pillGrad.addColorStop(1, pillGradEnd);
+      ctx.fillStyle = pillGrad;
+      ctx.fill();
+      ctx.restore();
+
+      // Draw Logo
+      const logoImg = document.getElementById('posterLogo');
+      if (logoImg && logoImg.complete) {
+        const logoH = parseFloat(logoImg.style.height) || 110;
+        const aspect = (logoImg.naturalWidth || 1) / (logoImg.naturalHeight || 1);
+        const logoW = logoH * aspect;
+        ctx.drawImage(logoImg, 70, 60, logoW, logoH);
+      }
+
+      // Draw Role Title
+      const roleText = document.getElementById('displayRole').textContent || '';
+      const roleY = parseFloat(document.getElementById('roleY').value) || 350;
+      ctx.font = '800 72px Outfit, sans-serif';
+      ctx.fillStyle = textColor;
+      ctx.fillText(roleText, 70, roleY + 60);
+
+      // Draw Name Text
+      const name1 = (document.getElementById('displayName1').textContent || '').toUpperCase();
+      const name2 = (document.getElementById('displayName2').textContent || '').toUpperCase();
+      ctx.font = '900 130px Outfit, sans-serif';
+      ctx.fillStyle = textColor;
+      ctx.fillText(name1, 70, h - 170);
+
+      // Draw Cutout Photo
+      const photoImg = document.getElementById('displayPhoto');
+      if (photoImg && photoImg.complete) {
+        const photoStyleElem = document.getElementById('photoStyleSelect');
+        const photoStyle = photoStyleElem ? photoStyleElem.value : 'color';
+
+        const scaleVal = (parseFloat(document.getElementById('photoScale').value) || 125) / 100;
+        const posX = parseFloat(document.getElementById('photoX').value) || 0;
+        const posY = parseFloat(document.getElementById('photoY').value) || 0;
+
+        const pw = 660 * scaleVal;
+        const ph = 920 * scaleVal;
+        const px = w - pw + posX;
+        const py = h - ph + posY;
+
+        ctx.save();
+        if (photoStyle === 'grayscale') {
+          ctx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
+        }
+        ctx.drawImage(photoImg, px, py, pw, ph);
+        ctx.restore();
+      }
+
+      // Draw Outline Second Name
+      ctx.strokeStyle = textColor;
+      ctx.lineWidth = 3;
+      ctx.strokeText(name2, 70, h - 50);
+
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.click();
+    }
+
+    // Initialize
+    ensureBase64Images();
+    renderPoster();
+  </script>
+
+</body>
+</html>

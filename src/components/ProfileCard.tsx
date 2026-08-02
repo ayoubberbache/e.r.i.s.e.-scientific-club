@@ -491,18 +491,18 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
                     </div>
                   </div>
                   <div className="flex gap-2" style={{ pointerEvents: 'auto' }}>
-                    {socials?.linkedin && (
-                      <a href={socials.linkedin} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg border border-white/10 hover:border-white/40 hover:bg-white/10 transition-all text-white/90 hover:text-white">
+                    {Boolean(socials?.linkedin?.trim()) && (
+                      <a href={socials!.linkedin} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg border border-white/10 hover:border-white/40 hover:bg-white/10 transition-all text-white/90 hover:text-white" title="LinkedIn">
                         <Linkedin className="w-4 h-4" />
                       </a>
                     )}
-                    {socials?.github && (
-                      <a href={socials.github} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg border border-white/10 hover:border-white/40 hover:bg-white/10 transition-all text-white/90 hover:text-white">
+                    {Boolean(socials?.github?.trim()) && (
+                      <a href={socials!.github} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg border border-white/10 hover:border-white/40 hover:bg-white/10 transition-all text-white/90 hover:text-white" title="GitHub">
                         <Github className="w-4 h-4" />
                       </a>
                     )}
-                    {socials?.mail && (
-                      <a href={socials.mail.startsWith('mailto:') ? socials.mail : `mailto:${socials.mail}`} className="p-2 rounded-lg border border-white/10 hover:border-white/40 hover:bg-white/10 transition-all text-white/90 hover:text-white">
+                    {Boolean(socials?.mail?.trim()) && (
+                      <a href={socials!.mail!.startsWith('mailto:') ? socials!.mail : `mailto:${socials!.mail}`} className="p-2 rounded-lg border border-white/10 hover:border-white/40 hover:bg-white/10 transition-all text-white/90 hover:text-white" title="Email">
                         <Mail className="w-4 h-4" />
                       </a>
                     )}

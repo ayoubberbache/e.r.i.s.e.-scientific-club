@@ -9,6 +9,8 @@ import { Team } from './pages/Team';
 import { Achievements } from './pages/Achievements';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { RegisterPage } from './pages/Register';
+import { PosterGenerator } from './pages/PosterGenerator';
+import { EventRegister } from './pages/EventRegister';
 import { RegistrationNotification } from './components/RegistrationNotification';
 
 interface ErrorBoundaryProps {
@@ -69,10 +71,12 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/events" element={<Events />} />
+                <Route path="/events/:eventId/register" element={<EventRegister />} />
                 <Route path="/team" element={<Team />} />
                 <Route path="/achievements" element={<Achievements />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/poster" element={<PosterGenerator />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

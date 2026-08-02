@@ -73,9 +73,19 @@ export function Achievements() {
                 {/* Post Media */}
                 <div className="relative aspect-video bg-secondary/30 border-b border-subtle overflow-hidden">
                   {achievement.images && achievement.images.length > 1 ? (
-                    <div className="grid grid-cols-2 grid-rows-2 h-full gap-1 cursor-pointer" onClick={() => setSelectedImage(achievement.images![0])}>
-                      {achievement.images.slice(0, 4).map((img, i) => (
-                        <div key={i} className={`relative group overflow-hidden ${achievement.images!.length === 3 && i === 0 ? 'row-span-2' : ''}`}>
+                    <div 
+                      className={`grid h-full gap-1 cursor-pointer ${
+                        achievement.images.length === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2'
+                      }`} 
+                      onClick={() => setSelectedImage(achievement.images![0])}
+                    >
+                      {achievement.images.slice(0, 4).map((img: string, i: number) => (
+                        <div 
+                          key={i} 
+                          className={`relative group overflow-hidden ${
+                            achievement.images!.length === 3 && i === 0 ? 'row-span-2' : ''
+                          }`}
+                        >
                           <img 
                             src={formatImageUrl(img)} 
                             alt={`${achievement.title} ${i + 1}`} 
@@ -87,10 +97,10 @@ export function Achievements() {
                     </div>
                   ) : (
                     <img 
-                      src={formatImageUrl(achievement.image)} 
+                      src={formatImageUrl((achievement.images && achievement.images[0]) || achievement.image)} 
                       alt={achievement.title} 
                       className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-500"
-                      onClick={() => setSelectedImage(achievement.image)}
+                      onClick={() => setSelectedImage((achievement.images && achievement.images[0]) || achievement.image)}
                     />
                   )}
                 </div>

@@ -15,10 +15,10 @@ export function Home() {
   React.useEffect(() => {
     async function fetchLatest() {
       try {
-        const { data: eventData } = await supabase.from('events').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+        const { data: eventData } = await supabase.from('events').select('*').order('start_date', { ascending: false }).limit(1).maybeSingle();
         if (eventData) setLatestEvent(eventData);
 
-        const { data: achData } = await supabase.from('achievements').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+        const { data: achData } = await supabase.from('achievements').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
         if (achData) setLatestAchievement(achData);
       } catch (err) {
         console.warn('Error fetching latest content:', err);

@@ -1,0 +1,92 @@
+// Comprehensive list of Algerian Higher Education Institutions (Universities, National High Schools, University Centers)
+
+export const ALGERIAN_INSTITUTIONS = [
+  // National High Schools (Écoles Nationales Supérieures)
+  "Higher National School of Renewable Energies, Environment & Sustainable Development (ENRENA / RE2S) - Batna",
+  "Higher National School of Computer Science (ESI / INI) - Algiers",
+  "Higher National School of Computer Science (ESI) - Sidi Bel Abbès",
+  "National Polytechnic School (ENP) - Algiers",
+  "National Polytechnic School of Oran (ENPO) - Oran",
+  "National Polytechnic School of Constantine (ENPC) - Constantine",
+  "Higher National School of Artificial Intelligence (ENSIA) - Sidi Abdellah, Algiers",
+  "Higher National School of Autonomous Systems (ENSAS) - Sidi Abdellah, Algiers",
+  "Higher National School of Cybersecurity (ENSC) - Sidi Abdellah, Algiers",
+  "Polytechnic School of Architecture and Urbanism (EPAU) - Algiers",
+  "National School of Technology (ENST) - Algiers",
+  "Higher National School of Agronomy (ENSA) - Algiers",
+  "Higher National School of Veterinary Medicine (ENSV) - Algiers",
+  "Higher National School of Biotechnology (ENSB) - Constantine",
+  "Higher National School of Nanoscience and Nanotechnology (ENSNN) - Sidi Abdellah",
+  "Higher School of Commerce (ESC) - Kolea",
+  "Higher National School of Management (ENSM) - Kolea",
+  "Higher School of Economics (ESE) - Oran",
+  "Higher National School of Political Science (ENSSP) - Algiers",
+
+  // Universities by Region
+  // Center
+  "University of Sciences and Technology Houari Boumediene (USTHB) - Algiers",
+  "University of Algiers 1 (Benyoucef Benkhedda)",
+  "University of Algiers 2 (Abou El Kacem Saâdallah)",
+  "University of Algiers 3 (Brahim Soltane Chaibout)",
+  "University of Boumerdès (M'Hamed Bougara) - UMBB",
+  "University of Blida 1 (Saad Dahlab)",
+  "University of Blida 2 (Lounici Ali)",
+  "University of Tizi Ouzou (Mouloud Mammeri) - UMMTO",
+  "University of Béjaïa (Abderrahmane Mira)",
+  "University of Médéa (Yahia Farès)",
+  "University of Bouira (Akli Mohand Oulhadj)",
+  "University of Tipaza",
+
+  // East
+  "University of Batna 1 (Hadj Lakhdar)",
+  "University of Batna 2 (Mustapha Ben Boulaïd)",
+  "University of Constantine 1 (Frères Mentouri)",
+  "University of Constantine 2 (Abdelhamid Mehri)",
+  "University of Constantine 3 (Salah Boubnider)",
+  "University of Annaba (Badji Mokhtar)",
+  "University of Sétif 1 (Ferhat Abbas)",
+  "University of Sétif 2 (Mohamed Lamine Debaghine)",
+  "University of Biskra (Mohamed Khider)",
+  "University of Skikda (20 Août 1955)",
+  "University of Guelma (8 Mai 1945)",
+  "University of Jijel (Mohammed Seddik Benyahia)",
+  "University of Tébessa (Larbi Tébessi)",
+  "University of Souk Ahras (Mohamed-Chérif Messaadia)",
+  "University of Khenchela (Abbes Laghrour)",
+  "University of Oum El Bouaghi (Larbi Ben M'hidi)",
+  "University of Bordj Bou Arréridj (Mohamed El Bachir El Ibrahimi)",
+  "University of M'Sila (Mohamed Boudiaf)",
+
+  // West
+  "University of Oran 1 (Ahmed Ben Bella)",
+  "University of Oran 2 (Mohamed Ben Ahmed)",
+  "University of Science and Technology of Oran (USTO-MB)",
+  "University of Tlemcen (Abou Bekr Belkaïd)",
+  "University of Sidi Bel Abbès (Djillali Liabès)",
+  "University of Mostaganem (Abdelhamid Ibn Badis)",
+  "University of Mascara (Mustapha Stambouli)",
+  "University of Saïda (Dr. Moulay Tahar)",
+  "University of Tiaret (Ibn Khaldoun)",
+  "University of Chlef (Hassiba Benbouali)",
+  "University of Relizane (Ahmed Zabana)",
+  "University of Aïn Témouchent (Belhadj Bouchaib)",
+
+  // South
+  "University of Ouargla (Kasdi Merbah)",
+  "University of Ghardaïa",
+  "University of El Oued (Hamma Lakhdar)",
+  "University of Adrar (Ahmed Draia)",
+  "University of Béchar (Tahri Mohamed)",
+  "University of Laghouat (Amar Telidji)",
+  "University of Djelfa (Ziane Achour)",
+  "University Center of Tamanrasset",
+  "University Center of El Bayadh",
+  "University Center of Tindouf",
+  "University Center of Naâma",
+  "University Center of Illizi",
+
+  // High Schools (Lycées / Secondary Education)
+  "Maths High School of Kouba (Lycée de Mathématiques Mohamed Labjaoui) - Algiers",
+  "Regional / Local High School (Secondary School)",
+  "Other Institution / University"
+];

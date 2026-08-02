@@ -17,11 +17,18 @@ export function Team() {
           // Fallback to static data
           setDbLeaders([]);
         } else {
-          // Ensure socials object is constructed properly if fetching flat columns
-          const formatted = data.map(d => ({
-            ...d,
-            socials: { linkedin: d.linkedin, mail: d.mail, github: d.github }
-          }));
+          // Ensure socials object is constructed properly from JSON column or fallback columns
+          const formatted = data.map(d => {
+            const soc = d.socials || {};
+            return {
+              ...d,
+              socials: {
+                linkedin: soc.linkedin || d.linkedin,
+                mail: soc.mail || d.mail,
+                github: soc.github || d.github,
+              }
+            };
+          });
           setDbLeaders(formatted);
         }
 

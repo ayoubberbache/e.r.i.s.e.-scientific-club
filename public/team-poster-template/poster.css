@@ -1,0 +1,415 @@
+/* ═══════════════════════════════════════════════════════════════
+   ERISE SCIENTIFIC CLUB - Instagram Team Leader Poster Styles
+   Resolution: 1080px x 1080px (1:1) / 1080px x 1350px (4:5)
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+:root {
+  --erise-blue: #0073C8;
+  --erise-blue-dark: #004D87;
+  --erise-blue-light: #3399E6;
+  --erise-cyan: #00E5FF;
+  --erise-cyan-soft: #80F2FF;
+  --bg-primary: #F4F7FD;
+  --bg-card: #FFFFFF;
+  --text-main: #0A1628;
+  --text-muted: #475569;
+  --text-accent: #0073C8;
+  --pill-bg: linear-gradient(180deg, #0073C8 0%, #004D87 100%);
+  --grid-line: rgba(255, 255, 255, 0.22);
+  --outline-stroke: #0073C8;
+}
+
+/* Dark Theme Variant */
+.theme-dark {
+  --bg-primary: #0A1628;
+  --bg-card: #132238;
+  --text-main: #FFFFFF;
+  --text-muted: #94A3B8;
+  --text-accent: #00E5FF;
+  --pill-bg: linear-gradient(180deg, #0073C8 0%, #003660 100%);
+  --grid-line: rgba(0, 229, 255, 0.25);
+  --outline-stroke: #00E5FF;
+}
+
+/* Electric Cyan Theme Variant */
+.theme-cyan {
+  --bg-primary: #041824;
+  --bg-card: #0A273A;
+  --text-main: #FFFFFF;
+  --text-muted: #7DD3FC;
+  --text-accent: #00E5FF;
+  --pill-bg: linear-gradient(180deg, #00E5FF 0%, #0073C8 100%);
+  --grid-line: rgba(255, 255, 255, 0.3);
+  --outline-stroke: #00E5FF;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Outfit', 'Inter', sans-serif;
+  background-color: #0f172a;
+  color: #f8fafc;
+  min-h: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Container for App */
+.app-container {
+  display: flex;
+  flex-direction: row;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Sidebar Controls */
+.sidebar {
+  width: 420px;
+  background: #1e293b;
+  border-right: 1px solid #334155;
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.sidebar h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #00e5ff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-group input[type="text"],
+.form-group select,
+.form-group textarea {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #ffffff;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: #0073c8;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slider-row input[type="range"] {
+  flex: 1;
+  accent-color: #0073c8;
+}
+
+.slider-value {
+  font-size: 12px;
+  color: #94a3b8;
+  width: 40px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #0073c8 0%, #00e5ff 100%);
+  color: #0a1628;
+  font-weight: 700;
+  font-size: 15px;
+  border: none;
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.15s, opacity 0.15s;
+}
+
+.btn-primary:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #334155;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 13px;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+/* Main Preview Area */
+.preview-area {
+  flex: 1;
+  background: #090d16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  position: relative;
+  overflow: auto;
+}
+
+.preview-wrapper {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   THE POSTER CANVAS (EXACT 1080x1080 DISPLAY & EXPORT)
+   ═══════════════════════════════════════════════════════════════ */
+#poster-canvas {
+  width: 1080px;
+  height: 1080px;
+  background-color: var(--bg-primary);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  transition: background-color 0.3s ease;
+}
+
+#poster-canvas.portrait {
+  height: 1350px;
+}
+
+/* Ambient Top-Left Glow / Flare */
+.ambient-glow {
+  position: absolute;
+  top: -150px;
+  left: -150px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.18) 0%, rgba(0, 115, 200, 0.08) 45%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Halftone Matrix Pattern (Bottom Left) */
+.halftone-pattern {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 420px;
+  height: 420px;
+  background-image: radial-gradient(var(--erise-blue) 22%, transparent 22%);
+  background-position: 0 0;
+  background-size: 20px 20px;
+  opacity: 0.25;
+  mask-image: radial-gradient(circle at 0% 100%, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 80%);
+  -webkit-mask-image: radial-gradient(circle at 0% 100%, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 80%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Grid Pill Capsule Backdrop (Right Side) */
+.grid-capsule {
+  position: absolute;
+  top: 90px;
+  right: 90px;
+  width: 380px;
+  height: 940px;
+  background: var(--pill-bg);
+  border-radius: 190px 190px 0 0;
+  overflow: hidden;
+  z-index: 3;
+  box-shadow: 0 20px 40px rgba(0, 115, 200, 0.25);
+}
+
+/* Grid Lines inside Capsule */
+.grid-capsule::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.85;
+}
+
+/* Top Accent Line inside Capsule */
+.capsule-accent-bar {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 3px;
+  z-index: 4;
+}
+
+/* Top Header Bar */
+.poster-header {
+  position: absolute;
+  top: 60px;
+  left: 70px;
+  right: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10;
+}
+
+.logo-box {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo-box img {
+  height: 95px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(0, 115, 200, 0.2));
+  transition: height 0.1s ease;
+}
+
+.club-badge {
+  display: none; /* Removed as requested */
+}
+
+/* Main Content Area (Upper Left) */
+.content-section {
+  position: absolute;
+  top: 350px;
+  left: 70px;
+  width: 540px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: top 0.1s ease;
+}
+
+/* Role Title */
+.role-title-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.role-main-title {
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--text-accent);
+  letter-spacing: -1px;
+  word-break: break-word;
+}
+
+/* Layered Oversized Name Display */
+.name-container {
+  position: absolute;
+  bottom: 60px;
+  left: 70px;
+  z-index: 5; /* Behind cutout photo */
+  display: flex;
+  flex-direction: column;
+  line-height: 0.88;
+  font-size: 130px;
+  font-weight: 900;
+  letter-spacing: -2px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.name-line-1 {
+  color: var(--text-accent);
+  text-shadow: 0 10px 30px rgba(0, 115, 200, 0.15);
+}
+
+.name-line-2-outline,
+.name-line-3-outline {
+  color: transparent;
+  -webkit-text-stroke: 3px var(--outline-stroke);
+  opacity: 0.85;
+}
+
+/* Front Name Overlay (In front of cutout photo for depth effect) */
+.name-container-front {
+  position: absolute;
+  bottom: 60px;
+  left: 70px;
+  z-index: 8; /* In front of photo */
+  display: flex;
+  flex-direction: column;
+  line-height: 0.88;
+  font-size: 130px;
+  font-weight: 900;
+  letter-spacing: -2px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.name-front-fill {
+  color: var(--text-accent);
+}
+
+/* Cutout Person Photo Container */
+.photo-container {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 660px;
+  height: 920px;
+  z-index: 7; /* Between outline name and front elements */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.photo-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  transform-origin: bottom center;
+  filter: drop-shadow(0 15px 30px rgba(0, 0, 0, 0.3));
+  transition: transform 0.1s ease-out;
+}

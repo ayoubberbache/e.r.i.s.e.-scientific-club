@@ -614,6 +614,7 @@ export default async function handler(req: any, res: any) {
       },
       body: JSON.stringify({
         from: SENDER_EMAIL,
+        reply_to: 'contact@erise-scientific-club.site',
         to: [email],
         subject: subject,
         html: htmlContent,

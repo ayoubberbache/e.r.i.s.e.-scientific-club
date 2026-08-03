@@ -47,6 +47,21 @@ export function AdminDashboard() {
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [memberModalOpen, setMemberModalOpen] = useState<boolean>(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState<string>('');
+  
+  // Email Automation State
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailType, setEmailType] = useState<'meeting' | 'acceptance' | 'event_invitation' | 'event_acceptance'>('meeting');
+  const [emailSendingLoading, setEmailSendingLoading] = useState(false);
+  const [emailSuccessMsg, setEmailSuccessMsg] = useState<string | null>(null);
+  const [emailErrorMsg, setEmailErrorMsg] = useState<string | null>(null);
+  const [targetEmail, setTargetEmail] = useState('');
+  const [targetRecipientName, setTargetRecipientName] = useState('');
+  const [meetingLocation, setMeetingLocation] = useState('Higher National School of Renewable Energies, Batna');
+  const [meetingDateTime, setMeetingDateTime] = useState('Tomorrow at 10:00 AM');
+  const [acceptanceDepts, setAcceptanceDepts] = useState('');
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventNotes, setEventNotes] = useState('');
+
   const [memberStatusFilter, setMemberStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
@@ -71,6 +86,50 @@ export function AdminDashboard() {
       alert(`Failed to update member status: ${err.message || err}`);
     } finally {
       setStatusUpdatingId(null);
+    }
+  };
+
+  const handleSendEmailSubmit = async () => {
+    const recipientEmail = targetEmail || selectedMember?.email;
+    const recipientName = targetRecipientName || selectedMember?.full_name;
+
+    if (!recipientEmail || !recipientName) return;
+    setEmailSendingLoading(true);
+    setEmailErrorMsg(null);
+    setEmailSuccessMsg(null);
+
+    try {
+      const payload = {
+        type: emailType,
+        email: recipientEmail,
+        name: recipientName,
+        departments: acceptanceDepts,
+        location: meetingLocation,
+        dateTime: meetingDateTime,
+        eventTitle: eventTitle,
+        notes: eventNotes,
+      };
+
+      const res = await fetch('/api/send-recruitment-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.error || resData.details?.message || 'Failed to send email');
+      }
+
+      setEmailSuccessMsg(`Email sent successfully to ${recipientEmail}!`);
+      if (emailType === 'acceptance' && selectedMember && selectedMember.status !== 'approved') {
+        handleMemberStatusChange(selectedMember.id, 'approved');
+      }
+    } catch (err: any) {
+      console.error('Email sending error:', err);
+      setEmailErrorMsg(err.message || 'Failed to send email');
+    } finally {
+      setEmailSendingLoading(false);
     }
   };
 
@@ -1082,6 +1141,43 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                           <Trash2 className="w-4 h-4" /> Delete Registration
                         </button>
                       </div>
+
+                      {/* Event Email Actions */}
+                      <div className="w-full grid grid-cols-2 gap-2 pt-3 border-t border-subtle/50">
+                        <button
+                          onClick={() => {
+                            const targetName = isTeam ? (item.team_name || 'Team') : leader.full_name;
+                            setTargetRecipientName(targetName);
+                            setTargetEmail(leader.email || '');
+                            setEventTitle(item.events?.title || 'E.R.I.S.E. Event');
+                            setEmailType('event_invitation');
+                            setEmailSuccessMsg(null);
+                            setEmailErrorMsg(null);
+                            setEmailModalOpen(true);
+                          }}
+                          className="py-2 px-3 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Send Event Invitation</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            const targetName = isTeam ? (item.team_name || 'Team') : leader.full_name;
+                            setTargetRecipientName(targetName);
+                            setTargetEmail(leader.email || '');
+                            setEventTitle(item.events?.title || 'E.R.I.S.E. Event');
+                            setEmailType('event_acceptance');
+                            setEmailSuccessMsg(null);
+                            setEmailErrorMsg(null);
+                            setEmailModalOpen(true);
+                          }}
+                          className="py-2 px-3 rounded-xl bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Send Event Selection Pass</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1778,6 +1874,207 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   {selectedMember.status === 'rejected' ? 'Rejected' : 'Reject'}
                 </button>
               </div>
+
+              {/* Recruitment Email Automation Actions */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-subtle/50">
+                <button
+                  onClick={() => {
+                    setEmailType('meeting');
+                    setEmailSuccessMsg(null);
+                    setEmailErrorMsg(null);
+                    setEmailModalOpen(true);
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border border-sky-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Calendar className="w-4 h-4 text-sky-400" />
+                  <span>Send Meeting Email</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setEmailType('acceptance');
+                    setAcceptanceDepts(
+                      Array.isArray(selectedMember.departments)
+                        ? selectedMember.departments.join(', ')
+                        : selectedMember.departments || 'Organization'
+                    );
+                    setEmailSuccessMsg(null);
+                    setEmailErrorMsg(null);
+                    setEmailModalOpen(true);
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-teal-500/15 text-teal-400 hover:bg-teal-500/25 border border-teal-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Mail className="w-4 h-4 text-teal-400" />
+                  <span>Send Acceptance Email</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Dialog Modal */}
+      {emailModalOpen && (selectedMember || targetEmail) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface border border-subtle rounded-2xl w-full max-w-md overflow-hidden shadow-2xl space-y-4 p-6">
+            <div className="flex items-center justify-between border-b border-subtle pb-3">
+              <div className="flex items-center gap-2">
+                {emailType === 'meeting' ? (
+                  <Calendar className="w-5 h-5 text-sky-400" />
+                ) : emailType === 'event_invitation' ? (
+                  <Mail className="w-5 h-5 text-purple-400" />
+                ) : (
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                )}
+                <h3 className="text-base font-bold text-primary">
+                  {emailType === 'meeting' ? 'Schedule Interview Email' :
+                   emailType === 'acceptance' ? 'Send Recruitment Acceptance' :
+                   emailType === 'event_invitation' ? 'Send Event Invitation' :
+                   'Send Event Selection Pass'}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setEmailModalOpen(false)} 
+                className="text-secondary hover:text-primary p-1 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-secondary space-y-1">
+              <p>Recipient: <strong className="text-primary">{targetRecipientName || selectedMember?.full_name}</strong> ({targetEmail || selectedMember?.email})</p>
+            </div>
+
+            {emailSuccessMsg && (
+              <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span>{emailSuccessMsg}</span>
+              </div>
+            )}
+
+            {emailErrorMsg && (
+              <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold flex items-center gap-2">
+                <XCircle className="w-4 h-4 shrink-0" />
+                <span>{emailErrorMsg}</span>
+              </div>
+            )}
+
+            {!emailSuccessMsg && (
+              <div className="space-y-3 pt-1">
+                {(emailType === 'event_invitation' || emailType === 'event_acceptance') && (
+                  <div>
+                    <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                      Event Title
+                    </label>
+                    <input
+                      type="text"
+                      value={eventTitle}
+                      onChange={(e) => setEventTitle(e.target.value)}
+                      placeholder="Event Title"
+                      className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary font-bold"
+                    />
+                  </div>
+                )}
+
+                {emailType !== 'acceptance' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                        Date & Time
+                      </label>
+                      <input
+                        type="text"
+                        value={meetingDateTime}
+                        onChange={(e) => setMeetingDateTime(e.target.value)}
+                        placeholder="e.g. Tuesday, Aug 5 at 14:00"
+                        className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                        Location / Venue
+                      </label>
+                      <input
+                        type="text"
+                        value={meetingLocation}
+                        onChange={(e) => setMeetingLocation(e.target.value)}
+                        placeholder="e.g. Auditorium — HNSRE Batna"
+                        className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {(emailType === 'event_invitation' || emailType === 'event_acceptance') && (
+                  <div>
+                    <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                      Important Note / Instructions (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={eventNotes}
+                      onChange={(e) => setEventNotes(e.target.value)}
+                      placeholder="e.g. Please bring your laptop and student ID card."
+                      className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                    />
+                  </div>
+                )}
+
+                {emailType === 'acceptance' && (
+                  <div>
+                    <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                      Assigned Department(s)
+                    </label>
+                    <input
+                      type="text"
+                      value={acceptanceDepts}
+                      onChange={(e) => setAcceptanceDepts(e.target.value)}
+                      placeholder="e.g. Organization, Media, Project"
+                      className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                    />
+                    <p className="text-[11px] text-muted mt-1">
+                      Comma separated department names (e.g. Organization, Media, Project).
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-subtle">
+              <button
+                type="button"
+                onClick={() => setEmailModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-secondary hover:bg-subtle/50 transition-colors"
+              >
+                {emailSuccessMsg ? 'Close' : 'Cancel'}
+              </button>
+
+              {!emailSuccessMsg && (
+                <button
+                  type="button"
+                  onClick={handleSendEmailSubmit}
+                  disabled={emailSendingLoading}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2 transition-all shadow-md ${
+                    emailType === 'meeting'
+                      ? 'bg-sky-600 hover:bg-sky-500 shadow-sky-600/20'
+                      : emailType === 'event_invitation'
+                      ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'
+                      : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                  }`}
+                >
+                  {emailSendingLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Sending Email...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4" />
+                      <span>Send Email</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -303,6 +303,7 @@ function generateMeetingHtml(name: string, location: string, dateTime: string): 
   </html>`;
 }
 
+// Single Combined Event Email (Invitation & Acceptance Pass)
 function generateEventInvitationHtml(teamOrName: string, eventTitle: string, location: string, dateTime: string, notes?: string): string {
   const cleanName = escapeHtml(teamOrName);
   const cleanTitle = escapeHtml(eventTitle);
@@ -333,29 +334,29 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
                       <td bgcolor="#1A2432" style="padding: 24px 16px 16px 16px; background-color: #1A2432; text-align: center;">
                           <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="130" style="margin: 0 auto 10px auto; width: 130px; height: auto;" />
                           <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px; text-transform: uppercase;">E.R.I.S.E. SCIENTIFIC CLUB</h1>
-                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; letter-spacing: 0.5px;">EVENT INVITATION</p>
+                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; letter-spacing: 0.5px;">OFFICIAL EVENT INVITATION &amp; SELECTION CONFIRMED</p>
                       </td>
                   </tr>
 
-                  <!-- HERO MASCOT -->
+                  <!-- HERO MASCOT (BEANIE MASCOT) -->
                   <tr>
                       <td align="center" bgcolor="#1A2432" style="padding: 0; margin: 0; background-color: #1A2432; width: 100%;">
                           <img src="${EVENT_MASCOT_URL}" alt="E.R.I.S.E. Event Session" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
                       </td>
                   </tr>
 
-                  <!-- INVITATION CARD -->
+                  <!-- INVITATION & SELECTION CARD -->
                   <tr>
                       <td bgcolor="#8CC9CA" style="padding: 24px 18px; background-color: #8CC9CA; border-radius: 0; text-align: center;">
                           
-                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Official Event Invitation</span>
+                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Invitation &amp; Selection Confirmed</span>
 
                           <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              You're Invited,<br/>${cleanName}! &#128233;
+                              Congratulations,<br/>${cleanName}! &#127881;
                           </h2>
 
                           <p style="color: #FFFFFF; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
-                              We are excited to invite you to participate in <strong>${cleanTitle}</strong> organized by E.R.I.S.E. Scientific Club!
+                              You / your team have been officially <strong>selected &amp; invited</strong> to join <strong>${cleanTitle}</strong> organized by E.R.I.S.E. Scientific Club!
                           </p>
 
                           <!-- DETAILS CONTAINER -->
@@ -366,7 +367,7 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
                               <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128197; Date &amp; Time</p>
                               <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanDT}</p>
 
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128205; Location</p>
+                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128205; Venue / Location</p>
                               <p style="margin: 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanLoc}</p>
 
                               ${cleanNotes ? `
@@ -397,128 +398,8 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
                           <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px;">
                               <tr>
                                   <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">2. Bring Your Energy</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Get ready to collaborate, learn, and showcase your skills!</p>
-                                  </td>
-                              </tr>
-                          </table>
-                      </td>
-                  </tr>
-
-                  <!-- FOOTER -->
-                  <tr>
-                      <td bgcolor="#1A2432" style="padding: 20px 16px; background-color: #1A2432; border-top: 1px solid #2D3748; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Footer Logo" width="100" style="margin: 0 auto 10px auto; width: 100px;" />
-                          <p style="color: #E5E7EB; font-size: 11px; font-weight: 700; margin: 4px 0 0 0; line-height: 15px;">
-                              Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
-                          </p>
-                      </td>
-                  </tr>
-
-              </table>
-          </td>
-      </tr>
-  </table>
-  </body>
-  </html>`;
-}
-
-function generateEventAcceptanceHtml(teamOrName: string, eventTitle: string, location: string, dateTime: string, notes?: string): string {
-  const cleanName = escapeHtml(teamOrName);
-  const cleanTitle = escapeHtml(eventTitle);
-  const cleanLoc = escapeHtml(location);
-  const cleanDT = escapeHtml(dateTime);
-  const cleanNotes = notes ? escapeHtml(notes) : null;
-
-  return `
-  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-  <html xmlns="http://www.w3.org/1999/xhtml" lang="en" style="background-color: #1F2937;">
-  <head>
-      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style type="text/css">
-          body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #1F2937; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-          table { border-collapse: collapse; }
-          img { border: 0; height: auto; outline: none; text-decoration: none; display: block; }
-      </style>
-  </head>
-  <body bgcolor="#1F2937" style="margin: 0 !important; padding: 0 !important; background-color: #1F2937;">
-  <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1F2937">
-      <tr>
-          <td align="center" style="padding: 12px 0;">
-              <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1A2432" style="max-width: 480px; background-color: #1A2432; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
-                  
-                  <!-- HEADER LOGO -->
-                  <tr>
-                      <td bgcolor="#1A2432" style="padding: 24px 16px 16px 16px; background-color: #1A2432; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="130" style="margin: 0 auto 10px auto; width: 130px; height: auto;" />
-                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px; text-transform: uppercase;">E.R.I.S.E. SCIENTIFIC CLUB</h1>
-                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; letter-spacing: 0.5px;">EVENT SELECTION CONFIRMED</p>
-                      </td>
-                  </tr>
-
-                  <!-- HERO MASCOT -->
-                  <tr>
-                      <td align="center" bgcolor="#1A2432" style="padding: 0; margin: 0; background-color: #1A2432; width: 100%;">
-                          <img src="${EVENT_MASCOT_URL}" alt="E.R.I.S.E. Accepted" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
-                      </td>
-                  </tr>
-
-                  <!-- ACCEPTANCE CARD -->
-                  <tr>
-                      <td bgcolor="#8CC9CA" style="padding: 24px 18px; background-color: #8CC9CA; border-radius: 0; text-align: center;">
-                          
-                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Official Selection</span>
-
-                          <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              Congratulations,<br/>${cleanName}! &#127881;
-                          </h2>
-
-                          <p style="color: #FFFFFF; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
-                              You / your team have been officially <strong>selected &amp; accepted</strong> to join <strong>${cleanTitle}</strong>!
-                          </p>
-
-                          <!-- DETAILS CONTAINER -->
-                          <div style="background-color: #1A315B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: left;">
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#127919; Event Name</p>
-                              <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanTitle}</p>
-
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128197; Date &amp; Time</p>
-                              <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanDT}</p>
-
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128205; Venue / Location</p>
-                              <p style="margin: 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanLoc}</p>
-
-                              ${cleanNotes ? `
-                                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(140,201,202,0.3);">
-                                  <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128204; Instructions</p>
-                                  <p style="margin: 0; font-size: 13px; font-weight: 500; color: #E2F0F1;">${cleanNotes}</p>
-                                </div>
-                              ` : ''}
-                          </div>
-
-                      </td>
-                  </tr>
-
-                  <!-- TIPS -->
-                  <tr>
-                      <td style="padding: 24px 16px 16px 16px; background-color: #FFFFFF;">
-                          <h3 style="color: #1A315B; font-size: 15px; font-weight: 800; text-align: center; margin: 0 0 16px 0; letter-spacing: 0.5px; text-transform: uppercase;">What to Prepare</h3>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px; margin-bottom: 10px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">1. Student ID &amp; Confirmation</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Please bring your student ID card or registration proof.</p>
-                                  </td>
-                              </tr>
-                          </table>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">2. Punctuality</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Arrive on time to complete check-in smoothly.</p>
+                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">2. Student ID &amp; Preparation</h4>
+                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Bring your student ID card and any required materials.</p>
                                   </td>
                               </tr>
                           </table>
@@ -586,18 +467,12 @@ export default async function handler(req: any, res: any) {
     }
     subject = 'Interview Invitation — E.R.I.S.E. Scientific Club';
     htmlContent = generateMeetingHtml(name, location, dateTime);
-  } else if (type === 'event_invitation') {
+  } else if (type === 'event_invitation' || type === 'event_acceptance') {
     if (!eventTitle || !location || !dateTime) {
-      return res.status(400).json({ error: 'Event invitation requires eventTitle, location, and dateTime' });
+      return res.status(400).json({ error: 'Event email requires eventTitle, location, and dateTime' });
     }
-    subject = `Invitation to ${eventTitle} — E.R.I.S.E. Scientific Club`;
+    subject = `Invitation & Selection Confirmed: ${eventTitle} — E.R.I.S.E. Scientific Club`;
     htmlContent = generateEventInvitationHtml(name, eventTitle, location, dateTime, notes);
-  } else if (type === 'event_acceptance') {
-    if (!eventTitle || !location || !dateTime) {
-      return res.status(400).json({ error: 'Event acceptance requires eventTitle, location, and dateTime' });
-    }
-    subject = `Selection Confirmed: ${eventTitle} — E.R.I.S.E. Scientific Club`;
-    htmlContent = generateEventAcceptanceHtml(name, eventTitle, location, dateTime, notes);
   } else {
     return res.status(400).json({ error: 'Invalid email type' });
   }

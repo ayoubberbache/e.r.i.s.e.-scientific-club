@@ -1142,8 +1142,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                         </button>
                       </div>
 
-                      {/* Event Email Actions */}
-                      <div className="w-full grid grid-cols-2 gap-2 pt-3 border-t border-subtle/50">
+                      {/* Event Email Action (Combined Invitation & Selection Pass) */}
+                      <div className="w-full pt-3 border-t border-subtle/50">
                         <button
                           onClick={() => {
                             const targetName = isTeam ? (item.team_name || 'Team') : leader.full_name;
@@ -1155,27 +1155,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                             setEmailErrorMsg(null);
                             setEmailModalOpen(true);
                           }}
-                          className="py-2 px-3 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                          className="w-full py-2.5 px-4 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
                         >
-                          <Mail className="w-3.5 h-3.5 text-purple-400" />
-                          <span>Send Event Invitation</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            const targetName = isTeam ? (item.team_name || 'Team') : leader.full_name;
-                            setTargetRecipientName(targetName);
-                            setTargetEmail(leader.email || '');
-                            setEventTitle(item.events?.title || 'E.R.I.S.E. Event');
-                            setEmailType('event_acceptance');
-                            setEmailSuccessMsg(null);
-                            setEmailErrorMsg(null);
-                            setEmailModalOpen(true);
-                          }}
-                          className="py-2 px-3 rounded-xl bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Send Event Selection Pass</span>
+                          <Mail className="w-4 h-4 text-purple-400" />
+                          <span>Send Event Invitation &amp; Selection Pass</span>
                         </button>
                       </div>
                     </div>

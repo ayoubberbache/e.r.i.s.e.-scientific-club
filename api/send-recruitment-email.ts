@@ -41,6 +41,86 @@ const DEPARTMENT_TELEGRAM_LINKS: Record<string, string> = {
 };
 const DISCORD_LINK = "https://discord.gg/tMDZWFntsp";
 
+// ==========================================
+// PLAIN TEXT GENERATORS (Anti-Spam Multi-part)
+// ==========================================
+
+function generateAcceptanceText(name: string, departmentsRaw: any): string {
+  let depts = 'E.R.I.S.E. Team';
+  if (Array.isArray(departmentsRaw)) depts = departmentsRaw.join(', ');
+  else if (typeof departmentsRaw === 'string') depts = departmentsRaw;
+
+  return `Congratulations ${name}!
+
+You have been officially accepted into E.R.I.S.E. Scientific Club!
+
+Assigned Department(s): ${depts}
+
+Next Steps:
+1. Join Main Telegram Channel: ${MAIN_TELEGRAM_LINK}
+2. Join Discord Community: ${DISCORD_LINK}
+
+We are thrilled to welcome you on board!
+
+Best regards,
+E.R.I.S.E. Recruitment Team
+Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
+
+---
+To manage your notification preferences or contact us, visit https://erise-scientific-club.site/contact`;
+}
+
+function generateMeetingText(name: string, location: string, dateTime: string): string {
+  return `Hello ${name},
+
+You're invited for a recruitment interview with E.R.I.S.E. Scientific Club!
+
+Interview Details:
+- Date & Time: ${dateTime}
+- Location: ${location}
+
+Interview Tips:
+- Please arrive 5-10 minutes before your scheduled slot.
+- Feel free to share your technical projects, interests, and motivation.
+
+We look forward to meeting you!
+
+Best regards,
+E.R.I.S.E. Recruitment Team
+Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
+
+---
+To manage your notification preferences, visit https://erise-scientific-club.site/contact`;
+}
+
+function generateEventInvitationText(teamOrName: string, eventTitle: string, location: string, dateTime: string, notes?: string): string {
+  return `Congratulations ${teamOrName}!
+
+You / your team have been officially selected & invited to participate in ${eventTitle} organized by E.R.I.S.E. Scientific Club.
+
+Event Details:
+- Event Name: ${eventTitle}
+- Date & Time: ${dateTime}
+- Venue / Location: ${location}
+${notes ? `- Important Note: ${notes}\n` : ''}
+Event Guidelines:
+- Please arrive 15 minutes before the scheduled start time for check-in.
+- Bring your student ID card and any requested event materials.
+
+See you at the event!
+
+Best regards,
+E.R.I.S.E. Events Team
+Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
+
+---
+To manage your notification preferences, visit https://erise-scientific-club.site/contact`;
+}
+
+// ==========================================
+// HTML TEMPLATES (Optimized Text-to-Image & Footers)
+// ==========================================
+
 function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
   let deptList: string[] = [];
   if (Array.isArray(departmentsRaw)) {
@@ -93,19 +173,19 @@ function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
           <td align="center" style="padding: 12px 0;">
               <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1A2432" style="max-width: 480px; background-color: #1A2432; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
                   
-                  <!-- HEADER LOGO -->
+                  <!-- HEADER LOGO & TEXT -->
                   <tr>
                       <td bgcolor="#1A2432" style="padding: 24px 16px 16px 16px; background-color: #1A2432; text-align: center;">
                           <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="130" style="margin: 0 auto 10px auto; width: 130px; height: auto;" />
-                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px; text-transform: uppercase;">E.R.I.S.E. SCIENTIFIC CLUB</h1>
-                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; letter-spacing: 0.5px;">WELCOME TO THE TEAM</p>
+                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px;">E.R.I.S.E. Scientific Club</h1>
+                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0;">Official Recruitment Result</p>
                       </td>
                   </tr>
 
                   <!-- HERO MASCOT -->
                   <tr>
                       <td align="center" bgcolor="#1A2432" style="padding: 0; margin: 0; background-color: #1A2432; width: 100%;">
-                          <img src="${ACCEPTANCE_MASCOT_URL}" alt="E.R.I.S.E. Character" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
+                          <img src="${ACCEPTANCE_MASCOT_URL}" alt="E.R.I.S.E. Welcome Character" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
                       </td>
                   </tr>
 
@@ -116,7 +196,7 @@ function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
                           <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Official Announcement</span>
 
                           <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              Congratulations,<br/>${cleanName}! &#127881;
+                              Congratulations, ${cleanName}!
                           </h2>
 
                           <p style="color: #FFFFFF; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
@@ -165,15 +245,6 @@ function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
                                   </td>
                               </tr>
                           </table>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">3. Stay Active</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Participate in events, challenges, and contests.</p>
-                                  </td>
-                              </tr>
-                          </table>
                       </td>
                   </tr>
 
@@ -183,6 +254,10 @@ function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
                           <img src="${LOGO_URL}" alt="E.R.I.S.E. Footer Logo" width="100" style="margin: 0 auto 10px auto; width: 100px;" />
                           <p style="color: #E5E7EB; font-size: 11px; font-weight: 700; margin: 4px 0 0 0; line-height: 15px;">
                               Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
+                          </p>
+                          <p style="color: #6B7280; font-size: 10px; margin: 12px 0 0 0; line-height: 14px;">
+                              You received this email because of your recruitment application with E.R.I.S.E. Scientific Club.<br/>
+                              <a href="https://erise-scientific-club.site/contact" style="color: #8CC9CA; text-decoration: underline;">Manage notification preferences</a>
                           </p>
                       </td>
                   </tr>
@@ -222,8 +297,8 @@ function generateMeetingHtml(name: string, location: string, dateTime: string): 
                   <tr>
                       <td bgcolor="#1A2432" style="padding: 24px 16px 16px 16px; background-color: #1A2432; text-align: center;">
                           <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="130" style="margin: 0 auto 10px auto; width: 130px; height: auto;" />
-                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px; text-transform: uppercase;">E.R.I.S.E. SCIENTIFIC CLUB</h1>
-                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; letter-spacing: 0.5px;">RECRUITMENT INTERVIEW</p>
+                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px;">E.R.I.S.E. Scientific Club</h1>
+                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0;">Recruitment Interview Invitation</p>
                       </td>
                   </tr>
 
@@ -241,7 +316,7 @@ function generateMeetingHtml(name: string, location: string, dateTime: string): 
                           <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Interview Schedule</span>
 
                           <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              You're Invited,<br/>${cleanName}! &#128075;
+                              You're Invited, ${cleanName}!
                           </h2>
 
                           <p style="color: #FFFFFF; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
@@ -250,10 +325,10 @@ function generateMeetingHtml(name: string, location: string, dateTime: string): 
 
                           <!-- DETAILS CONTAINER -->
                           <div style="background-color: #1A315B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: left;">
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128197; Date &amp; Time</p>
+                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Date &amp; Time</p>
                               <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanDT}</p>
 
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128205; Location</p>
+                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Location</p>
                               <p style="margin: 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanLoc}</p>
                           </div>
 
@@ -292,6 +367,10 @@ function generateMeetingHtml(name: string, location: string, dateTime: string): 
                           <p style="color: #E5E7EB; font-size: 11px; font-weight: 700; margin: 4px 0 0 0; line-height: 15px;">
                               Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
                           </p>
+                          <p style="color: #6B7280; font-size: 10px; margin: 12px 0 0 0; line-height: 14px;">
+                              You received this transactional notification regarding your interview schedule.<br/>
+                              <a href="https://erise-scientific-club.site/contact" style="color: #8CC9CA; text-decoration: underline;">Manage notification preferences</a>
+                          </p>
                       </td>
                   </tr>
 
@@ -303,7 +382,6 @@ function generateMeetingHtml(name: string, location: string, dateTime: string): 
   </html>`;
 }
 
-// Single Combined Event Email (Invitation & Acceptance Pass)
 function generateEventInvitationHtml(teamOrName: string, eventTitle: string, location: string, dateTime: string, notes?: string): string {
   const cleanName = escapeHtml(teamOrName);
   const cleanTitle = escapeHtml(eventTitle);
@@ -333,12 +411,12 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
                   <tr>
                       <td bgcolor="#1A2432" style="padding: 24px 16px 16px 16px; background-color: #1A2432; text-align: center;">
                           <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="130" style="margin: 0 auto 10px auto; width: 130px; height: auto;" />
-                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px; text-transform: uppercase;">E.R.I.S.E. SCIENTIFIC CLUB</h1>
-                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; letter-spacing: 0.5px;">OFFICIAL EVENT INVITATION &amp; SELECTION CONFIRMED</p>
+                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px;">E.R.I.S.E. Scientific Club</h1>
+                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0;">Official Event Pass &amp; Invitation</p>
                       </td>
                   </tr>
 
-                  <!-- HERO MASCOT (BEANIE MASCOT) -->
+                  <!-- HERO MASCOT -->
                   <tr>
                       <td align="center" bgcolor="#1A2432" style="padding: 0; margin: 0; background-color: #1A2432; width: 100%;">
                           <img src="${EVENT_MASCOT_URL}" alt="E.R.I.S.E. Event Session" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
@@ -349,10 +427,10 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
                   <tr>
                       <td bgcolor="#8CC9CA" style="padding: 24px 18px; background-color: #8CC9CA; border-radius: 0; text-align: center;">
                           
-                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Invitation &amp; Selection Confirmed</span>
+                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Selection Pass Confirmed</span>
 
                           <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              Congratulations,<br/>${cleanName}! &#127881;
+                              Congratulations, ${cleanName}!
                           </h2>
 
                           <p style="color: #FFFFFF; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
@@ -361,18 +439,18 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
 
                           <!-- DETAILS CONTAINER -->
                           <div style="background-color: #1A315B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: left;">
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#127919; Event Name</p>
+                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Event Name</p>
                               <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanTitle}</p>
 
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128197; Date &amp; Time</p>
+                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Date &amp; Time</p>
                               <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanDT}</p>
 
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#128205; Venue / Location</p>
+                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Venue / Location</p>
                               <p style="margin: 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanLoc}</p>
 
                               ${cleanNotes ? `
                                 <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(140,201,202,0.3);">
-                                  <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">&#8505;&#65039; Important Note</p>
+                                  <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Important Note</p>
                                   <p style="margin: 0; font-size: 13px; font-weight: 500; color: #E2F0F1;">${cleanNotes}</p>
                                 </div>
                               ` : ''}
@@ -413,6 +491,10 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
                           <p style="color: #E5E7EB; font-size: 11px; font-weight: 700; margin: 4px 0 0 0; line-height: 15px;">
                               Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
                           </p>
+                          <p style="color: #6B7280; font-size: 10px; margin: 12px 0 0 0; line-height: 14px;">
+                              You received this event pass notification regarding your event registration.<br/>
+                              <a href="https://erise-scientific-club.site/contact" style="color: #8CC9CA; text-decoration: underline;">Manage notification preferences</a>
+                          </p>
                       </td>
                   </tr>
 
@@ -424,6 +506,9 @@ function generateEventInvitationHtml(teamOrName: string, eventTitle: string, loc
   </html>`;
 }
 
+// ==========================================
+// 6. SERVERLESS API ROUTE HANDLER
+// ==========================================
 export default async function handler(req: any, res: any) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -457,28 +542,33 @@ export default async function handler(req: any, res: any) {
 
   let subject = '';
   let htmlContent = '';
+  let textContent = '';
 
   if (type === 'acceptance') {
     subject = 'Welcome to E.R.I.S.E. Scientific Club!';
     htmlContent = generateAcceptanceHtml(name, departments);
+    textContent = generateAcceptanceText(name, departments);
   } else if (type === 'meeting') {
     if (!location || !dateTime) {
       return res.status(400).json({ error: 'Meeting email requires location and dateTime' });
     }
     subject = 'Interview Invitation — E.R.I.S.E. Scientific Club';
     htmlContent = generateMeetingHtml(name, location, dateTime);
+    textContent = generateMeetingText(name, location, dateTime);
   } else if (type === 'event_invitation' || type === 'event_acceptance') {
     if (!eventTitle || !location || !dateTime) {
       return res.status(400).json({ error: 'Event email requires eventTitle, location, and dateTime' });
     }
     subject = `Invitation & Selection Confirmed: ${eventTitle} — E.R.I.S.E. Scientific Club`;
     htmlContent = generateEventInvitationHtml(name, eventTitle, location, dateTime, notes);
+    textContent = generateEventInvitationText(name, eventTitle, location, dateTime, notes);
   } else {
     return res.status(400).json({ error: 'Invalid email type' });
   }
 
-  // Configured sender domain or official club domain fallback
-  const SENDER_EMAIL = process.env.SENDER_EMAIL || 'E.R.I.S.E. Scientific Club <recruitment@erise-scientific-club.site>';
+  // Authentic Humanized Sender & Trusted Reply-To
+  const SENDER_EMAIL = process.env.SENDER_EMAIL || 'E.R.I.S.E. Recruitment Team <recruitment@erise-scientific-club.site>';
+  const REPLY_TO_EMAIL = process.env.REPLY_TO_EMAIL || 'erise.club@gmail.com';
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -489,10 +579,11 @@ export default async function handler(req: any, res: any) {
       },
       body: JSON.stringify({
         from: SENDER_EMAIL,
-        reply_to: 'contact@erise-scientific-club.site',
+        reply_to: REPLY_TO_EMAIL,
         to: [email],
         subject: subject,
         html: htmlContent,
+        text: textContent,
       }),
     });
 

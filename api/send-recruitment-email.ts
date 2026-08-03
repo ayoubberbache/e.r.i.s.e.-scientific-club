@@ -29,9 +29,9 @@ function escapeHtml(unsafe: any): string {
 
 // Hosted Public Images on website domain (CDN enabled)
 const LOGO_URL = "https://erise-scientific-club.site/logo-cyan-full.png";
-const ACCEPTANCE_MASCOT_URL = "https://erise-scientific-club.site/gmail%20pics/Acceptance.png";
-const MEETING_MASCOT_URL = "https://erise-scientific-club.site/gmail%20pics/Meeting.png";
-const EVENT_MASCOT_URL = "https://erise-scientific-club.site/gmail%20pics/Event%20invitaion.png";
+const ACCEPTANCE_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Acceptance.png";
+const MEETING_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Meeting.png";
+const EVENT_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Event-invitation.png";
 
 const MAIN_TELEGRAM_LINK = "https://t.me/+ju8GDh4k9VdkYzQ0";
 const DEPARTMENT_TELEGRAM_LINKS: Record<string, string> = {
@@ -460,7 +460,7 @@ function generateEventAcceptanceHtml(teamOrName: string, eventTitle: string, loc
                   <!-- HERO MASCOT -->
                   <tr>
                       <td align="center" bgcolor="#1A2432" style="padding: 0; margin: 0; background-color: #1A2432; width: 100%;">
-                          <img src="${ACCEPTANCE_MASCOT_URL}" alt="E.R.I.S.E. Accepted" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
+                          <img src="${EVENT_MASCOT_URL}" alt="E.R.I.S.E. Accepted" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
                       </td>
                   </tr>
 

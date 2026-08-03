@@ -1880,6 +1880,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 <button
                   onClick={() => {
                     setEmailType('meeting');
+                    setTargetRecipientName(selectedMember.full_name || '');
+                    setTargetEmail(selectedMember.email || '');
                     setEmailSuccessMsg(null);
                     setEmailErrorMsg(null);
                     setEmailModalOpen(true);
@@ -1893,6 +1895,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 <button
                   onClick={() => {
                     setEmailType('acceptance');
+                    setTargetRecipientName(selectedMember.full_name || '');
+                    setTargetEmail(selectedMember.email || '');
                     setAcceptanceDepts(
                       Array.isArray(selectedMember.departments)
                         ? selectedMember.departments.join(', ')
@@ -1961,6 +1965,32 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
             {!emailSuccessMsg && (
               <div className="space-y-3 pt-1">
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                    Recipient Name (Greeting Name)
+                  </label>
+                  <input
+                    type="text"
+                    value={targetRecipientName}
+                    onChange={(e) => setTargetRecipientName(e.target.value)}
+                    placeholder="Candidate Name or Team Name"
+                    className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                    Recipient Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={targetEmail}
+                    onChange={(e) => setTargetEmail(e.target.value)}
+                    placeholder="candidate@example.com"
+                    className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary font-medium"
+                  />
+                </div>
+
                 {(emailType === 'event_invitation' || emailType === 'event_acceptance') && (
                   <div>
                     <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">

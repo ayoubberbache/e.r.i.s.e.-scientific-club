@@ -37,7 +37,7 @@ const MAIN_TELEGRAM_LINK = "https://t.me/+ju8GDh4k9VdkYzQ0";
 const DEPARTMENT_TELEGRAM_LINKS: Record<string, string> = {
   "Organization": "https://t.me/+lL1uqjsRBNpiNWVk",
   "Media": "https://t.me/+8yYJwqTQAWo0YTg0",
-  "Project": "https://t.me/+0ZBYbHRdKvpjZDU0"
+  "Projects": "https://t.me/+0ZBYbHRdKvpjZDU0"
 };
 const DISCORD_LINK = "https://discord.gg/tMDZWFntsp";
 

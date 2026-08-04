@@ -381,17 +381,20 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       setFormData(itemData);
       setDeadlinePreset('custom');
     } else {
-      setFormData({
-        registration_enabled: true,
-        registration_type: 'individual',
-        min_team_size: 2,
-        max_team_size: 5
-      });
-      setDeadlinePreset('3');
-      // Set default deadline 3 days from now
-      const d = new Date();
-      d.setDate(d.getDate() + 3);
-      setFormData((prev: any) => ({ ...prev, registration_deadline: d.toISOString().slice(0, 16) }));
+      if (activeTab === 'events') {
+        const d = new Date();
+        d.setDate(d.getDate() + 3);
+        setFormData({
+          registration_enabled: true,
+          registration_type: 'individual',
+          min_team_size: 2,
+          max_team_size: 5,
+          registration_deadline: d.toISOString().slice(0, 16)
+        });
+        setDeadlinePreset('3');
+      } else {
+        setFormData({});
+      }
     }
     setIsModalOpen(true);
   };
@@ -527,6 +530,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             ? `${payload.start_date} – ${payload.end_date}`
             : formatted;
         }
+      } else {
+        delete payload.registration_enabled;
+        delete payload.registration_type;
+        delete payload.min_team_size;
+        delete payload.max_team_size;
+        delete payload.no_registration;
+        delete payload.registration_deadline;
+        delete payload.start_date;
+        delete payload.end_date;
+        delete payload.status;
       }
 
       if (activeTab === 'achievements') {
@@ -696,7 +709,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         {activeTab === 'leaders' && (
           <>
             <div>
-              <label className="block text-sm font-medium text-secondary mb-1">Role</label>
+              <label className="block text-sm font-medium text-secondary mb-1">Role / Position</label>
               <input
                 type="text"
                 required
@@ -705,7 +718,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-secondary mb-1">LinkedIn URL</label>
                 <input
@@ -713,6 +726,17 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   value={formData.socials?.linkedin || ''}
                   onChange={(e) => handleSocialChange('linkedin', e.target.value)}
                   className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  placeholder="https://linkedin.com/in/..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary mb-1">GitHub URL</label>
+                <input
+                  type="url"
+                  value={formData.socials?.github || ''}
+                  onChange={(e) => handleSocialChange('github', e.target.value)}
+                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  placeholder="https://github.com/..."
                 />
               </div>
               <div>
@@ -722,6 +746,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   value={formData.socials?.mail || ''}
                   onChange={(e) => handleSocialChange('mail', e.target.value)}
                   className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  placeholder="email@example.com"
                 />
               </div>
             </div>

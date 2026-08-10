@@ -3,8 +3,12 @@ import { Mail, Linkedin, Github, Users, Star, Trophy } from 'lucide-react';
 import { RegistrationButton } from '../components/RegistrationButton';
 import ProfileCard from '../components/ProfileCard';
 import { supabase } from '../lib/supabase';
+import { ModelViewer } from '../components/ModelViewer';
+import TiltedCard from '../components/TiltedCard';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export function Team() {
+  const { language, t, getLocalized } = useLanguage();
   const [dbLeaders, setDbLeaders] = useState<any[]>([]);
   const [dbStarMembers, setDbStarMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14,10 +18,8 @@ export function Team() {
       try {
         const { data, error } = await supabase.from('leaders').select('*');
         if (error || !data || data.length === 0) {
-          // Fallback to static data
           setDbLeaders([]);
         } else {
-          // Ensure socials object is constructed properly from JSON column or fallback columns
           const formatted = data.map(d => {
             const soc = d.socials || {};
             return {
@@ -61,63 +63,69 @@ export function Team() {
   return (
     <div className="min-h-screen bg-dominant">
       {/* Hero Section */}
-      <section className="relative py-24 overflow-hidden border-b border-subtle">
+      <section className="relative py-24 overflow-hidden border-b border-subtle text-center">
         <div className="absolute inset-0 bg-accent-tint/5 z-0" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent-tint text-accent text-sm font-bold mb-6">
-            <Users className="w-4 h-4" /> Our Community
+            <Users className="w-4 h-4" /> {t.teamPage.heroBadge}
           </div>
           <h1 className="text-4xl md:text-6xl font-extrabold text-primary tracking-tight mb-6">
-            The Minds Behind <span className="text-accent">E.R.I.S.E.</span>
+            {t.teamPage.heroTitle}
           </h1>
           <p className="text-xl text-secondary max-w-2xl mx-auto leading-relaxed">
-            Meet the passionate engineers, innovators, and leaders dedicated to building a sustainable future.
+            {t.teamPage.heroSubtitle}
           </p>
         </div>
       </section>
 
       {/* Club Leaders */}
       <section className="py-24 bg-surface">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-left rtl:text-right">
           <div className="flex items-center gap-4 mb-12">
-            <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center text-white shadow-lg shadow-accent/20">
+            <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center text-white shadow-lg shadow-accent/20 shrink-0">
               <Star className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-3xl font-bold text-primary">Club Leaders</h2>
-              <p className="text-secondary">Executive board leading our mission</p>
+              <h2 className="text-3xl font-bold text-primary">{t.teamPage.leadersTitle}</h2>
+              <p className="text-secondary">{t.teamPage.leadersSubtitle}</p>
             </div>
-            <div className="h-px bg-subtle flex-1 ml-4 hidden md:block" />
+            <div className="h-px bg-subtle flex-1 ml-4 rtl:ml-0 rtl:mr-4 hidden md:block" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {shuffledLeaders.map((leader, idx) => (
-              <div key={idx} className="flex flex-col items-center h-full gap-5">
-                <div className="text-center min-h-[40px] flex flex-col justify-end pb-2">
-                  <h3 className="text-xl font-bold text-primary leading-tight">{leader.name}</h3>
+            {shuffledLeaders.map((leader, idx) => {
+              const leaderName = getLocalized(leader, 'name') || leader.name;
+              const leaderRole = getLocalized(leader, 'role') || leader.role;
+              const leaderSpec = getLocalized(leader, 'specialty') || leader.specialty || (language === 'ar' ? 'عضو قيادي' : 'Active');
+
+              return (
+                <div key={idx} className="flex flex-col items-center h-full gap-5">
+                  <div className="text-center min-h-[40px] flex flex-col justify-end pb-2">
+                    <h3 className="text-xl font-bold text-primary leading-tight">{leaderName}</h3>
+                  </div>
+                  <ProfileCard
+                    name={leaderName}
+                    title={leaderRole}
+                    handle={leader.socials.linkedin ? "linkedin" : "member"}
+                    status={leaderSpec}
+                    contactText={t.teamPage.connect}
+                    avatarUrl={formatImageUrl(leader.image)}
+                    miniAvatarUrl={formatImageUrl(leader.image)}
+                    showUserInfo={true}
+                    enableTilt={true}
+                    enableMobileTilt={true}
+                    socials={leader.socials}
+                    onContactClick={() => {
+                      if (leader.socials.linkedin) window.open(leader.socials.linkedin, '_blank');
+                      else if (leader.socials.mail) window.location.href = leader.socials.mail;
+                    }}
+                    behindGlowEnabled={true}
+                    innerGradient="linear-gradient(145deg,#1F29378c 0%,#3B82F644 100%)"
+                    className="w-full"
+                  />
                 </div>
-                <ProfileCard
-                  name={leader.name}
-                  title={leader.role}
-                  handle={leader.socials.linkedin ? "linkedin" : "member"}
-                  status={leader.specialty || "Active"}
-                  contactText="Connect"
-                  avatarUrl={formatImageUrl(leader.image)}
-                  miniAvatarUrl={formatImageUrl(leader.image)}
-                  showUserInfo={true}
-                  enableTilt={true}
-                  enableMobileTilt={true}
-                  socials={leader.socials}
-                  onContactClick={() => {
-                    if (leader.socials.linkedin) window.open(leader.socials.linkedin, '_blank');
-                    else if (leader.socials.mail) window.location.href = leader.socials.mail;
-                  }}
-                  behindGlowEnabled={true}
-                  innerGradient="linear-gradient(145deg,#1F29378c 0%,#3B82F644 100%)" // matches dark theme better
-                  className="w-full"
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -125,37 +133,88 @@ export function Team() {
       {/* Star Members */}
       {dbStarMembers.length > 0 && (
         <section className="py-24 bg-dominant border-t border-subtle">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-left rtl:text-right">
             <div className="flex items-center gap-4 mb-12">
-              <div className="w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center text-white shadow-lg shadow-yellow-500/20">
+              <div className="w-12 h-12 rounded-2xl bg-yellow-500 flex items-center justify-center text-white shadow-lg shadow-yellow-500/20 shrink-0">
                 <Star className="w-6 h-6 fill-current" />
               </div>
               <div>
-                <h2 className="text-3xl font-bold text-primary">Star Members</h2>
-                <p className="text-secondary">Outstanding contributions and achievements</p>
+                <h2 className="text-3xl font-bold text-primary">{t.teamPage.starMembersTitle}</h2>
+                <p className="text-secondary">{t.teamPage.starMembersSubtitle}</p>
               </div>
-              <div className="h-px bg-subtle flex-1 ml-4 hidden md:block" />
+              <div className="h-px bg-subtle flex-1 ml-4 rtl:ml-0 rtl:mr-4 hidden md:block" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {dbStarMembers.map((member, idx) => (
-                <div key={idx} className="bg-surface rounded-2xl border border-subtle p-6 flex flex-col items-center text-center shadow-lg hover:shadow-xl hover:border-accent/30 transition-all group">
-                  <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-dominant shadow-inner mb-6 relative group-hover:scale-105 transition-transform duration-300">
-                    <img 
-                      src={formatImageUrl(member.image)} 
-                      alt={member.name} 
-                      className="w-full h-full object-cover" 
-                      onError={(e) => { 
-                        (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(member.name)}&backgroundColor=121420&textColor=4ce0b3` 
-                      }} 
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              {/* Left Half: Star Members Cards using TiltedCard */}
+              <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {dbStarMembers.map((member, idx) => {
+                  const memberName = getLocalized(member, 'name') || member.name;
+                  const memberOrg = getLocalized(member, 'organization') || member.organization;
+                  const depts = Array.from(
+                    new Set((memberOrg || '').split(',').map((s: string) => s.trim()).filter(Boolean))
+                  ).join(', ');
+
+                  return (
+                    <TiltedCard
+                      key={idx}
+                      imageSrc={formatImageUrl(member.image)}
+                      altText={memberName}
+                      captionText={memberName}
+                      containerHeight="340px"
+                      containerWidth="100%"
+                      rotateAmplitude={12}
+                      scaleOnHover={1.05}
+                      showMobileWarning={false}
+                      showTooltip={false}
+                      displayOverlayContent={true}
+                      overlayContent={
+                        <div className="w-full h-full p-4 flex flex-col justify-between items-center text-center pointer-events-none bg-surface rounded-3xl border border-subtle shadow-md">
+                          {/* Photo Container */}
+                          <div className="w-full h-52 sm:h-56 rounded-2xl overflow-hidden bg-dominant/30 flex items-center justify-center p-2 relative">
+                            <img 
+                              src={formatImageUrl(member.image)} 
+                              alt={memberName} 
+                              className="w-full h-full object-contain drop-shadow-md" 
+                              onError={(e) => { 
+                                (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(memberName)}&backgroundColor=121420&textColor=4ce0b3` 
+                              }} 
+                            />
+                          </div>
+
+                          {/* Text Container */}
+                          <div className="w-full flex flex-col items-center justify-center pt-2">
+                            <h3 className="text-lg font-extrabold text-primary leading-tight mb-1">
+                              {memberName}
+                            </h3>
+                            <div className="px-3 py-0.5 rounded-full bg-accent/15 text-accent font-semibold text-xs capitalize">
+                              {depts || (language === 'ar' ? 'عضو النادي' : 'Member')}
+                            </div>
+                          </div>
+                        </div>
+                      }
                     />
-                  </div>
-                  <h3 className="text-xl font-bold text-primary mb-2">{member.name}</h3>
-                  <div className="px-4 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-semibold">
-                    {member.organization}
-                  </div>
+                  );
+                })}
+              </div>
+
+              {/* Right Half: Medal Pose 3D Model */}
+              <div className="lg:col-span-6 h-[380px] sm:h-[450px] bg-surface/50 rounded-3xl border border-subtle p-6 relative overflow-hidden shadow-xl flex flex-col items-center justify-center text-center">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-400 text-xs font-bold mb-2 border border-yellow-500/20 z-10">
+                  <Trophy className="w-3.5 h-3.5" /> {t.teamPage.starMedalBadge}
                 </div>
-              ))}
+                <p className="text-sm font-medium text-secondary text-center mb-2 z-10">
+                  {t.teamPage.starMedalDesc}
+                </p>
+                <ModelViewer
+                  src="/Medal Pose.glb"
+                  alt="Star Member Medal 3D Model"
+                  cameraOrbit="180deg 75deg 105%"
+                  shadowIntensity="1"
+                  className="w-full h-full"
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -164,15 +223,15 @@ export function Team() {
       {/* Impact Section */}
       <section className="py-24 bg-dominant">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-surface rounded-3xl p-12 relative overflow-hidden border border-subtle shadow-xl">
+          <div className="bg-surface rounded-3xl p-12 relative overflow-hidden border border-subtle shadow-xl text-left rtl:text-right">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full -mr-32 -mt-32 blur-3xl" />
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent/5 rounded-full -ml-32 -mb-32 blur-3xl" />
             
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div>
-                <h2 className="text-3xl md:text-4xl font-bold text-primary mb-6">Join Our Mission</h2>
+                <h2 className="text-3xl md:text-4xl font-bold text-primary mb-6">{t.teamPage.joinMissionTitle}</h2>
                 <p className="text-lg text-secondary leading-relaxed mb-8">
-                  We are always looking for passionate students to join E.R.I.S.E. — whether you're interested in technical projects, media, or event organization, there's a place for you here.
+                  {t.teamPage.joinMissionDesc}
                 </p>
                 <RegistrationButton />
               </div>

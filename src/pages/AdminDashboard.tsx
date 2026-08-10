@@ -43,6 +43,9 @@ export function AdminDashboard() {
   // Duration preset state for event deadline
   const [deadlinePreset, setDeadlinePreset] = useState<string>('custom');
 
+  // Form Language Mode for Bilingual Admin Editing
+  const [formLang, setFormLang] = useState<'both' | 'en' | 'ar'>('both');
+
   // Member Detail Panel & Intake Filter State
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [memberModalOpen, setMemberModalOpen] = useState<boolean>(false);
@@ -635,56 +638,124 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   };
 
   const renderFormFields = () => {
+    const isLeaders = activeTab === 'leaders';
+    const isStar = activeTab === 'star_members';
+    const isEvents = activeTab === 'events';
+    const isAchievements = activeTab === 'achievements';
+
     return (
-      <div className="space-y-4">
-        {/* Name / Title */}
-        <div>
-          <label className="block text-sm font-medium text-secondary mb-1">
-            {activeTab === 'leaders' || activeTab === 'star_members' ? 'Name' : 'Title'}
-          </label>
-          <input
-            type="text"
-            required
-            value={formData.name || formData.title || ''}
-            onChange={(e) => handleInputChange(activeTab === 'leaders' || activeTab === 'star_members' ? 'name' : 'title', e.target.value)}
-            className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
-          />
+      <div className="space-y-5">
+        {/* Language Tabs Selector */}
+        <div className="flex items-center justify-between p-2 bg-dominant/60 border border-subtle rounded-2xl">
+          <span className="text-xs font-bold text-muted px-2">Editing Language:</span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setFormLang('both')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                formLang === 'both'
+                  ? 'bg-accent text-white shadow-md shadow-accent/20'
+                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
+              }`}
+            >
+              🌐 Both (EN & AR)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormLang('en')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                formLang === 'en'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
+              }`}
+            >
+              🇬🇧 English
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormLang('ar')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                formLang === 'ar'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
+              }`}
+            >
+              🇩🇿 العربية
+            </button>
+          </div>
         </div>
 
-        {/* Single Image */}
-        {(activeTab === 'leaders' || activeTab === 'star_members') && (
+        {/* ─── Name / Title (Bilingual) ─── */}
+        <div className="space-y-3">
+          {(formLang === 'both' || formLang === 'en') && (
+            <div>
+              <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                <span>{isLeaders || isStar ? 'Full Name' : 'Title'} (English) <span className="text-red-400">*</span></span>
+                <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">EN</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name || formData.title || ''}
+                onChange={(e) => handleInputChange(isLeaders || isStar ? 'name' : 'title', e.target.value)}
+                placeholder={isLeaders || isStar ? 'e.g. John Doe' : 'e.g. Green Hydrogen Workshop'}
+                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none"
+              />
+            </div>
+          )}
+
+          {(formLang === 'both' || formLang === 'ar') && (
+            <div>
+              <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                <span>{isLeaders || isStar ? 'الاسم واللقب' : 'العنوان'} (بالعربية)</span>
+                <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">AR</span>
+              </label>
+              <input
+                type="text"
+                dir="rtl"
+                value={formData.name_ar || formData.title_ar || ''}
+                onChange={(e) => handleInputChange(isLeaders || isStar ? 'name_ar' : 'title_ar', e.target.value)}
+                placeholder={isLeaders || isStar ? 'مثال: أحمد بن علي' : 'مثال: ورشة عمل الهيدروجين الأخضر'}
+                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* ─── Single Image for Leaders & Star Members ─── */}
+        {(isLeaders || isStar) && (
           <div>
-            <label className="block text-sm font-medium text-secondary mb-1">Image URL or Upload</label>
+            <label className="block text-xs font-bold text-secondary mb-1">Image URL or Upload</label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={formData.image || ''}
                 onChange={(e) => handleInputChange('image', e.target.value)}
                 placeholder="https://... or click upload ->"
-                className="flex-1 bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                className="flex-1 bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
               />
-              <label className="bg-surface-elevated border border-subtle hover:border-accent cursor-pointer flex items-center justify-center px-4 rounded-lg transition-colors">
+              <label className="bg-surface-elevated border border-subtle hover:border-accent cursor-pointer flex items-center justify-center px-4 rounded-xl transition-colors">
                 {uploadingImage ? <Loader2 className="w-5 h-5 animate-spin text-accent" /> : <Upload className="w-5 h-5 text-secondary" />}
                 <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
               </label>
             </div>
             {formData.image && (
-              <div className="mt-2 h-32 w-32 rounded-lg border border-subtle overflow-hidden">
+              <div className="mt-2 h-28 w-28 rounded-xl border border-subtle overflow-hidden">
                 <img src={formData.image} alt="Preview" className="w-full h-full object-cover" />
               </div>
             )}
           </div>
         )}
 
-        {/* Multi Image */}
-        {(activeTab === 'events' || activeTab === 'achievements') && (
+        {/* ─── Multi Image for Events & Achievements ─── */}
+        {(isEvents || isAchievements) && (
           <div>
-            <label className="block text-sm font-medium text-secondary mb-1">
-              Images (up to 4) — first image is cover
+            <label className="block text-xs font-bold text-secondary mb-1">
+              Images (up to 4) — First image is used as cover
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
               {((formData.images as string[]) || []).map((imgUrl: string, idx: number) => (
-                <div key={idx} className="relative h-28 rounded-lg border border-subtle overflow-hidden group">
+                <div key={idx} className="relative h-28 rounded-xl border border-subtle overflow-hidden group">
                   <img src={imgUrl} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
                   <button
                     type="button"
@@ -696,7 +767,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 </div>
               ))}
               {((formData.images as string[]) || []).length < 4 && (
-                <label className="h-28 rounded-lg border-2 border-dashed border-subtle hover:border-accent cursor-pointer flex flex-col items-center justify-center gap-1 transition-colors bg-dominant/50">
+                <label className="h-28 rounded-xl border-2 border-dashed border-subtle hover:border-accent cursor-pointer flex flex-col items-center justify-center gap-1 transition-colors bg-dominant/50">
                   {uploadingImage ? <Loader2 className="w-5 h-5 animate-spin text-accent" /> : <Upload className="w-5 h-5 text-muted" />}
                   <span className="text-[10px] text-muted font-medium">Add Photo</span>
                   <input type="file" accept="image/*" className="hidden" onChange={handleMultiImageUpload} />
@@ -706,46 +777,143 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </div>
         )}
 
-        {activeTab === 'leaders' && (
+        {/* ─── Leaders Specific Fields (Role, Specialty, Bio, Socials) ─── */}
+        {isLeaders && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">Role / Position</label>
-              <input
-                type="text"
-                required
-                value={formData.role || ''}
-                onChange={(e) => handleInputChange('role', e.target.value)}
-                className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {(formLang === 'both' || formLang === 'en') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>Role / Position (EN) <span className="text-red-400">*</span></span>
+                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.role || ''}
+                    onChange={(e) => handleInputChange('role', e.target.value)}
+                    placeholder="e.g. Club President"
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(formLang === 'both' || formLang === 'ar') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>المنصب / الصفة (AR)</span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  </label>
+                  <input
+                    type="text"
+                    dir="rtl"
+                    value={formData.role_ar || ''}
+                    onChange={(e) => handleInputChange('role_ar', e.target.value)}
+                    placeholder="مثال: رئيس النادي"
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  />
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {(formLang === 'both' || formLang === 'en') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>Specialty / Status (EN)</span>
+                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.specialty || ''}
+                    onChange={(e) => handleInputChange('specialty', e.target.value)}
+                    placeholder="e.g. Renewable Energy Engineer"
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(formLang === 'both' || formLang === 'ar') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>التخصص / الحالة (AR)</span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  </label>
+                  <input
+                    type="text"
+                    dir="rtl"
+                    value={formData.specialty_ar || ''}
+                    onChange={(e) => handleInputChange('specialty_ar', e.target.value)}
+                    placeholder="مثال: مهندس طاقات متجددة"
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {(formLang === 'both' || formLang === 'en') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>Bio / Summary (EN)</span>
+                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={formData.bio || ''}
+                    onChange={(e) => handleInputChange('bio', e.target.value)}
+                    placeholder="Brief leader bio..."
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(formLang === 'both' || formLang === 'ar') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>نبذة تعريفية (AR)</span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    dir="rtl"
+                    value={formData.bio_ar || ''}
+                    onChange={(e) => handleInputChange('bio_ar', e.target.value)}
+                    placeholder="نبذة مختصرة عن القائد..."
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-subtle/50">
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">LinkedIn URL</label>
+                <label className="block text-xs font-bold text-secondary mb-1">LinkedIn URL</label>
                 <input
                   type="url"
                   value={formData.socials?.linkedin || ''}
                   onChange={(e) => handleSocialChange('linkedin', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                   placeholder="https://linkedin.com/in/..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">GitHub URL</label>
+                <label className="block text-xs font-bold text-secondary mb-1">GitHub URL</label>
                 <input
                   type="url"
                   value={formData.socials?.github || ''}
                   onChange={(e) => handleSocialChange('github', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                   placeholder="https://github.com/..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Email</label>
+                <label className="block text-xs font-bold text-secondary mb-1">Email</label>
                 <input
                   type="email"
                   value={formData.socials?.mail || ''}
                   onChange={(e) => handleSocialChange('mail', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                   placeholder="email@example.com"
                 />
               </div>
@@ -753,78 +921,151 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </>
         )}
 
-        {activeTab === 'events' && (
+        {/* ─── Events Specific Fields ─── */}
+        {isEvents && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">Description</label>
-              <textarea
-                rows={3}
-                value={formData.description || ''}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
-              />
+            <div className="space-y-3">
+              {(formLang === 'both' || formLang === 'en') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>Description (English)</span>
+                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={formData.description || ''}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Event description in English..."
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(formLang === 'both' || formLang === 'ar') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>وصف الفعالية (بالعربية)</span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    dir="rtl"
+                    value={formData.description_ar || ''}
+                    onChange={(e) => handleInputChange('description_ar', e.target.value)}
+                    placeholder="تفاصيل ووصف الفعالية باللغة العربية..."
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Start Date</label>
+                <label className="block text-xs font-bold text-secondary mb-1">Start Date</label>
                 <input
                   type="date"
                   required
                   value={formData.start_date || ''}
                   onChange={(e) => handleInputChange('start_date', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">End Date</label>
+                <label className="block text-xs font-bold text-secondary mb-1">End Date</label>
                 <input
                   type="date"
                   value={formData.end_date || ''}
                   onChange={(e) => handleInputChange('end_date', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Time</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 8:30 AM - 1:00 PM"
-                  value={formData.time || ''}
-                  onChange={(e) => handleInputChange('time', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Location</label>
-                <input
-                  type="text"
-                  placeholder="e.g. RE2S School, Batna"
-                  value={formData.location || ''}
-                  onChange={(e) => handleInputChange('location', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
-                />
-              </div>
+              {(formLang === 'both' || formLang === 'en') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>Time (EN)</span>
+                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 09:00 AM - 04:00 PM"
+                    value={formData.time || ''}
+                    onChange={(e) => handleInputChange('time', e.target.value)}
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(formLang === 'both' || formLang === 'ar') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>التوقيت (AR)</span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  </label>
+                  <input
+                    type="text"
+                    dir="rtl"
+                    placeholder="مثال: من 09:00 صباحاً إلى 04:00 مساءً"
+                    value={formData.time_ar || ''}
+                    onChange={(e) => handleInputChange('time_ar', e.target.value)}
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {(formLang === 'both' || formLang === 'en') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>Location (EN)</span>
+                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Main Auditorium, Batna"
+                    value={formData.location || ''}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(formLang === 'both' || formLang === 'ar') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>المكان (AR)</span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  </label>
+                  <input
+                    type="text"
+                    dir="rtl"
+                    placeholder="مثال: قاعة المحاضرات الكبرى، باتنة"
+                    value={formData.location_ar || ''}
+                    onChange={(e) => handleInputChange('location_ar', e.target.value)}
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Event Registration Setup Box */}
-            <div className="p-4 rounded-xl border border-accent/30 bg-accent/5 space-y-4 mt-2">
-              <h4 className="text-sm font-bold text-accent uppercase tracking-wider flex items-center gap-2">
+            <div className="p-4 rounded-2xl border border-accent/30 bg-accent/5 space-y-4 mt-2">
+              <h4 className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-2">
                 <UserCheck className="w-4 h-4" /> Event Registration Settings
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-subtle bg-dominant cursor-pointer">
+                <label className="flex items-center gap-3 p-3 rounded-xl border border-subtle bg-dominant cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.registration_enabled ?? true}
                     onChange={(e) => handleInputChange('registration_enabled', e.target.checked)}
                     className="w-4 h-4 accent-accent"
                   />
-                  <span className="text-xs font-bold text-primary">Enable Event Registration Page</span>
+                  <span className="text-xs font-bold text-primary">Enable Registration Form</span>
                 </label>
 
                 <div>
@@ -832,7 +1073,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   <select
                     value={formData.registration_type || 'individual'}
                     onChange={(e) => handleInputChange('registration_type', e.target.value)}
-                    className="w-full bg-dominant border border-subtle rounded-lg px-3 py-2 text-xs font-bold text-primary focus:border-accent focus:outline-none cursor-pointer"
+                    className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-xs font-bold text-primary focus:border-accent focus:outline-none cursor-pointer"
                   >
                     <option value="individual">Individual Registration</option>
                     <option value="team">Team Registration</option>
@@ -851,7 +1092,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       max={10}
                       value={formData.min_team_size || 2}
                       onChange={(e) => handleInputChange('min_team_size', Number(e.target.value))}
-                      className="w-full bg-dominant border border-subtle rounded-lg px-3 py-1.5 text-xs text-primary"
+                      className="w-full bg-dominant border border-subtle rounded-xl px-3 py-1.5 text-xs text-primary"
                     />
                   </div>
                   <div>
@@ -862,7 +1103,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       max={15}
                       value={formData.max_team_size || 5}
                       onChange={(e) => handleInputChange('max_team_size', Number(e.target.value))}
-                      className="w-full bg-dominant border border-subtle rounded-lg px-3 py-1.5 text-xs text-primary"
+                      className="w-full bg-dominant border border-subtle rounded-xl px-3 py-1.5 text-xs text-primary"
                     />
                   </div>
                 </div>
@@ -884,7 +1125,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       key={p.id}
                       type="button"
                       onClick={() => handleDeadlinePresetChange(p.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                         deadlinePreset === p.id 
                           ? 'bg-accent text-white border-accent' 
                           : 'bg-dominant text-secondary border-subtle hover:border-accent/40'
@@ -902,7 +1143,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       type="datetime-local"
                       value={formData.registration_deadline || ''}
                       onChange={(e) => handleInputChange('registration_deadline', e.target.value)}
-                      className="w-full bg-dominant border border-subtle rounded-lg px-3 py-2 text-xs text-primary focus:border-accent"
+                      className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-xs text-primary focus:border-accent"
                     />
                   </div>
                 )}
@@ -911,34 +1152,61 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </>
         )}
 
-        {activeTab === 'achievements' && (
+        {/* ─── Achievements Specific Fields ─── */}
+        {isAchievements && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-1">Description</label>
-              <textarea
-                rows={3}
-                value={formData.description || ''}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
-              />
+            <div className="space-y-3">
+              {(formLang === 'both' || formLang === 'en') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>Description (English)</span>
+                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={formData.description || ''}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Achievement details in English..."
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(formLang === 'both' || formLang === 'ar') && (
+                <div>
+                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                    <span>تفاصيل الإنجاز (بالعربية)</span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    dir="rtl"
+                    value={formData.description_ar || ''}
+                    onChange={(e) => handleInputChange('description_ar', e.target.value)}
+                    placeholder="تفاصيل وقصة هذا الإنجاز باللغة العربية..."
+                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  />
+                </div>
+              )}
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Year</label>
+                <label className="block text-xs font-bold text-secondary mb-1">Year</label>
                 <input
                   type="text"
                   placeholder="e.g. 2025"
                   value={formData.year || ''}
                   onChange={(e) => handleInputChange('year', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Category</label>
+                <label className="block text-xs font-bold text-secondary mb-1">Category (EN)</label>
                 <select
                   value={formData.category || 'ACHIEVEMENT'}
                   onChange={(e) => handleInputChange('category', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                 >
                   <option value="ACHIEVEMENT">ACHIEVEMENT</option>
                   <option value="EVENT PARTICIPATION">EVENT PARTICIPATION</option>
@@ -947,29 +1215,97 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Date</label>
+                <label className="block text-xs font-bold text-secondary mb-1">Date</label>
                 <input
                   type="date"
                   value={formData.date || ''}
                   onChange={(e) => handleInputChange('date', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
                 />
               </div>
             </div>
+
+            {(formLang === 'both' || formLang === 'ar') && (
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <span>الفئة أو التصنيف بالعربية</span>
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                </label>
+                <input
+                  type="text"
+                  dir="rtl"
+                  placeholder="مثال: تكريم وجائزة تقديرية"
+                  value={formData.category_ar || ''}
+                  onChange={(e) => handleInputChange('category_ar', e.target.value)}
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                />
+              </div>
+            )}
           </>
         )}
 
-        {activeTab === 'star_members' && (
-          <div>
-            <label className="block text-sm font-medium text-secondary mb-1">Organization / Status</label>
-            <input
-              type="text"
-              placeholder="e.g. Intern at Google, Startup Founder"
-              required
-              value={formData.organization || ''}
-              onChange={(e) => handleInputChange('organization', e.target.value)}
-              className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
-            />
+        {/* ─── Star Members Specific Fields (Organization EN & AR) ─── */}
+        {isStar && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-secondary mb-2">Departments (English Tags)</label>
+              <div className="flex flex-wrap gap-3">
+                {['Projects', 'Organization', 'Media'].map((dept) => {
+                  const currentOrgs = Array.from(
+                    new Set((formData.organization || '').split(',').map((s: string) => s.trim()).filter(Boolean))
+                  );
+                  const isChecked = currentOrgs.includes(dept);
+
+                  const toggleDept = (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    let updated: string[];
+                    if (isChecked) {
+                      updated = currentOrgs.filter((s: string) => s !== dept);
+                    } else {
+                      updated = Array.from(new Set([...currentOrgs, dept]));
+                    }
+                    handleInputChange('organization', updated.join(', '));
+                  };
+
+                  return (
+                    <label
+                      key={dept}
+                      onClick={toggleDept}
+                      className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border cursor-pointer font-semibold text-sm transition-all select-none ${
+                        isChecked
+                          ? 'bg-accent/15 border-accent text-accent shadow-sm'
+                          : 'bg-dominant border-subtle text-secondary hover:border-accent/40'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}}
+                        className="w-4 h-4 rounded text-accent focus:ring-accent accent-accent cursor-pointer"
+                      />
+                      <span>{dept}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {(formLang === 'both' || formLang === 'ar') && (
+              <div>
+                <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <span>اللجنة / القسم (بالعربية)</span>
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                </label>
+                <input
+                  type="text"
+                  dir="rtl"
+                  placeholder="مثال: لجنة المشاريع، لجنة التنظيم"
+                  value={formData.organization_ar || ''}
+                  onChange={(e) => handleInputChange('organization_ar', e.target.value)}
+                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1608,7 +1944,21 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                                 <div className="w-10 h-10 rounded-lg bg-dominant border border-subtle flex items-center justify-center text-[10px] text-muted">None</div>
                               )}
                             </td>
-                            <td className="px-6 py-4 text-primary font-medium">{item.name || item.title}</td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col">
+                                <span className="text-primary font-bold">{item.name || item.title}</span>
+                                {(item.name_ar || item.title_ar) && (
+                                  <span className="text-xs text-emerald-400/90 font-arabic font-medium dir-rtl text-right">
+                                    {item.name_ar || item.title_ar}
+                                  </span>
+                                )}
+                                {(item.role || item.role_ar) && (
+                                  <span className="text-[11px] text-muted">
+                                    {item.role} {item.role_ar ? `• ${item.role_ar}` : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-2">
                                 <button onClick={() => openModal('edit', item)} className="text-blue-400 p-2 hover:bg-blue-500/10 rounded-lg">
@@ -1637,7 +1987,12 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                           )}
                           <div className="min-w-0">
                             <span className="block font-bold text-primary text-sm truncate">{item.name || item.title}</span>
-                            <span className="block text-xs text-muted">ID: {item.id}</span>
+                            {(item.name_ar || item.title_ar) && (
+                              <span className="block text-xs text-emerald-400 font-arabic truncate font-medium dir-rtl">
+                                {item.name_ar || item.title_ar}
+                              </span>
+                            )}
+                            <span className="block text-[11px] text-muted">ID: {item.id}</span>
                           </div>
                         </div>
 

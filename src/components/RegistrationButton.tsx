@@ -3,8 +3,10 @@ import { motion } from 'motion/react';
 import { UserPlus, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export function RegistrationButton() {
+  const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState<boolean | null>(null); // null = loading
   const navigate = useNavigate();
 
@@ -40,10 +42,10 @@ export function RegistrationButton() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-surface border border-subtle text-muted font-medium text-sm cursor-default select-none"
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-surface border border-subtle text-muted font-bold text-sm cursor-default select-none"
       >
         <XCircle className="w-5 h-5 opacity-60" />
-        Registrations Closed
+        <span>{t.registerPage.closedTitle}</span>
       </motion.div>
     );
   }
@@ -65,7 +67,7 @@ export function RegistrationButton() {
       <span className="absolute inset-0 rounded-2xl animate-ping opacity-[0.08] bg-accent pointer-events-none" />
 
       <UserPlus className="w-5 h-5 relative z-10" />
-      <span className="relative z-10">Register Now</span>
+      <span className="relative z-10">{t.nav.register}</span>
     </motion.button>
   );
 }

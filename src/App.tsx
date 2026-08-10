@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { Home } from './pages/Home';
@@ -64,26 +65,28 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <Router>
-          <div className="flex flex-col min-h-screen font-sans relative">
-            <Navbar />
-            <main className="flex-grow">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/events" element={<Events />} />
-                <Route path="/events/:eventId/register" element={<EventRegister />} />
-                <Route path="/team" element={<Team />} />
-                <Route path="/achievements" element={<Achievements />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/poster" element={<PosterGenerator />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </main>
-            <Footer />
-            <RegistrationNotification />
-          </div>
-        </Router>
+        <LanguageProvider>
+          <Router>
+            <div className="flex flex-col min-h-screen font-sans relative">
+              <Navbar />
+              <main className="flex-grow">
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/events" element={<Events />} />
+                  <Route path="/events/:eventId/register" element={<EventRegister />} />
+                  <Route path="/team" element={<Team />} />
+                  <Route path="/achievements" element={<Achievements />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/poster" element={<PosterGenerator />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </main>
+              <Footer />
+              <RegistrationNotification />
+            </div>
+          </Router>
+        </LanguageProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

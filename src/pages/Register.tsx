@@ -1,31 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, Camera, CalendarCheck, Lightbulb, AlertCircle, Loader2, Sparkles, UserPlus, XCircle, ArrowLeft } from 'lucide-react';
+import { CheckCircle, Camera, CalendarCheck, Lightbulb, AlertCircle, Loader2, Sparkles, UserPlus, XCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const SPECIALIZATIONS = ['IRIIA', 'µE', 'ENR', 'HV', 'GE'];
-
-const DEPARTMENTS = [
-  {
-    id: 'media',
-    name: 'Media',
-    icon: Camera,
-    description: 'Content creation, social media management, photography, videography, and visual storytelling for the club.',
-  },
-  {
-    id: 'organization',
-    name: 'Organization',
-    icon: CalendarCheck,
-    description: 'Event planning, logistics, member coordination, scheduling, and smooth club operations.',
-  },
-  {
-    id: 'projects',
-    name: 'Projects',
-    icon: Lightbulb,
-    description: 'Technical projects, research initiatives, prototyping, and hands-on engineering solutions.',
-  },
-];
 
 // Simple XSS sanitizer for safe display and transmission
 function sanitizeInput(str: string): string {
@@ -38,6 +18,7 @@ function sanitizeInput(str: string): string {
 }
 
 export function RegisterPage() {
+  const { language, t } = useLanguage();
   const [isRegOpen, setIsRegOpen] = useState<boolean | null>(null); // null = checking DB
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -51,7 +32,32 @@ export function RegisterPage() {
   const [error, setError] = useState('');
   const [lastSubmitTime, setLastSubmitTime] = useState<number>(0);
 
+  const isRtl = language === 'ar';
   const specRequired = typeof studyYear === 'number' && studyYear >= 3;
+
+  const DEPARTMENTS = [
+    {
+      id: 'media',
+      name: 'Media',
+      displayName: t.registerPage.deptMediaTitle,
+      icon: Camera,
+      description: t.registerPage.deptMediaDesc,
+    },
+    {
+      id: 'organization',
+      name: 'Organization',
+      displayName: t.registerPage.deptOrgTitle,
+      icon: CalendarCheck,
+      description: t.registerPage.deptOrgDesc,
+    },
+    {
+      id: 'projects',
+      name: 'Projects',
+      displayName: t.registerPage.deptProjectsTitle,
+      icon: Lightbulb,
+      description: t.registerPage.deptProjectsDesc,
+    },
+  ];
 
   useEffect(() => {
     async function checkRegistrationStatus() {
@@ -100,7 +106,7 @@ export function RegisterPage() {
     // 2. Client-side rate limiting (prevent multiple clicks within 10 seconds)
     const now = Date.now();
     if (now - lastSubmitTime < 10000) {
-      setError('Please wait a few seconds before trying again.');
+      setError(language === 'ar' ? 'يرجى الانتظار بضع ثوانٍ قبل المحاولة مجدداً.' : 'Please wait a few seconds before trying again.');
       return;
     }
 
@@ -110,31 +116,31 @@ export function RegisterPage() {
     const cleanPhone = sanitizeInput(phone.trim());
 
     if (!cleanName || !cleanEmail || !cleanPhone || studyYear === '') {
-      setError('Please fill in all required fields.');
+      setError(language === 'ar' ? 'يرجى ملء جميع الحقول الإلزامية.' : 'Please fill in all required fields.');
       return;
     }
 
     // Email regex validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
-      setError('Please enter a valid email address.');
+      setError(language === 'ar' ? 'يرجى إدخال عنوان بريد إلكتروني صالح.' : 'Please enter a valid email address.');
       return;
     }
 
     // Phone regex validation (basic phone format check)
     const phoneRegex = /^[0-9+\s-]{8,20}$/;
     if (!phoneRegex.test(phone.trim())) {
-      setError('Please enter a valid phone number.');
+      setError(language === 'ar' ? 'يرجى إدخال رقم هاتف صالح.' : 'Please enter a valid phone number.');
       return;
     }
 
     if (specRequired && !specialization) {
-      setError('Please select your specialization.');
+      setError(language === 'ar' ? 'يرجى اختيار تخصصك الدراسي.' : 'Please select your specialization.');
       return;
     }
 
     if (selectedDepartments.length === 0) {
-      setError('Please select at least one department.');
+      setError(language === 'ar' ? 'يرجى اختيار لجنة واحدة على الأقل.' : 'Please select at least one department.');
       return;
     }
 
@@ -142,7 +148,7 @@ export function RegisterPage() {
     setLastSubmitTime(now);
 
     try {
-      // 4. Secure Supabase Insert (Uses parameterized queries natively preventing SQL injection)
+      // 4. Secure Supabase Insert
       const payload = {
         full_name: cleanName,
         email: cleanEmail,
@@ -166,7 +172,7 @@ export function RegisterPage() {
       setSuccess(true);
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.message || 'Registration failed. Please try again.');
+      setError(err.message || (language === 'ar' ? 'فشل إرسال الاستمارة، يرجى المحاولة مرة أخرى.' : 'Registration failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -182,7 +188,7 @@ export function RegisterPage() {
 
   if (!isRegOpen) {
     return (
-      <div className="min-h-[85vh] bg-dominant flex items-center justify-center p-6">
+      <div className="min-h-[85vh] bg-dominant flex items-center justify-center p-6 text-center rtl:text-right">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -191,15 +197,16 @@ export function RegisterPage() {
           <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6">
             <XCircle className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-bold text-primary mb-3">Registrations are Closed</h1>
+          <h1 className="text-2xl font-bold text-primary mb-3">{t.registerPage.closedTitle}</h1>
           <p className="text-secondary text-sm leading-relaxed mb-8">
-            Thank you for your interest in E.R.I.S.E. Scientific Club. Registrations are currently closed. Follow our social channels to stay updated on our next intake!
+            {t.registerPage.closedDesc}
           </p>
           <Link
             to="/"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-accent text-white font-bold text-sm hover:bg-accent-muted transition-colors shadow-lg shadow-accent/20"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-accent text-white font-bold text-sm hover:bg-accent-muted transition-colors shadow-lg shadow-accent/20 cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" /> Return to Home
+            {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+            <span>{t.registerPage.backHome}</span>
           </Link>
         </motion.div>
       </div>
@@ -207,29 +214,31 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-dominant py-12 md:py-20 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-dominant py-12 md:py-20 px-4 sm:px-6 lg:px-8 text-left rtl:text-right">
       <div className="max-w-3xl mx-auto">
         {/* Top bar */}
         <div className="mb-8 flex items-center justify-between">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-accent transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back to Home
+          <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-accent transition-colors">
+            {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+            <span>{t.registerPage.backHome}</span>
           </Link>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-bold uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5" /> Official Registration Form
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold uppercase tracking-wider">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{t.registerPage.badge}</span>
           </div>
         </div>
 
         {/* Card */}
         <div className="bg-surface border border-subtle rounded-3xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-accent via-[var(--laser-aqua)] to-accent" />
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-accent via-[#00e5ff] to-accent" />
 
           {/* Form Header */}
           <div className="mb-8">
             <h1 className="text-3xl md:text-4xl font-extrabold text-primary tracking-tight mb-2">
-              Join <span className="text-accent">E.R.I.S.E.</span> Scientific Club
+              {t.registerPage.title}
             </h1>
             <p className="text-secondary text-sm md:text-base leading-relaxed">
-              Fill out the form below to apply for membership. Be part of the innovation for renewable energy and environmental sustainability.
+              {t.registerPage.subtitle}
             </p>
           </div>
 
@@ -244,15 +253,15 @@ export function RegisterPage() {
                 <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mx-auto mb-6">
                   <CheckCircle className="w-10 h-10" />
                 </div>
-                <h2 className="text-3xl font-bold text-primary mb-3">Welcome to E.R.I.S.E.! 🎉</h2>
+                <h2 className="text-3xl font-bold text-primary mb-3">{t.registerPage.successTitle} 🎉</h2>
                 <p className="text-secondary max-w-md mx-auto leading-relaxed mb-8">
-                  Your application has been received successfully! A confirmation details summary was dispatched, and our team will get in touch with you soon.
+                  {t.registerPage.successDesc}
                 </p>
                 <Link
                   to="/"
-                  className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-accent text-white font-bold hover:bg-accent-muted transition-colors shadow-lg shadow-accent/20"
+                  className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-accent text-white font-bold hover:bg-accent-muted transition-colors shadow-lg shadow-accent/20 cursor-pointer"
                 >
-                  Return to Homepage
+                  {t.registerPage.backHome}
                 </Link>
               </motion.div>
             ) : (
@@ -263,7 +272,7 @@ export function RegisterPage() {
                 onSubmit={handleSubmit}
                 className="space-y-8"
               >
-                {/* Honeypot field for anti-spam (hidden from users) */}
+                {/* Honeypot field */}
                 <input
                   type="text"
                   name="website_url_check"
@@ -286,12 +295,12 @@ export function RegisterPage() {
                 <div>
                   <h2 className="text-xs font-bold text-accent uppercase tracking-wider mb-4 flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-[10px]">1</span>
-                    Personal Details
+                    <span>{language === 'ar' ? 'البيانات الشخصية' : 'Personal Details'}</span>
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-secondary mb-1.5">
-                        Full Name <span className="text-red-400">*</span>
+                        {t.registerPage.fullName} <span className="text-red-400">*</span>
                       </label>
                       <input
                         type="text"
@@ -299,13 +308,13 @@ export function RegisterPage() {
                         maxLength={100}
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        placeholder="e.g. Ahmed Benali"
+                        placeholder={t.registerPage.fullNamePlaceholder}
                         className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 transition-colors"
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-secondary mb-1.5">
-                        Email Address <span className="text-red-400">*</span>
+                        {t.registerPage.email} <span className="text-red-400">*</span>
                       </label>
                       <input
                         type="email"
@@ -313,13 +322,13 @@ export function RegisterPage() {
                         maxLength={120}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 transition-colors"
+                        placeholder={t.registerPage.emailPlaceholder}
+                        className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 transition-colors dir-ltr"
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-secondary mb-1.5">
-                        Phone Number <span className="text-red-400">*</span>
+                        {t.registerPage.phone} <span className="text-red-400">*</span>
                       </label>
                       <input
                         type="tel"
@@ -327,8 +336,8 @@ export function RegisterPage() {
                         maxLength={25}
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="e.g. 0555 00 00 00"
-                        className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 transition-colors"
+                        placeholder={t.registerPage.phonePlaceholder}
+                        className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary placeholder:text-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 transition-colors dir-ltr"
                       />
                     </div>
                   </div>
@@ -338,12 +347,12 @@ export function RegisterPage() {
                 <div>
                   <h2 className="text-xs font-bold text-accent uppercase tracking-wider mb-4 flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-[10px]">2</span>
-                    Academic Background
+                    <span>{language === 'ar' ? 'المستوى الأكاديمي والتخصص' : 'Academic Background'}</span>
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
                       <label className="block text-sm font-medium text-secondary mb-1.5">
-                        Study Year <span className="text-red-400">*</span>
+                        {t.registerPage.studyYear} <span className="text-red-400">*</span>
                       </label>
                       <select
                         required
@@ -351,17 +360,17 @@ export function RegisterPage() {
                         onChange={(e) => setStudyYear(e.target.value ? Number(e.target.value) : '')}
                         className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30 transition-colors cursor-pointer"
                       >
-                        <option value="">Select year...</option>
-                        <option value={1}>1st Year (No Specialization)</option>
-                        <option value={2}>2nd Year (No Specialization)</option>
-                        <option value={3}>3rd Year</option>
-                        <option value={4}>4th Year</option>
-                        <option value={5}>5th Year</option>
+                        <option value="">{t.registerPage.selectYear}</option>
+                        <option value={1}>{language === 'ar' ? 'السنة الأولى (جذع مشترك)' : '1st Year (Preparatory)'}</option>
+                        <option value={2}>{language === 'ar' ? 'السنة الثانية (جذع مشترك)' : '2nd Year (Preparatory)'}</option>
+                        <option value={3}>{language === 'ar' ? 'السنة الثالثة (تخصص)' : '3rd Year (Specialization)'}</option>
+                        <option value={4}>{language === 'ar' ? 'السنة الرابعة (هندسة / ماستر 1)' : '4th Year (Engineering)'}</option>
+                        <option value={5}>{language === 'ar' ? 'السنة الخامسة (هندسة / ماستر 2)' : '5th Year (Graduation)'}</option>
                       </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-secondary mb-1.5">
-                        Specialization {specRequired && <span className="text-red-400">*</span>}
+                        {t.registerPage.specialization} {specRequired && <span className="text-red-400">*</span>}
                       </label>
                       <select
                         value={specialization}
@@ -374,7 +383,7 @@ export function RegisterPage() {
                             : 'bg-dominant/50 border-subtle/50 text-muted cursor-not-allowed opacity-50'
                         }`}
                       >
-                        <option value="">{specRequired ? 'Select specialization...' : 'Blocked for 1st & 2nd year'}</option>
+                        <option value="">{specRequired ? t.registerPage.selectSpec : (language === 'ar' ? 'مخصص لطلبة السنة 3 فما فوق' : 'Available for 3rd year & above')}</option>
                         {SPECIALIZATIONS.map((s) => (
                           <option key={s} value={s}>{s}</option>
                         ))}
@@ -387,9 +396,10 @@ export function RegisterPage() {
                 <div>
                   <h2 className="text-xs font-bold text-accent uppercase tracking-wider mb-1 flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-[10px]">3</span>
-                    Choose Department(s) <span className="text-red-400">*</span>
+                    <span>{t.registerPage.departmentsTitle}</span>
+                    <span className="text-red-400">*</span>
                   </h2>
-                  <p className="text-xs text-muted mb-4 ml-8">Select one or multiple departments you want to contribute to.</p>
+                  <p className="text-xs text-muted mb-4">{t.registerPage.departmentsSubtitle}</p>
                   <div className="grid grid-cols-1 gap-3">
                     {DEPARTMENTS.map((dept) => {
                       const isSelected = selectedDepartments.includes(dept.name);
@@ -421,7 +431,7 @@ export function RegisterPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <span className={`block font-bold text-base transition-colors ${isSelected ? 'text-accent' : 'text-primary'}`}>
-                              {dept.name}
+                              {dept.displayName}
                             </span>
                             <span className="block text-xs text-muted mt-1 leading-relaxed">
                               {dept.description}
@@ -438,15 +448,15 @@ export function RegisterPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="w-full sm:w-auto px-10 py-3.5 rounded-xl font-bold bg-accent text-white hover:bg-accent-muted transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-accent/25 text-base"
+                    className="w-full sm:w-auto px-10 py-3.5 rounded-xl font-bold bg-accent text-white hover:bg-accent-muted transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-accent/25 text-base cursor-pointer"
                   >
                     {submitting ? (
                       <>
-                        <Loader2 className="w-5 h-5 animate-spin" /> Submitting...
+                        <Loader2 className="w-5 h-5 animate-spin" /> {t.registerPage.submitting}
                       </>
                     ) : (
                       <>
-                        <UserPlus className="w-5 h-5" /> Submit Registration
+                        <UserPlus className="w-5 h-5" /> {t.registerPage.submit}
                       </>
                     )}
                   </button>

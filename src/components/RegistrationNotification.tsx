@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const DISMISSED_KEY = 'erise_reg_notif_dismissed';
 
 export function RegistrationNotification() {
+  const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
   const navigate = useNavigate();
 
@@ -64,11 +66,11 @@ export function RegistrationNotification() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 40, scale: 0.95 }}
           transition={{ type: 'spring', duration: 0.6, bounce: 0.3 }}
-          className="fixed bottom-6 right-6 z-[90] max-w-sm w-full pointer-events-auto"
+          className="fixed bottom-6 right-6 rtl:right-auto rtl:left-6 z-[90] max-w-sm w-full pointer-events-auto"
         >
-          <div className="bg-surface border border-subtle rounded-2xl shadow-2xl overflow-hidden">
+          <div className="bg-surface border border-subtle rounded-2xl shadow-2xl overflow-hidden text-left rtl:text-right">
             {/* Accent top bar */}
-            <div className="h-1 bg-gradient-to-r from-accent via-[var(--laser-aqua)] to-accent" />
+            <div className="h-1 bg-gradient-to-r from-accent via-[#00e5ff] to-accent" />
 
             <div className="p-5">
               {/* Header */}
@@ -78,13 +80,13 @@ export function RegistrationNotification() {
                     <Sparkles className="w-5 h-5 text-accent" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-primary leading-tight">Registrations are Open!</h4>
-                    <p className="text-xs text-muted mt-0.5">E.R.I.S.E. Scientific Club</p>
+                    <h4 className="text-sm font-bold text-primary leading-tight">{t.toast.regOpenTitle}</h4>
+                    <p className="text-xs text-muted mt-0.5">{t.clubShortName}</p>
                   </div>
                 </div>
                 <button
                   onClick={dismiss}
-                  className="p-1 text-muted hover:text-primary hover:bg-subtle/50 rounded-lg transition-colors shrink-0"
+                  className="p-1 text-muted hover:text-primary hover:bg-subtle/50 rounded-lg transition-colors shrink-0 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -92,7 +94,7 @@ export function RegistrationNotification() {
 
               {/* Body */}
               <p className="text-sm text-secondary leading-relaxed mb-4">
-                Join our community of engineers working on renewable energy and sustainability. Sign up now!
+                {t.toast.regOpenDesc}
               </p>
 
               {/* Actions */}
@@ -101,13 +103,13 @@ export function RegistrationNotification() {
                   onClick={handleRegister}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent-muted transition-colors shadow-lg shadow-accent/20 cursor-pointer"
                 >
-                  Register Now
+                  {t.toast.registerNow}
                 </button>
                 <button
                   onClick={dismiss}
-                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-muted hover:bg-subtle/50 transition-colors"
+                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-muted hover:bg-subtle/50 transition-colors cursor-pointer"
                 >
-                  Later
+                  {t.toast.later}
                 </button>
               </div>
             </div>

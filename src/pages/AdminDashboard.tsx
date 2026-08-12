@@ -5,17 +5,27 @@ import {
   ToggleLeft, ToggleRight, ChevronDown, ChevronUp, ClipboardList, Users, 
   Award, Calendar, Star, Download, CheckCircle, XCircle, Menu, Car, 
   Building2, UserCheck, Clock, Filter, FileText, Check, Copy, Phone, 
-  Mail, GraduationCap, Search, ExternalLink
+  Mail, GraduationCap, Search, ExternalLink, Cpu, Camera, Building,
+  ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound
 } from 'lucide-react';
+import { authenticateUser, DEPARTMENT_HEADS } from '../data/departmentHeads';
+import { Department, UserRole, DepartmentHeadUser } from '../types/portals';
+import { OrganizationPortal } from '../components/portals/OrganizationPortal';
+import { MediaPortal } from '../components/portals/MediaPortal';
+import { ProjectsPortal } from '../components/portals/ProjectsPortal';
 
 export function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<DepartmentHeadUser | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'leaders' | 'events' | 'event_registrations' | 'achievements' | 'star_members' | 'registrations'>('leaders');
+  const [activeTab, setActiveTab] = useState<
+    'leaders' | 'events' | 'event_registrations' | 'achievements' | 'star_members' | 'registrations' | 'portal_projects' | 'portal_organization' | 'portal_media'
+  >('leaders');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [data, setData] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
@@ -68,6 +78,34 @@ export function AdminDashboard() {
   const [memberStatusFilter, setMemberStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
+
+  // Portal Password Gate State (Super Admin)
+  const [unlockedPortals, setUnlockedPortals] = useState<Set<string>>(new Set());
+  const [portalPasswordInput, setPortalPasswordInput] = useState('');
+  const [portalPasswordError, setPortalPasswordError] = useState('');
+  const [showPortalPassword, setShowPortalPassword] = useState(false);
+
+  const PORTAL_TAB_TO_DEPARTMENT: Record<string, Department> = {
+    portal_projects: 'Projects',
+    portal_organization: 'Organization',
+    portal_media: 'Media',
+  };
+
+  const handlePortalUnlock = (portalKey: string) => {
+    const dept = PORTAL_TAB_TO_DEPARTMENT[portalKey];
+    if (!dept) return;
+    const headConfig = DEPARTMENT_HEADS[dept];
+    if (!headConfig) return;
+
+    if (portalPasswordInput.trim() === headConfig.password) {
+      setUnlockedPortals(prev => new Set(prev).add(portalKey));
+      setPortalPasswordInput('');
+      setPortalPasswordError('');
+      setShowPortalPassword(false);
+    } else {
+      setPortalPasswordError('Incorrect password. Please try again.');
+    }
+  };
 
   const handleMemberStatusChange = async (id: number, newStatus: 'approved' | 'rejected' | 'pending') => {
     setStatusUpdatingId(id);
@@ -213,23 +251,34 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
   useEffect(() => {
     const session = localStorage.getItem('erise_admin_session');
+    const savedRole = localStorage.getItem('erise_user_role') as UserRole | null;
+    const savedUserRaw = localStorage.getItem('erise_user_data');
+
     if (session === 'authenticated') {
       setIsAuthenticated(true);
-      fetchRegistrationStatus();
-      fetchEventsList();
+      if (savedRole) setUserRole(savedRole);
+      if (savedUserRaw) {
+        try {
+          setCurrentUser(JSON.parse(savedUserRaw));
+        } catch {}
+      }
+      if (!savedRole || savedRole === 'admin') {
+        fetchRegistrationStatus();
+        fetchEventsList();
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && (!userRole || userRole === 'admin')) {
       if (activeTab === 'event_registrations') {
         fetchEventsList();
         fetchEventRegistrations(selectedEventId);
-      } else {
+      } else if (!activeTab.startsWith('portal_')) {
         fetchData(activeTab);
       }
     }
-  }, [activeTab, isAuthenticated]);
+  }, [activeTab, isAuthenticated, userRole]);
 
   const fetchRegistrationStatus = async () => {
     try {
@@ -300,18 +349,49 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     setError('');
 
     try {
+      // 1. Check local authentication helper for department heads & super admin
+      const localAuth = authenticateUser(username, password);
+      if (localAuth) {
+        localStorage.setItem('erise_admin_session', 'authenticated');
+        localStorage.setItem('erise_user_role', localAuth.role);
+        localStorage.setItem('erise_user_data', JSON.stringify(localAuth));
+        setIsAuthenticated(true);
+        setUserRole(localAuth.role);
+        setCurrentUser(localAuth);
+
+        if (localAuth.role === 'admin') {
+          fetchRegistrationStatus();
+          fetchEventsList();
+        }
+        return;
+      }
+
+      // 2. Fallback to Supabase admin_users table
       const { data, error } = await supabase
         .from('admin_users')
         .select('*')
-        .eq('username', username)
-        .eq('password', password)
+        .eq('username', username.trim())
+        .eq('password', password.trim())
         .single();
 
       if (error || !data) {
-        setError('Invalid username or password.');
+        setError('Invalid username or password. Please check your credentials.');
       } else {
+        const adminUser: DepartmentHeadUser = {
+          id: 'admin-' + data.id,
+          name: 'E.R.I.S.E. Administrator',
+          username: data.username,
+          role: 'admin',
+          roleTitle: 'Club Administrator',
+          department: 'All',
+          email: 'erise.club@gmail.com',
+        };
         localStorage.setItem('erise_admin_session', 'authenticated');
+        localStorage.setItem('erise_user_role', 'admin');
+        localStorage.setItem('erise_user_data', JSON.stringify(adminUser));
         setIsAuthenticated(true);
+        setUserRole('admin');
+        setCurrentUser(adminUser);
         fetchRegistrationStatus();
         fetchEventsList();
       }
@@ -324,7 +404,11 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
   const handleLogout = () => {
     localStorage.removeItem('erise_admin_session');
+    localStorage.removeItem('erise_user_role');
+    localStorage.removeItem('erise_user_data');
     setIsAuthenticated(false);
+    setUserRole(null);
+    setCurrentUser(null);
   };
 
   const fetchData = async (table: string) => {
@@ -1767,43 +1851,119 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-dominant flex items-center justify-center p-4">
-        <div className="bg-surface p-8 rounded-2xl border border-subtle shadow-xl w-full max-w-md">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center text-accent">
-              <User className="w-8 h-8" />
+      <div className="min-h-screen bg-dominant flex items-center justify-center p-4 py-12 relative overflow-hidden">
+        {/* Background glow effects */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-accent/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="bg-surface p-6 sm:p-8 rounded-3xl border border-subtle shadow-2xl w-full max-w-lg relative z-10 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 bg-accent/10 text-accent rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-accent/10 border border-accent/20">
+              <ShieldCheck className="w-8 h-8" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-primary tracking-tight">
+              E.R.I.S.E. Portal Login
+            </h1>
+            <p className="text-xs sm:text-sm text-secondary max-w-sm mx-auto">
+              Sign in as Administrator or Department Head (Projects, Organization, Media)
+            </p>
+          </div>
+
+          {/* Quick Department Portals Directory */}
+          <div className="p-3.5 rounded-2xl bg-dominant/80 border border-subtle space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted block text-center">
+              Available Access Ports
+            </span>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div 
+                onClick={() => { setUsername('Ayoub Berbache'); setError(''); }}
+                className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 cursor-pointer transition-all flex items-center gap-2"
+              >
+                <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <div className="truncate">
+                  <span className="font-bold block truncate">Projects Head</span>
+                  <span className="text-[10px] text-muted truncate">Ayoub Berbache</span>
+                </div>
+              </div>
+
+              <div 
+                onClick={() => { setUsername('Ahmed Amine Helali'); setError(''); }}
+                className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20 cursor-pointer transition-all flex items-center gap-2"
+              >
+                <Building className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <div className="truncate">
+                  <span className="font-bold block truncate">Organization Head</span>
+                  <span className="text-[10px] text-muted truncate">Ahmed Amine Helali</span>
+                </div>
+              </div>
+
+              <div 
+                onClick={() => { setUsername('Matriche Abderrahmane'); setError(''); }}
+                className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300 hover:bg-purple-500/20 cursor-pointer transition-all flex items-center gap-2"
+              >
+                <Camera className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <div className="truncate">
+                  <span className="font-bold block truncate">Media Head</span>
+                  <span className="text-[10px] text-muted truncate">Matriche Abderrahmane</span>
+                </div>
+              </div>
+
+              <div 
+                onClick={() => { setUsername('erise_admin'); setError(''); }}
+                className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 cursor-pointer transition-all flex items-center gap-2"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <div className="truncate">
+                  <span className="font-bold block truncate">Super Admin</span>
+                  <span className="text-[10px] text-muted truncate">erise_admin</span>
+                </div>
+              </div>
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-primary text-center mb-6">Admin Login</h1>
-          {error && <div className="bg-red-500/10 text-red-500 p-3 rounded-lg text-sm mb-4">{error}</div>}
+
+          {error && (
+            <div className="bg-red-500/15 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-xs font-bold flex items-center gap-2">
+              <XCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-secondary mb-1">Username</label>
+              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                Username / Head Name
+              </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                placeholder="e.g. Ayoub Berbache or erise_admin"
+                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-medium"
                 required
               />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-secondary mb-1">Password</label>
+              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                Password
+              </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-dominant border border-subtle rounded-lg px-4 py-2 text-primary focus:border-accent focus:outline-none"
+                placeholder="••••••••••••"
+                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-medium"
                 required
               />
             </div>
+
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-accent hover:bg-accent-muted text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              className="w-full bg-accent hover:bg-accent-muted text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-accent/20 active:scale-95 disabled:opacity-50 text-sm"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-              Sign In
+              <span>Sign In to Portal</span>
             </button>
           </form>
         </div>
@@ -1811,6 +1971,89 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     );
   }
 
+  // ─── IF LOGGED IN AS A DEPARTMENT HEAD ──────────────────────────────────────
+  if (userRole === 'head_projects') {
+    return (
+      <div className="min-h-screen bg-dominant flex flex-col">
+        <header className="bg-surface border-b border-subtle p-4 px-6 sm:px-8 flex justify-between items-center z-20">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center font-bold">
+              <Cpu className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-primary">Projects Portal</h1>
+              <p className="text-[11px] text-muted">Head: {currentUser?.name || 'Ayoub Berbache'}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-colors"
+          >
+            <LogOut className="w-4 h-4" /> <span>Logout</span>
+          </button>
+        </header>
+        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
+          <ProjectsPortal />
+        </main>
+      </div>
+    );
+  }
+
+  if (userRole === 'head_organization') {
+    return (
+      <div className="min-h-screen bg-dominant flex flex-col">
+        <header className="bg-surface border-b border-subtle p-4 px-6 sm:px-8 flex justify-between items-center z-20">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold">
+              <Building className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-primary">Organization Portal</h1>
+              <p className="text-[11px] text-muted">Head: {currentUser?.name || 'Ahmed Amine Helali'}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-colors"
+          >
+            <LogOut className="w-4 h-4" /> <span>Logout</span>
+          </button>
+        </header>
+        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
+          <OrganizationPortal />
+        </main>
+      </div>
+    );
+  }
+
+  if (userRole === 'head_media') {
+    return (
+      <div className="min-h-screen bg-dominant flex flex-col">
+        <header className="bg-surface border-b border-subtle p-4 px-6 sm:px-8 flex justify-between items-center z-20">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center font-bold">
+              <Camera className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-primary">Media Portal</h1>
+              <p className="text-[11px] text-muted">Head: {currentUser?.name || 'Matriche Abderrahmane'}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-colors"
+          >
+            <LogOut className="w-4 h-4" /> <span>Logout</span>
+          </button>
+        </header>
+        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
+          <MediaPortal />
+        </main>
+      </div>
+    );
+  }
+
+  // ─── SUPER ADMIN VIEW (Full access + Department Portals switcher) ────────────
   const sidebarTabs = [
     { key: 'leaders', label: 'Leaders', icon: Users },
     { key: 'events', label: 'Events', icon: Calendar },
@@ -1818,6 +2061,9 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     { key: 'achievements', label: 'Achievements', icon: Award },
     { key: 'star_members', label: 'Star Members', icon: Star },
     { key: 'registrations', label: 'Club Intake', icon: ClipboardList },
+    { key: 'portal_projects', label: '⚙️ Projects Portal', icon: Cpu, isPortal: true },
+    { key: 'portal_organization', label: '🏛️ Organization Portal', icon: Building, isPortal: true },
+    { key: 'portal_media', label: '📸 Media Portal', icon: Camera, isPortal: true },
   ] as const;
 
   return (
@@ -1831,7 +2077,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           >
             <Menu className="w-5 h-5" />
           </button>
-          <h1 className="text-lg sm:text-xl font-bold text-primary">E.R.I.S.E. Admin</h1>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-accent" />
+            <h1 className="text-lg sm:text-xl font-bold text-primary">E.R.I.S.E. Super Admin</h1>
+          </div>
         </div>
         <button
           onClick={handleLogout}
@@ -1864,15 +2113,38 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex w-64 bg-surface border-r border-subtle p-4 flex-col gap-2 z-10 shrink-0">
-          {sidebarTabs.map((tab) => {
+        <aside className="hidden lg:flex w-64 bg-surface border-r border-subtle p-4 flex-col gap-2 z-10 shrink-0 overflow-y-auto">
+          <div className="px-3 py-1 text-[11px] font-bold text-muted uppercase tracking-wider">
+            Club Core Modules
+          </div>
+          {sidebarTabs.filter(t => !(t as any).isPortal).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.key;
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`text-left px-4 py-3 rounded-xl font-bold text-sm transition-colors flex items-center gap-3 ${
+                className={`text-left px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-3 ${
+                  isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:bg-subtle/50'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+
+          <div className="px-3 pt-4 pb-1 text-[11px] font-bold text-muted uppercase tracking-wider border-t border-subtle/60 mt-2">
+            Department Portals
+          </div>
+          {sidebarTabs.filter(t => (t as any).isPortal).map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`text-left px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-3 ${
                   isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:bg-subtle/50'
                 }`}
               >
@@ -1885,7 +2157,76 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
         {/* Content Area */}
         <main className="flex-1 overflow-auto p-4 sm:p-8 relative">
-          {activeTab === 'event_registrations' ? (
+          {(activeTab === 'portal_projects' || activeTab === 'portal_organization' || activeTab === 'portal_media') ? (
+            !unlockedPortals.has(activeTab) ? (
+              /* ─── Portal Password Gate ──────────────────────────── */
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="w-full max-w-md">
+                  <div className="bg-surface border border-subtle rounded-2xl p-8 shadow-xl">
+                    <div className="flex flex-col items-center mb-6">
+                      <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
+                        <Lock className="w-8 h-8 text-accent" />
+                      </div>
+                      <h2 className="text-xl font-bold text-primary">{PORTAL_TAB_TO_DEPARTMENT[activeTab]} Portal</h2>
+                      <p className="text-sm text-muted mt-1 text-center">
+                        Enter the department head password to access this portal.
+                      </p>
+                    </div>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handlePortalUnlock(activeTab);
+                      }}
+                      className="space-y-4"
+                    >
+                      <div>
+                        <label className="block text-xs font-bold text-secondary mb-1.5">Head Password</label>
+                        <div className="relative">
+                          <input
+                            type={showPortalPassword ? 'text' : 'password'}
+                            value={portalPasswordInput}
+                            onChange={(e) => { setPortalPasswordInput(e.target.value); setPortalPasswordError(''); }}
+                            placeholder="Enter department head password"
+                            className="w-full px-4 py-3 rounded-xl bg-dominant border border-subtle text-primary placeholder-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent pr-12"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPortalPassword(!showPortalPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-secondary transition-colors"
+                          >
+                            {showPortalPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                      {portalPasswordError && (
+                        <div className="flex items-center gap-2 text-red-400 text-xs font-semibold bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                          <XCircle className="w-3.5 h-3.5 shrink-0" /> {portalPasswordError}
+                        </div>
+                      )}
+                      <button
+                        type="submit"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-accent hover:bg-accent/90 text-white font-bold text-sm transition-colors shadow-lg shadow-accent/20"
+                      >
+                        <KeyRound className="w-4 h-4" /> Unlock Portal
+                      </button>
+                    </form>
+                    <div className="mt-4 pt-4 border-t border-subtle">
+                      <p className="text-[11px] text-muted text-center">
+                        🔒 Access is restricted to the {PORTAL_TAB_TO_DEPARTMENT[activeTab]} department head credentials.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : activeTab === 'portal_projects' ? (
+              <ProjectsPortal isSuperAdmin={true} onBackToAdmin={() => setActiveTab('leaders')} />
+            ) : activeTab === 'portal_organization' ? (
+              <OrganizationPortal isSuperAdmin={true} onBackToAdmin={() => setActiveTab('leaders')} />
+            ) : (
+              <MediaPortal isSuperAdmin={true} onBackToAdmin={() => setActiveTab('leaders')} />
+            )
+          ) : activeTab === 'event_registrations' ? (
             <>
               <div className="mb-6">
                 <h2 className="text-xl sm:text-2xl font-bold text-primary">Event Registrations</h2>

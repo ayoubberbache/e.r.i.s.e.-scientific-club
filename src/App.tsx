@@ -45,15 +45,32 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             ⚠️
           </div>
           <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
-          <p className="text-slate-400 text-sm max-w-md mb-6">
+          <p className="text-slate-400 text-sm max-w-md mb-4">
             An unexpected error occurred while loading the application.
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-6 py-2.5 rounded-xl bg-[#00e5ff] text-[#0a1628] font-bold text-sm hover:bg-[#5ef0ff] transition-colors"
-          >
-            Reload Page
-          </button>
+          {this.state.error && (
+            <div className="p-3 mb-6 bg-red-950/40 border border-red-500/30 rounded-xl text-red-300 text-xs font-mono max-w-md text-left overflow-auto max-h-32">
+              {this.state.error.message || String(this.state.error)}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-2.5 rounded-xl bg-[#00e5ff] text-[#0a1628] font-bold text-sm hover:bg-[#5ef0ff] transition-colors"
+            >
+              Reload Page
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('erise_admin_session');
+                window.location.href = '/#/admin';
+                window.location.reload();
+              }}
+              className="px-6 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 font-bold text-sm hover:bg-slate-700 transition-colors"
+            >
+              Clear Session & Return to Login
+            </button>
+          </div>
         </div>
       );
     }

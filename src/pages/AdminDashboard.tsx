@@ -157,9 +157,20 @@ export function AdminDashboard() {
         body: JSON.stringify(payload),
       });
 
-      const resData = await res.json();
+      let resData: any = null;
+      try {
+        const text = await res.text();
+        resData = text ? JSON.parse(text) : null;
+      } catch {
+        resData = null;
+      }
+
       if (!res.ok) {
-        throw new Error(resData.error || resData.details?.message || 'Failed to send email');
+        throw new Error(
+          resData?.error || 
+          resData?.details?.message || 
+          `Server returned status ${res.status}: ${res.statusText || 'Email service unavailable'}`
+        );
       }
 
       setEmailSuccessMsg(`Email sent successfully to ${recipientEmail}!`);
@@ -2357,7 +2368,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 sm:p-4">
           <div className="bg-surface border border-subtle rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
             <div className="p-4 sm:p-6 border-b border-subtle flex justify-between items-center bg-dominant/30">
               <h3 className="text-lg sm:text-xl font-bold text-primary capitalize">{modalMode} {activeTab.replace('_', ' ')}</h3>
@@ -2393,7 +2404,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       )}
       {/* Member Detail Panel Modal */}
       {memberModalOpen && selectedMember && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 sm:p-4">
           <div className="bg-surface border border-subtle rounded-3xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
             {/* Modal Header */}
             <div className="p-5 border-b border-subtle flex justify-between items-center bg-dominant/40">
@@ -2623,7 +2634,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
       {/* Email Dialog Modal */}
       {emailModalOpen && (selectedMember || targetEmail) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-200">
           <div className="bg-surface border border-subtle rounded-2xl w-full max-w-md overflow-hidden shadow-2xl space-y-4 p-6">
             <div className="flex items-center justify-between border-b border-subtle pb-3">
               <div className="flex items-center gap-2">
@@ -2763,11 +2774,37 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       type="text"
                       value={acceptanceDepts}
                       onChange={(e) => setAcceptanceDepts(e.target.value)}
-                      placeholder="e.g. Organization, Media, Project"
+                      placeholder="e.g. Organization, Media, Projects"
                       className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
                     />
-                    <p className="text-[11px] text-muted mt-1">
-                      Comma separated department names (e.g. Organization, Media, Project).
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {['Projects', 'Organization', 'Media'].map((dept) => {
+                        const isIncluded = acceptanceDepts.toLowerCase().includes(dept.toLowerCase());
+                        return (
+                          <button
+                            key={dept}
+                            type="button"
+                            onClick={() => {
+                              const deptsArr = acceptanceDepts ? acceptanceDepts.split(',').map(s => s.trim()).filter(Boolean) : [];
+                              if (isIncluded) {
+                                setAcceptanceDepts(deptsArr.filter(d => !d.toLowerCase().includes(dept.toLowerCase())).join(', '));
+                              } else {
+                                setAcceptanceDepts([...deptsArr, dept].join(', '));
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                              isIncluded
+                                ? 'bg-accent text-white border-accent'
+                                : 'bg-dominant text-secondary border-subtle hover:border-accent'
+                            }`}
+                          >
+                            + {dept}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
+                      💡 Organization members will automatically receive a required onboarding note & link to the E.R.I.S.E. To-Do App.
                     </p>
                   </div>
                 )}

@@ -85,7 +85,7 @@ export function Home() {
             </div>
 
             {/* E.R.I.S.E. Acronym Pillars Breakdown Section */}
-            <div className="mb-16 bg-surface/50 backdrop-blur-md rounded-3xl border border-subtle p-8 sm:p-10 shadow-xl animate-fade-in text-left rtl:text-right">
+            <div className="mb-16 bg-surface rounded-2xl border border-subtle p-8 sm:p-10 animate-fade-in text-left rtl:text-right">
               <div className="text-center max-w-2xl mx-auto mb-8">
                 <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-bold uppercase tracking-wider mb-2">
                   <Compass className="w-3.5 h-3.5" />
@@ -105,14 +105,14 @@ export function Home() {
                   return (
                     <div 
                       key={idx}
-                      className="p-5 rounded-2xl bg-dominant/80 border border-subtle hover:border-accent hover:shadow-lg transition-all flex flex-col justify-between group"
+                      className="p-5 rounded-xl bg-dominant border border-subtle hover:border-accent transition-colors flex flex-col justify-between group"
                     >
                       <div>
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-2xl font-black text-accent group-hover:scale-110 transition-transform">
+                          <span className="text-2xl font-black text-accent group-hover:scale-105 transition-transform">
                             {item.letter}
                           </span>
-                          <div className="w-8 h-8 rounded-xl bg-accent-tint flex items-center justify-center text-accent">
+                          <div className="w-8 h-8 rounded-lg bg-accent-tint flex items-center justify-center text-accent">
                             <Icon className="w-4 h-4" />
                           </div>
                         </div>
@@ -130,7 +130,7 @@ export function Home() {
             </div>
 
             {/* Zaitona 3D Mascot Brand */}
-            <div className="mb-16 bg-surface/30 rounded-3xl border border-subtle overflow-hidden relative shadow-2xl animate-fade-in max-w-5xl mx-auto flex flex-col md:flex-row items-center">
+            <div className="mb-16 bg-surface rounded-2xl border border-subtle overflow-hidden relative animate-fade-in max-w-5xl mx-auto flex flex-col md:flex-row items-center">
               <div className="w-full md:w-1/2 p-8 md:p-12 text-left rtl:text-right">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-bold mb-4 uppercase tracking-wider">
                   <Star className="w-4 h-4" /> {t.home.zaitonaRole}
@@ -152,7 +152,7 @@ export function Home() {
                   </div>
                 </div>
               </div>
-              <div className="w-full md:w-1/2 h-[400px] md:h-[500px] relative bg-gradient-to-br from-accent/5 to-transparent">
+              <div className="w-full md:w-1/2 h-[400px] md:h-[500px] relative bg-dominant border-t md:border-t-0 md:border-l border-subtle rtl:md:border-l-0 rtl:md:border-r">
                 <React.Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-accent animate-pulse">Loading Zaitona...</div>}>
                   <ZaitonaViewer />
                 </React.Suspense>
@@ -166,8 +166,8 @@ export function Home() {
                 { icon: Zap, label: t.home.impactRenewableTitle, text: t.home.impactRenewableDesc },
                 { icon: Bot, label: t.home.impactRoboticsTitle, text: t.home.impactRoboticsDesc }
               ].map((item, i) => (
-                <div key={i} className="p-6 bg-surface/50 backdrop-blur-sm rounded-2xl border border-subtle hover:border-accent transition-all flex flex-col gap-4">
-                  <div className="w-10 h-10 shrink-0 rounded-xl bg-accent-tint flex items-center justify-center text-accent">
+                <div key={i} className="p-6 bg-surface rounded-xl border border-subtle hover:border-accent transition-colors flex flex-col gap-4">
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-accent-tint flex items-center justify-center text-accent">
                     <item.icon className="w-5 h-5" />
                   </div>
                   <div>

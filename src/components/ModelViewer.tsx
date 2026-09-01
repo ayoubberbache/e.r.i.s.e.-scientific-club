@@ -38,7 +38,7 @@ export function ModelViewer({
 
   if (!loaded) {
     return (
-      <div className={`flex items-center justify-center bg-dominant/30 rounded-2xl border border-subtle backdrop-blur-sm ${className}`}>
+      <div className={`flex items-center justify-center bg-dominant rounded-xl border border-subtle ${className}`}>
         <div className="flex flex-col items-center gap-3 text-accent font-semibold text-sm">
           <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           <span>Loading 3D Model...</span>

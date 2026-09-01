@@ -85,7 +85,7 @@ export function UpcomingEventsNotification() {
 
   if (loading) {
     return (
-      <div className="w-full max-w-4xl mx-auto my-8 p-6 rounded-3xl bg-surface/50 border border-subtle backdrop-blur-sm animate-pulse text-center">
+      <div className="w-full max-w-4xl mx-auto my-8 p-6 rounded-2xl bg-surface border border-subtle animate-pulse text-center">
         <div className="h-4 bg-accent/20 rounded-full w-48 mx-auto mb-3" />
         <div className="h-6 bg-accent/10 rounded-full w-3/4 mx-auto mb-2" />
         <div className="h-4 bg-subtle rounded-full w-1/2 mx-auto" />
@@ -98,7 +98,7 @@ export function UpcomingEventsNotification() {
       <motion.div 
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-4xl mx-auto my-8 p-5 sm:p-6 rounded-3xl bg-surface/40 border border-subtle/80 backdrop-blur-md text-center shadow-lg"
+        className="w-full max-w-4xl mx-auto my-8 p-5 sm:p-6 rounded-2xl bg-surface border border-subtle text-center"
       >
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold uppercase tracking-wider mb-2">
           <Megaphone className="w-3.5 h-3.5" />
@@ -127,16 +127,16 @@ export function UpcomingEventsNotification() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 20 }}
+      initial={{ opacity: 0, scale: 0.98, y: 16 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
       className="w-full max-w-4xl mx-auto my-8 relative z-20 group"
     >
-      {/* Outer Glow & Background */}
-      <div className="relative rounded-3xl bg-surface/90 border-2 border-accent/40 backdrop-blur-xl shadow-2xl shadow-accent/10 overflow-hidden text-left rtl:text-right">
+      {/* Minimal Solid Container */}
+      <div className="relative rounded-2xl bg-surface border border-subtle hover:border-accent/40 transition-colors overflow-hidden text-left rtl:text-right">
         
-        {/* Subtle glowing ambient accent header */}
-        <div className="h-1.5 w-full bg-gradient-to-r from-accent via-[#00e5ff] to-accent" />
+        {/* Subtle accent border top */}
+        <div className="h-1 w-full bg-accent" />
 
         <div className="p-6 sm:p-8">
           

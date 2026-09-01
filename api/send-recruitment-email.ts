@@ -288,23 +288,23 @@ function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
                       </td>
                   </tr>
 
-                  <!-- WELCOME CARD -->
+                  <!-- WELCOME CARD (Seamless match with bottom clouds #8CC9CA) -->
                   <tr>
-                      <td bgcolor="#0D5C63" style="padding: 24px 20px; background-color: #0D5C63; text-align: center;">
+                      <td bgcolor="#8CC9CA" style="padding: 24px 20px; background-color: #8CC9CA; text-align: center;">
                           
-                          <span style="background-color: rgba(255,255,255,0.18); color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Official Acceptance</span>
+                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Official Acceptance</span>
 
-                          <h2 style="color: #FFFFFF; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
+                          <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
                               Congratulations, ${cleanName}!
                           </h2>
 
-                          <p style="color: #E2F0F1; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 400;">
+                          <p style="color: #1A315B; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
                               You are officially accepted into <strong>E.R.I.S.E. Scientific Club</strong>! We are thrilled to welcome your energy, ambition, and creativity to the team.
                           </p>
 
                           <!-- DEPARTMENTS CONTAINER -->
                           <div style="margin: 14px 0;">
-                              <p style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A0D8DB; font-weight: 700;">Assigned Department(s)</p>
+                              <p style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #1A315B; font-weight: 800;">Assigned Department(s)</p>
                               <div>${deptBadgesHtml}</div>
                           </div>
 

@@ -53,6 +53,7 @@ const DEPARTMENT_CONFIGS: Record<string, DepartmentConfig> = {
   "organization": {
     name: "Organization",
     telegram: "https://t.me/+lL1uqjsRBNpiNWVk",
+    discord: "https://discord.gg/Gz9yEfrFdS",
     todoApp: "https://erise-todo.vercel.app/",
     specialNote: "Every Organization member is required to sign up in the E.R.I.S.E. To-Do App (https://erise-todo.vercel.app/).",
   },
@@ -115,11 +116,12 @@ Assigned Department(s): ${depts}
 =========================================
 • Main Telegram Channel: ${MAIN_TELEGRAM_LINK}
 • Main Discord Community: ${MAIN_DISCORD_LINK}
+  (Note: Joining Discord is required to assign your official role so that when meetings are held, you will meet in your department's specific room).
 ${deptSectionsText}
 =========================================
 NEXT STEPS
 =========================================
-1. Join the Main Telegram Channel and Discord Server.
+1. Join the Main Telegram Channel and Discord Server (your department roles and meeting rooms will be assigned on Discord).
 ${hasOrg ? '2. Create an account / sign up on the E.R.I.S.E. To-Do App (required for all Organization members).\n3. Connect with your department leads and teammates in your first meeting.' : '2. Connect with your department leads and teammates in your first meeting.'}
 
 We are thrilled to welcome you on board!
@@ -331,6 +333,10 @@ function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
                               <a href="${MAIN_DISCORD_LINK}" target="_blank" style="background-color: #5865F2; color: #FFFFFF; text-decoration: none; padding: 12px 18px; border-radius: 10px; display: block; margin: 0 auto; max-width: 290px; font-weight: 700; font-size: 13px; text-align: center;">
                                   Join Main Discord Community
                               </a>
+
+                              <p style="color: #64748B; font-size: 11px; line-height: 16px; margin: 8px auto 0 auto; max-width: 320px; text-align: center;">
+                                  💡 <em>Joining Discord is required to assign roles to everyone in the club so each department has access to its specific meeting room.</em>
+                              </p>
                           </div>
 
                           <!-- Department Specific -->
@@ -355,7 +361,7 @@ function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
                               <tr>
                                   <td valign="middle" style="padding: 10px 14px;">
                                       <p style="color: #0F172A; font-size: 12px; font-weight: 700; margin: 0 0 2px 0;">1. Connect on Telegram & Discord</p>
-                                      <p style="color: #64748B; font-size: 11px; margin: 0; line-height: 15px;">Introduce yourself to fellow club members and stay notified of upcoming meetings.</p>
+                                      <p style="color: #64748B; font-size: 11px; margin: 0; line-height: 15px;">Join the server to receive your club role and access your dedicated department meeting rooms.</p>
                                   </td>
                               </tr>
                           </table>

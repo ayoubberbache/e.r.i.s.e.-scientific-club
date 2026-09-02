@@ -53,7 +53,6 @@ const DEPARTMENT_CONFIGS: Record<string, DepartmentConfig> = {
   "organization": {
     name: "Organization",
     telegram: "https://t.me/+lL1uqjsRBNpiNWVk",
-    discord: "https://discord.gg/Gz9yEfrFdS",
     todoApp: "https://erise-todo.vercel.app/",
     specialNote: "Every Organization member is required to sign up in the E.R.I.S.E. To-Do App (https://erise-todo.vercel.app/).",
   },

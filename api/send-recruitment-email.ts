@@ -34,7 +34,7 @@ const MEETING_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Meetin
 const EVENT_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Event-invitation.png";
 
 const MAIN_TELEGRAM_LINK = "https://t.me/+ju8GDh4k9VdkYzQ0";
-const MAIN_DISCORD_LINK = "https://discord.gg/Gz9yEfrFdS";
+const MAIN_DISCORD_LINK = "https://discord.gg/JHy7WGj";
 
 interface DepartmentConfig {
   name: string;

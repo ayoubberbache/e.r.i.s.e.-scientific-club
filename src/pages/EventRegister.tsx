@@ -270,29 +270,48 @@ export function EventRegister() {
         status: 'pending'
       };
 
-      const { data: regData, error: regError } = await supabase
-        .from('event_registrations')
-        .insert([regPayload])
-        .select('id')
-        .single();
-
-      if (regError) throw regError;
-
-      const registrationId = regData.id;
-
       const memberPayloads = sanitizedMembers.map((m, index) => ({
-        registration_id: registrationId,
         is_leader: isTeam ? index === 0 : true,
         full_name: m.full_name,
         email: m.email,
         phone: m.phone
       }));
 
-      const { error: membersError } = await supabase
-        .from('event_registration_members')
-        .insert(memberPayloads);
+      let submitted = false;
 
-      if (membersError) throw membersError;
+      // 1. Primary: Secure serverless API (bypasses RLS with service role)
+      try {
+        const res = await fetch('/api/submit-event-registration', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ regPayload, memberPayloads })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) submitted = true;
+        }
+      } catch (apiErr) {
+        console.warn('API event registration fallback to direct:', apiErr);
+      }
+
+      // 2. Direct client fallback
+      if (!submitted) {
+        const { data: regData, error: regError } = await supabase
+          .from('event_registrations')
+          .insert([regPayload])
+          .select('id')
+          .single();
+
+        if (regError) throw regError;
+
+        const registrationId = regData.id;
+        const finalMembers = memberPayloads.map(m => ({ ...m, registration_id: registrationId }));
+        const { error: membersError } = await supabase
+          .from('event_registration_members')
+          .insert(finalMembers);
+
+        if (membersError) throw membersError;
+      }
 
       setSuccess(true);
     } catch (err: any) {

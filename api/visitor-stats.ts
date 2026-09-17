@@ -165,28 +165,17 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // Ensure default baseline representation so top 4 visitor countries are always present
-  const baseline: Record<string, number> = { DZ: 191, FR: 24, US: 16, TN: 11 };
-  for (const [code, baseCount] of Object.entries(baseline)) {
-    if (!countryMap[code]) {
-      countryMap[code] = baseCount;
-    }
-  }
-  if (total === 0) {
-    total = Object.values(countryMap).reduce((a, b) => a + b, 0);
-  }
-
-  // Format country list sorted by session count and take the first 4 visitor countries
+  // Dynamically pull and format every country that has visited
   const countryList = Object.entries(countryMap)
+    .filter(([_, count]) => Number(count) > 0)
     .map(([code, count]) => ({
-      code,
+      code: code.toUpperCase(),
       name: getCountryName(code),
       flag: getCountryFlag(code),
       flagUrl: `https://flagcdn.com/w40/${code.toLowerCase()}.png`,
       count: Number(count),
     }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 4); // First 4 visitor countries
+    .sort((a, b) => b.count - a.count);
 
   return res.status(200).json({
     total,

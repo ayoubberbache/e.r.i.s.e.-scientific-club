@@ -40,20 +40,20 @@ DROP POLICY IF EXISTS "Allow public update event_registrations" ON event_registr
 DROP POLICY IF EXISTS "Allow public delete event_registrations" ON event_registrations;
 DROP POLICY IF EXISTS "Allow public insert event_registrations" ON event_registrations;
 
--- Allow public INSERT only
+-- Allow public INSERT & SELECT for event registrations
 CREATE POLICY "Allow public insert event_registrations" 
   ON event_registrations 
   FOR INSERT 
   TO anon, authenticated
   WITH CHECK (true);
 
--- Drop insecure policies on event_registration_members
-DROP POLICY IF EXISTS "Allow public read event_registration_members" ON event_registration_members;
-DROP POLICY IF EXISTS "Allow public update event_registration_members" ON event_registration_members;
-DROP POLICY IF EXISTS "Allow public delete event_registration_members" ON event_registration_members;
-DROP POLICY IF EXISTS "Allow public insert event_registration_members" ON event_registration_members;
+CREATE POLICY "Allow public read event_registrations" 
+  ON event_registrations 
+  FOR SELECT 
+  TO anon, authenticated
+  USING (true);
 
--- Allow public INSERT only
+-- Allow public INSERT only on event_registration_members
 CREATE POLICY "Allow public insert event_registration_members" 
   ON event_registration_members 
   FOR INSERT 
@@ -107,7 +107,8 @@ DROP POLICY IF EXISTS "Allow public read access" ON achievements;
 CREATE POLICY "Allow public read access" ON achievements FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Allow public read access" ON site_settings;
-CREATE POLICY "Allow public read access" ON site_settings FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public all access" ON site_settings;
+CREATE POLICY "Allow public all access" ON site_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- Star members table (if exists)
 DO $$

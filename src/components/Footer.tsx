@@ -47,7 +47,7 @@ export function Footer() {
           if (isMounted && data) {
             setVisitorStats({
               total: Number(data.sessions || data.total) || 0,
-              countries: Array.isArray(data.countries) ? data.countries.slice(0, 4) : []
+              countries: Array.isArray(data.countries) ? data.countries : []
             });
           }
         }
@@ -201,9 +201,9 @@ export function Footer() {
             </span>
           </div>
 
-          {/* Right: First 4 Visitor Countries with Flags */}
+          {/* Right: Dynamically Pulled Flags for Every Visiting Country */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {visitorStats.countries.slice(0, 4).map((c) => (
+            {visitorStats.countries.map((c) => (
               <div
                 key={c.code}
                 className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-subtle/60 bg-dominant/40 text-[11px] text-muted hover:text-primary hover:border-subtle transition-colors"

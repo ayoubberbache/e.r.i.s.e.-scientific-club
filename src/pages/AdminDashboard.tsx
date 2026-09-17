@@ -423,15 +423,40 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     setTogglingRegistration(true);
     try {
       const newValue = !registrationOpen;
-      const { error } = await supabase
-        .from('site_settings')
-        .update({ value: String(newValue), updated_at: new Date().toISOString() })
-        .eq('key', 'registration_open');
-      if (error) throw error;
+      const authHeaders = getAdminAuthHeaders();
+      let updated = false;
+
+      // 1. Prioritize secure admin proxy (bypasses RLS with secret key)
+      try {
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            action: 'toggle_registration',
+            value: newValue,
+            payload: { value: newValue }
+          })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) updated = true;
+        }
+      } catch (err) {
+        console.warn('Admin proxy toggle failed, trying direct:', err);
+      }
+
+      // 2. Direct client fallback
+      if (!updated) {
+        const { error } = await supabase
+          .from('site_settings')
+          .upsert({ key: 'registration_open', value: String(newValue), updated_at: new Date().toISOString() });
+        if (error) throw error;
+      }
+
       setRegistrationOpen(newValue);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error toggling registration:', err);
-      alert('Failed to toggle registration status.');
+      alert('Failed to toggle registration status: ' + (err.message || 'Error'));
     } finally {
       setTogglingRegistration(false);
     }
@@ -536,32 +561,71 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this item?')) return;
     try {
-      const { error } = await supabase.from(activeTab).delete().eq('id', id);
-      if (error) throw error;
+      let deleted = false;
+      try {
+        const authHeaders = getAdminAuthHeaders();
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ action: 'delete', table: activeTab, id })
+        });
+        if (res.ok) deleted = true;
+      } catch (e) {}
+
+      if (!deleted) {
+        const { error } = await supabase.from(activeTab).delete().eq('id', id);
+        if (error) throw error;
+      }
       fetchData(activeTab);
-    } catch (err) {
-      alert('Error deleting item');
+    } catch (err: any) {
+      alert(`Error deleting item: ${err.message || err}`);
     }
   };
 
   const handleDeleteEventReg = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this event registration?')) return;
     try {
-      const { error } = await supabase.from('event_registrations').delete().eq('id', id);
-      if (error) throw error;
+      let deleted = false;
+      try {
+        const authHeaders = getAdminAuthHeaders();
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ action: 'delete', table: 'event_registrations', id })
+        });
+        if (res.ok) deleted = true;
+      } catch (e) {}
+
+      if (!deleted) {
+        const { error } = await supabase.from('event_registrations').delete().eq('id', id);
+        if (error) throw error;
+      }
       fetchEventRegistrations(selectedEventId);
-    } catch (err) {
-      alert('Error deleting event registration.');
+    } catch (err: any) {
+      alert(`Error deleting event registration: ${err.message || err}`);
     }
   };
 
   const handleEventRegStatusChange = async (id: number, newStatus: string) => {
     try {
-      const { error } = await supabase.from('event_registrations').update({ status: newStatus }).eq('id', id);
-      if (error) throw error;
+      let updated = false;
+      try {
+        const authHeaders = getAdminAuthHeaders();
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ action: 'update_status', table: 'event_registrations', id, status: newStatus })
+        });
+        if (res.ok) updated = true;
+      } catch (e) {}
+
+      if (!updated) {
+        const { error } = await supabase.from('event_registrations').update({ status: newStatus }).eq('id', id);
+        if (error) throw error;
+      }
       setEventRegistrations(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
-    } catch (err) {
-      alert('Failed to update event registration status.');
+    } catch (err: any) {
+      alert(`Failed to update event registration status: ${err.message || err}`);
     }
   };
 
@@ -743,12 +807,44 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       if (modalMode === 'add') {
         delete payload.id;
         delete payload.created_at;
-        const { error } = await supabase.from(activeTab).insert([payload]);
-        if (error) throw error;
+        let inserted = false;
+        try {
+          const { error } = await supabase.from(activeTab).insert([payload]);
+          if (!error) inserted = true;
+        } catch (e) {}
+
+        if (!inserted) {
+          const authHeaders = getAdminAuthHeaders();
+          const res = await fetch('/api/admin-data', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ action: 'save_item', table: activeTab, item: payload })
+          });
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.error || 'Failed to save item');
+          }
+        }
       } else {
         const { id, created_at, ...updatePayload } = payload;
-        const { error } = await supabase.from(activeTab).update(updatePayload).eq('id', id);
-        if (error) throw error;
+        let updated = false;
+        try {
+          const { error } = await supabase.from(activeTab).update(updatePayload).eq('id', id);
+          if (!error) updated = true;
+        } catch (e) {}
+
+        if (!updated) {
+          const authHeaders = getAdminAuthHeaders();
+          const res = await fetch('/api/admin-data', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ action: 'save_item', table: activeTab, item: updatePayload, id })
+          });
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.error || 'Failed to update item');
+          }
+        }
       }
 
       closeModal();

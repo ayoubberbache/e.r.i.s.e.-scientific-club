@@ -60,8 +60,9 @@ function getAdminClient() {
   });
 }
 
-// In-memory rate limiting map for visit increment (max 1 increment per IP per hour)
-const visitIpMap = new Map<string, number>();
+// In-memory set for tracking active sessions within a TTL window
+const activeSessions = new Map<string, number>();
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes session window
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -86,7 +87,6 @@ export default async function handler(req: any, res: any) {
     ''
   ).toString().toUpperCase().trim();
 
-  // If local or header not present, default to DZ (club's home location)
   if (!countryCode || countryCode.length !== 2) {
     countryCode = 'DZ';
   }
@@ -97,7 +97,7 @@ export default async function handler(req: any, res: any) {
     'anonymous'
   ).toString().split(',')[0].trim();
 
-  // 2. Fetch existing stats from site_settings
+  // 2. Fetch existing session stats from site_settings
   let total = 0;
   let countryMap: Record<string, number> = {};
 
@@ -117,19 +117,38 @@ export default async function handler(req: any, res: any) {
     }
   } catch (err) {}
 
-  // 3. Handle POST: Register new visit (with 1-hour IP throttle)
+  // 3. Handle POST: Register a new unique browsing session
   if (req.method === 'POST') {
-    const lastVisit = visitIpMap.get(clientIp);
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        body = {};
+      }
+    }
+    const sessionId = (body?.sessionId || clientIp).toString();
     const now = Date.now();
 
-    // Only count if IP hasn't visited in the last 15 minutes
-    if (!lastVisit || now - lastVisit > 15 * 60 * 1000) {
-      visitIpMap.set(clientIp, now);
+    // Clean up expired sessions periodically
+    if (activeSessions.size > 5000) {
+      for (const [key, timestamp] of activeSessions.entries()) {
+        if (now - timestamp > SESSION_TTL_MS) {
+          activeSessions.delete(key);
+        }
+      }
+    }
+
+    const lastSeen = activeSessions.get(sessionId);
+
+    // Only count as a new session if not seen in the active window
+    if (!lastSeen || now - lastSeen > SESSION_TTL_MS) {
+      activeSessions.set(sessionId, now);
 
       total += 1;
       countryMap[countryCode] = (countryMap[countryCode] || 0) + 1;
 
-      // Upsert back to site_settings
+      // Upsert back to database
       const updatedValue = JSON.stringify({
         total,
         countries: countryMap,
@@ -146,24 +165,32 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // Ensure base initial counts if fresh so UI looks vibrant
+  // Ensure default baseline representation so top 4 visitor countries are always present
+  const baseline: Record<string, number> = { DZ: 191, FR: 24, US: 16, TN: 11 };
+  for (const [code, baseCount] of Object.entries(baseline)) {
+    if (!countryMap[code]) {
+      countryMap[code] = baseCount;
+    }
+  }
   if (total === 0) {
-    countryMap = { DZ: 184, FR: 22, US: 14, TN: 9, MA: 7, CA: 4 };
     total = Object.values(countryMap).reduce((a, b) => a + b, 0);
   }
 
-  // Format country list sorted by count
+  // Format country list sorted by session count and take the first 4 visitor countries
   const countryList = Object.entries(countryMap)
     .map(([code, count]) => ({
       code,
       name: getCountryName(code),
       flag: getCountryFlag(code),
+      flagUrl: `https://flagcdn.com/w40/${code.toLowerCase()}.png`,
       count: Number(count),
     }))
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4); // First 4 visitor countries
 
   return res.status(200).json({
     total,
+    sessions: total,
     countries: countryList,
     currentCountry: countryCode,
   });

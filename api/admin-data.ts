@@ -123,13 +123,30 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'toggle_registration') {
-      const { value } = payload || {};
+      const toggleVal = req.body?.value !== undefined ? req.body.value : (payload?.value !== undefined ? payload.value : true);
       const { error } = await supabase
         .from('site_settings')
-        .upsert({ key: 'registration_open', value: String(value), updated_at: new Date().toISOString() });
+        .upsert({ key: 'registration_open', value: String(toggleVal), updated_at: new Date().toISOString() });
 
       if (error) return res.status(500).json({ error: error.message });
-      return res.status(200).json({ success: true, registration_open: value });
+      return res.status(200).json({ success: true, registration_open: toggleVal });
+    }
+
+    if (action === 'save_item') {
+      const { item } = req.body || {};
+      if (!table || !item) {
+        return res.status(400).json({ error: 'Missing required parameters (table, item)' });
+      }
+
+      if (id) {
+        const { data, error } = await supabase.from(table).update(item).eq('id', id).select();
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json({ success: true, data });
+      } else {
+        const { data, error } = await supabase.from(table).insert([item]).select();
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json({ success: true, data });
+      }
     }
 
     return res.status(400).json({ error: 'Unsupported action' });

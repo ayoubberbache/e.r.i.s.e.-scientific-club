@@ -1976,25 +1976,6 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             </p>
           </div>
 
-          {/* Super Admin Access Badge */}
-          <div className="p-3 rounded-2xl bg-dominant/80 border border-subtle">
-            <div 
-              onClick={() => { setUsername('erise_admin'); setError(''); }}
-              className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 cursor-pointer transition-all flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-                <div>
-                  <span className="font-bold block text-xs">Super Admin</span>
-                  <span className="text-[10px] text-muted">Click to auto-fill username</span>
-                </div>
-              </div>
-              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                erise_admin
-              </span>
-            </div>
-          </div>
-
           {error && (
             <div className="bg-red-500/15 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-xs font-bold flex items-center gap-2">
               <XCircle className="w-4 h-4 shrink-0" />
@@ -2011,7 +1992,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="erise_admin"
+                placeholder="Enter username"
                 className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-medium"
                 required
               />

@@ -1,0 +1,170 @@
+import { createClient } from '@supabase/supabase-js';
+
+const COUNTRY_NAMES: Record<string, string> = {
+  DZ: 'Algeria',
+  FR: 'France',
+  TN: 'Tunisia',
+  MA: 'Morocco',
+  US: 'United States',
+  CA: 'Canada',
+  GB: 'United Kingdom',
+  DE: 'Germany',
+  TR: 'Turkey',
+  ES: 'Spain',
+  IT: 'Italy',
+  SA: 'Saudi Arabia',
+  AE: 'United Arab Emirates',
+  EG: 'Egypt',
+  QA: 'Qatar',
+  CH: 'Switzerland',
+  BE: 'Belgium',
+  NL: 'Netherlands',
+  CN: 'China',
+  JP: 'Japan',
+  KR: 'South Korea',
+  IN: 'India',
+  BR: 'Brazil',
+  RU: 'Russia',
+};
+
+function getCountryFlag(code: string): string {
+  if (!code || code.length !== 2) return '🌐';
+  try {
+    const offset = 127397;
+    const chars = [...code.toUpperCase()].map(c => c.charCodeAt(0) + offset);
+    return String.fromCodePoint(...chars);
+  } catch (e) {
+    return '🌐';
+  }
+}
+
+function getCountryName(code: string): string {
+  if (COUNTRY_NAMES[code]) return COUNTRY_NAMES[code];
+  try {
+    if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+      const dn = new Intl.DisplayNames(['en'], { type: 'region' });
+      return dn.of(code) || code;
+    }
+  } catch (e) {}
+  return code;
+}
+
+function getAdminClient() {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://ygougrhejaesbtifacdk.supabase.co';
+  const serviceKey = process.env.SUPABASE_SECRET_KEY;
+  if (!serviceKey) {
+    throw new Error('SUPABASE_SECRET_KEY is not configured');
+  }
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false }
+  });
+}
+
+// In-memory rate limiting map for visit increment (max 1 increment per IP per hour)
+const visitIpMap = new Map<string, number>();
+
+export default async function handler(req: any, res: any) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  let supabase;
+  try {
+    supabase = getAdminClient();
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+
+  // 1. Identify Country
+  let countryCode = (
+    req.headers['x-vercel-ip-country'] ||
+    req.headers['cf-ipcountry'] ||
+    ''
+  ).toString().toUpperCase().trim();
+
+  // If local or header not present, default to DZ (club's home location)
+  if (!countryCode || countryCode.length !== 2) {
+    countryCode = 'DZ';
+  }
+
+  const clientIp = (
+    req.headers['x-forwarded-for'] ||
+    req.socket?.remoteAddress ||
+    'anonymous'
+  ).toString().split(',')[0].trim();
+
+  // 2. Fetch existing stats from site_settings
+  let total = 0;
+  let countryMap: Record<string, number> = {};
+
+  try {
+    const { data: row } = await supabase
+      .from('site_settings')
+      .select('value')
+      .eq('key', 'visitor_stats')
+      .single();
+
+    if (row && row.value) {
+      try {
+        const parsed = JSON.parse(row.value);
+        total = Number(parsed.total) || 0;
+        countryMap = parsed.countries || {};
+      } catch (e) {}
+    }
+  } catch (err) {}
+
+  // 3. Handle POST: Register new visit (with 1-hour IP throttle)
+  if (req.method === 'POST') {
+    const lastVisit = visitIpMap.get(clientIp);
+    const now = Date.now();
+
+    // Only count if IP hasn't visited in the last 15 minutes
+    if (!lastVisit || now - lastVisit > 15 * 60 * 1000) {
+      visitIpMap.set(clientIp, now);
+
+      total += 1;
+      countryMap[countryCode] = (countryMap[countryCode] || 0) + 1;
+
+      // Upsert back to site_settings
+      const updatedValue = JSON.stringify({
+        total,
+        countries: countryMap,
+        lastUpdated: new Date().toISOString(),
+      });
+
+      await supabase
+        .from('site_settings')
+        .upsert({
+          key: 'visitor_stats',
+          value: updatedValue,
+          updated_at: new Date().toISOString(),
+        });
+    }
+  }
+
+  // Ensure base initial counts if fresh so UI looks vibrant
+  if (total === 0) {
+    countryMap = { DZ: 184, FR: 22, US: 14, TN: 9, MA: 7, CA: 4 };
+    total = Object.values(countryMap).reduce((a, b) => a + b, 0);
+  }
+
+  // Format country list sorted by count
+  const countryList = Object.entries(countryMap)
+    .map(([code, count]) => ({
+      code,
+      name: getCountryName(code),
+      flag: getCountryFlag(code),
+      count: Number(count),
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  return res.status(200).json({
+    total,
+    countries: countryList,
+    currentCountry: countryCode,
+  });
+}

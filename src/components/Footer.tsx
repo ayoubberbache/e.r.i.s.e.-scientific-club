@@ -1,12 +1,62 @@
-import React from 'react';
-import { Mail, MapPin, ArrowUpRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mail, MapPin, ArrowUpRight, Globe, Users, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from './Logo';
 import { CONTACT } from '../data/siteData';
 import { useLanguage } from '../contexts/LanguageContext';
 
+interface CountryStat {
+  code: string;
+  name: string;
+  flag: string;
+  count: number;
+}
+
 export function Footer() {
   const { t, language } = useLanguage();
+  const [visitorStats, setVisitorStats] = useState<{ total: number; countries: CountryStat[] }>({
+    total: 0,
+    countries: []
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadStats() {
+      try {
+        const hasCountedSession = sessionStorage.getItem('erise_visit_counted');
+        const method = hasCountedSession ? 'GET' : 'POST';
+
+        const res = await fetch('/api/visitor-stats', {
+          method,
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && data) {
+            setVisitorStats({
+              total: Number(data.total) || 0,
+              countries: Array.isArray(data.countries) ? data.countries : []
+            });
+            if (!hasCountedSession) {
+              sessionStorage.setItem('erise_visit_counted', 'true');
+            }
+          }
+        }
+      } catch (err) {
+        // Silently fail on network/offline
+      } finally {
+        if (isMounted) setStatsLoading(false);
+      }
+    }
+
+    loadStats();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <footer className="bg-surface text-primary border-t border-subtle transition-colors pt-16 pb-12">
@@ -127,6 +177,54 @@ export function Footer() {
             </div>
           </div>
 
+        </div>
+
+        {/* Global Visitors & Countries Reach Counter */}
+        <div className="py-6 border-t border-subtle/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+              <Globe className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-primary">
+                  {language === 'ar' ? 'زوار الموقع حول العالم' : 'Global Visitors & Reach'}
+                </span>
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {visitorStats.total > 0 ? `${visitorStats.total.toLocaleString()} ${language === 'ar' ? 'زيارة' : 'visits'}` : (language === 'ar' ? 'متصل الآن' : 'Live')}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted">
+                {language === 'ar' 
+                  ? 'تم تسجيل زيارات علمية من دول متعددة تدعم الابتكار المستدام' 
+                  : 'Visitors connecting with our scientific research community worldwide'}
+              </p>
+            </div>
+          </div>
+
+          {/* Countries Badges */}
+          <div className="flex flex-wrap items-center gap-1.5 max-w-xl">
+            {visitorStats.countries.length > 0 ? (
+              visitorStats.countries.slice(0, 10).map((c) => (
+                <div
+                  key={c.code}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-dominant/70 border border-subtle text-[11px] font-medium text-secondary hover:border-accent/40 hover:text-primary transition-colors"
+                  title={`${c.name}: ${c.count} ${language === 'ar' ? 'زيارة' : 'visitors'}`}
+                >
+                  <span className="text-sm leading-none">{c.flag}</span>
+                  <span className="font-mono text-[10px] text-muted">{c.code}</span>
+                  <span className="text-accent font-bold text-[10px]">{c.count}</span>
+                </div>
+              ))
+            ) : (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-dominant/70 border border-subtle text-[11px] font-medium text-muted">
+                <span className="text-sm leading-none">🇩🇿</span>
+                <span className="font-mono text-[10px]">DZ</span>
+                <span className="text-accent font-bold text-[10px]">{visitorStats.total || 1}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Bottom Bar */}

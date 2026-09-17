@@ -8,11 +8,35 @@ import {
   Mail, GraduationCap, Search, ExternalLink, Cpu, Camera, Building,
   ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound
 } from 'lucide-react';
-import { authenticateUser, DEPARTMENT_HEADS } from '../data/departmentHeads';
+import { authenticateUser, DEPARTMENT_HEADS, SUPER_ADMIN_CONFIG } from '../data/departmentHeads';
 import { Department, UserRole, DepartmentHeadUser } from '../types/portals';
 import { OrganizationPortal } from '../components/portals/OrganizationPortal';
 import { MediaPortal } from '../components/portals/MediaPortal';
 import { ProjectsPortal } from '../components/portals/ProjectsPortal';
+import { 
+  getValidAuthSession, 
+  saveAuthSession, 
+  clearAuthSession, 
+  clearLegacySessions,
+  verifyPasswordHash
+} from '../lib/authCrypto';
+
+// Configuration toggle to mask/hide Projects, Organization, and Media portals from Super Admin panel
+const MASK_PORTAL_BUTTONS = true;
+
+const getAdminAuthHeaders = (): Record<string, string> => {
+  const session = getValidAuthSession();
+  if (!session) return { 'Content-Type': 'application/json' };
+  try {
+    const tokenStr = btoa(unescape(encodeURIComponent(JSON.stringify(session))));
+    return {
+      'Authorization': `Bearer ${tokenStr}`,
+      'Content-Type': 'application/json'
+    };
+  } catch (e) {
+    return { 'Content-Type': 'application/json' };
+  }
+};
 
 export function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -110,12 +134,31 @@ export function AdminDashboard() {
   const handleMemberStatusChange = async (id: number, newStatus: 'approved' | 'rejected' | 'pending') => {
     setStatusUpdatingId(id);
     try {
-      const { error } = await supabase
-        .from('registrations')
-        .update({ status: newStatus })
-        .eq('id', id);
+      const authHeaders = getAdminAuthHeaders();
+      let updated = false;
 
-      if (error) throw error;
+      try {
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            action: 'update_status',
+            table: 'registrations',
+            id,
+            status: newStatus
+          })
+        });
+        if (res.ok) updated = true;
+      } catch (e) {}
+
+      if (!updated) {
+        const { error } = await supabase
+          .from('registrations')
+          .update({ status: newStatus })
+          .eq('id', id);
+
+        if (error) throw error;
+      }
 
       setData((prev) => prev.map((item) => (item.id === id ? { ...item, status: newStatus } : item)));
 
@@ -188,8 +231,26 @@ export function AdminDashboard() {
   const handleDeleteMember = async (id: number, name?: string) => {
     if (!window.confirm(`Are you sure you want to delete ${name || 'this member'}?`)) return;
     try {
-      const { error } = await supabase.from('registrations').delete().eq('id', id);
-      if (error) throw error;
+      const authHeaders = getAdminAuthHeaders();
+      let deleted = false;
+
+      try {
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            action: 'delete',
+            table: 'registrations',
+            id
+          })
+        });
+        if (res.ok) deleted = true;
+      } catch (e) {}
+
+      if (!deleted) {
+        const { error } = await supabase.from('registrations').delete().eq('id', id);
+        if (error) throw error;
+      }
 
       if (selectedMember && selectedMember.id === id) {
         setMemberModalOpen(false);
@@ -261,26 +322,32 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   };
 
   useEffect(() => {
-    const session = localStorage.getItem('erise_admin_session');
-    const savedRole = localStorage.getItem('erise_user_role') as UserRole | null;
-    const savedUserRaw = localStorage.getItem('erise_user_data');
+    // Instantly wipe all legacy insecure sessions from all devices
+    clearLegacySessions();
 
-    if (session === 'authenticated') {
+    const validSession = getValidAuthSession();
+    if (validSession) {
       setIsAuthenticated(true);
-      if (savedRole) setUserRole(savedRole);
-      if (savedUserRaw) {
-        try {
-          setCurrentUser(JSON.parse(savedUserRaw));
-        } catch {}
-      }
-      if (!savedRole || savedRole === 'admin') {
+      setUserRole(validSession.user.role);
+      setCurrentUser(validSession.user);
+
+      if (validSession.user.role === 'admin') {
         fetchRegistrationStatus();
         fetchEventsList();
       }
+    } else {
+      setIsAuthenticated(false);
+      setUserRole(null);
+      setCurrentUser(null);
     }
   }, []);
 
   useEffect(() => {
+    if (MASK_PORTAL_BUTTONS && activeTab.startsWith('portal_')) {
+      setActiveTab('leaders');
+      return;
+    }
+
     if (isAuthenticated && (!userRole || userRole === 'admin')) {
       if (activeTab === 'event_registrations') {
         fetchEventsList();
@@ -316,19 +383,35 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   const fetchEventRegistrations = async (eventIdFilter: string) => {
     setEventRegsLoading(true);
     try {
-      let query = supabase.from('event_registrations').select(`
-        *,
-        events ( title ),
-        event_registration_members ( * )
-      `).order('registered_at', { ascending: false });
+      const authHeaders = getAdminAuthHeaders();
+      let fetched = false;
 
-      if (eventIdFilter !== 'all') {
-        query = query.eq('event_id', Number(eventIdFilter));
+      try {
+        const res = await fetch(`/api/admin-data?table=event_registrations&eventId=${eventIdFilter}`, {
+          headers: authHeaders
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setEventRegistrations(json.data || []);
+          fetched = true;
+        }
+      } catch (e) {}
+
+      if (!fetched) {
+        let query = supabase.from('event_registrations').select(`
+          *,
+          events ( title ),
+          event_registration_members ( * )
+        `).order('registered_at', { ascending: false });
+
+        if (eventIdFilter !== 'all') {
+          query = query.eq('event_id', Number(eventIdFilter));
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        setEventRegistrations(data || []);
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setEventRegistrations(data || []);
     } catch (err) {
       console.error('Error fetching event registrations:', err);
     } finally {
@@ -360,12 +443,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     setError('');
 
     try {
-      // 1. Check local authentication helper for department heads & super admin
-      const localAuth = authenticateUser(username, password);
+      // 1. Check local authentication helper for department heads & super admin (cryptographic salted hash verification)
+      const localAuth = await authenticateUser(username, password);
       if (localAuth) {
-        localStorage.setItem('erise_admin_session', 'authenticated');
-        localStorage.setItem('erise_user_role', localAuth.role);
-        localStorage.setItem('erise_user_data', JSON.stringify(localAuth));
+        await saveAuthSession(localAuth);
         setIsAuthenticated(true);
         setUserRole(localAuth.role);
         setCurrentUser(localAuth);
@@ -382,12 +463,17 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         .from('admin_users')
         .select('*')
         .eq('username', username.trim())
-        .eq('password', password.trim())
         .single();
 
       if (error || !data) {
         setError('Invalid username or password. Please check your credentials.');
       } else {
+        const isMatch = await verifyPasswordHash(password.trim(), SUPER_ADMIN_CONFIG.salt, data.password);
+        if (!isMatch && password.trim() !== data.password) {
+          setError('Invalid username or password. Please check your credentials.');
+          return;
+        }
+
         const adminUser: DepartmentHeadUser = {
           id: 'admin-' + data.id,
           name: 'E.R.I.S.E. Administrator',
@@ -397,9 +483,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           department: 'All',
           email: 'erise.club@gmail.com',
         };
-        localStorage.setItem('erise_admin_session', 'authenticated');
-        localStorage.setItem('erise_user_role', 'admin');
-        localStorage.setItem('erise_user_data', JSON.stringify(adminUser));
+        await saveAuthSession(adminUser);
         setIsAuthenticated(true);
         setUserRole('admin');
         setCurrentUser(adminUser);
@@ -414,9 +498,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('erise_admin_session');
-    localStorage.removeItem('erise_user_role');
-    localStorage.removeItem('erise_user_data');
+    clearAuthSession();
     setIsAuthenticated(false);
     setUserRole(null);
     setCurrentUser(null);
@@ -425,6 +507,20 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   const fetchData = async (table: string) => {
     setDataLoading(true);
     try {
+      if (table === 'registrations') {
+        const authHeaders = getAdminAuthHeaders();
+        try {
+          const res = await fetch('/api/admin-data?table=registrations', {
+            headers: authHeaders
+          });
+          if (res.ok) {
+            const json = await res.json();
+            setData(json.data || []);
+            return;
+          }
+        } catch (e) {}
+      }
+
       const orderCol = table === 'registrations' ? 'registered_at' : 'id';
       const ascending = table !== 'registrations';
       const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending });
@@ -2065,7 +2161,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   }
 
   // ─── SUPER ADMIN VIEW (Full access + Department Portals switcher) ────────────
-  const sidebarTabs = [
+  const allSidebarTabs = [
     { key: 'leaders', label: 'Leaders', icon: Users },
     { key: 'events', label: 'Events', icon: Calendar },
     { key: 'event_registrations', label: 'Event Registrations', icon: UserCheck },
@@ -2076,6 +2172,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     { key: 'portal_organization', label: '🏛️ Organization Portal', icon: Building, isPortal: true },
     { key: 'portal_media', label: '📸 Media Portal', icon: Camera, isPortal: true },
   ] as const;
+
+  const sidebarTabs = allSidebarTabs.filter(t => !MASK_PORTAL_BUTTONS || !(t as any).isPortal);
 
   return (
     <div className="min-h-screen bg-dominant flex flex-col relative">
@@ -2145,25 +2243,29 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             );
           })}
 
-          <div className="px-3 pt-4 pb-1 text-[11px] font-bold text-muted uppercase tracking-wider border-t border-subtle/60 mt-2">
-            Department Portals
-          </div>
-          {sidebarTabs.filter(t => (t as any).isPortal).map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`text-left px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-3 ${
-                  isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:bg-subtle/50'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+          {!MASK_PORTAL_BUTTONS && (
+            <>
+              <div className="px-3 pt-4 pb-1 text-[11px] font-bold text-muted uppercase tracking-wider border-t border-subtle/60 mt-2">
+                Department Portals
+              </div>
+              {sidebarTabs.filter(t => (t as any).isPortal).map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key as any)}
+                    className={`text-left px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-3 ${
+                      isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:bg-subtle/50'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </aside>
 
         {/* Content Area */}

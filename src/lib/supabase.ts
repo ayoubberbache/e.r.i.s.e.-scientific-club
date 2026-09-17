@@ -1,13 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Default to the project's production Supabase URL and anon key if env vars are missing at build time
 const supabaseUrl =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  'https://ygougrhejaesbtifacdk.supabase.co';
+  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) ||
+  '';
 
 const supabaseAnonKey =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-  'sb_publishable_MIl6WWMSsnArxxjzOTB4hw_FK1sBh3z';
+  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) ||
+  '';
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('⚠️ Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 

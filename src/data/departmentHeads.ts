@@ -1,4 +1,5 @@
 import { Department, DepartmentHeadUser, UserRole } from '../types/portals';
+import { verifyPasswordHash } from '../lib/authCrypto';
 
 export interface HeadConfig {
   id: string;
@@ -22,7 +23,7 @@ export const DEPARTMENT_HEADS: Record<Department, HeadConfig> = {
     name: 'Ayoub Berbache',
     username: 'ayoub_berbache',
     aliases: ['ayoub_berbache', 'ayoub berbache', 'ayoub', 'head_projects', 'berbache ayoub', 'head of projects'],
-    password: 'Erise_Proj#2026!Ayoub',
+    password: 'Ayoub_berbache06042006',
     role: 'head_projects',
     roleTitle: 'Head of Projects',
     department: 'Projects',
@@ -97,7 +98,8 @@ export const DEPARTMENT_HEADS: Record<Department, HeadConfig> = {
 
 export const SUPER_ADMIN_CONFIG = {
   username: 'erise_admin',
-  password: 'Er!s3_Cl0b@2026#Sec',
+  salt: 'daa11b2c9cbb1e1db1182408e90e616d',
+  passwordHash: '516e12592f7d46e624c3668fc146a8b83a97b7df13250b5d95de9640b145071e',
   role: 'admin' as UserRole,
   roleTitle: 'Club Administrator',
   name: 'E.R.I.S.E. Administrator',
@@ -105,24 +107,29 @@ export const SUPER_ADMIN_CONFIG = {
   email: 'erise.club@gmail.com'
 };
 
-export function authenticateUser(usernameInput: string, passwordInput: string): DepartmentHeadUser | null {
+export async function authenticateUser(usernameInput: string, passwordInput: string): Promise<DepartmentHeadUser | null> {
   const cleanUser = usernameInput.trim().toLowerCase();
   const cleanPass = passwordInput.trim();
 
-  // Check Super Admin
+  // Check Super Admin via Salted Cryptographic SHA-256 Hash
   if (
-    (cleanUser === SUPER_ADMIN_CONFIG.username || cleanUser === 'admin') &&
-    cleanPass === SUPER_ADMIN_CONFIG.password
+    cleanUser === SUPER_ADMIN_CONFIG.username ||
+    cleanUser === 'admin' ||
+    cleanUser === 'ayoub_berbache' ||
+    cleanUser === 'ayoub'
   ) {
-    return {
-      id: 'super-admin',
-      name: SUPER_ADMIN_CONFIG.name,
-      username: SUPER_ADMIN_CONFIG.username,
-      role: 'admin',
-      roleTitle: SUPER_ADMIN_CONFIG.roleTitle,
-      department: 'All',
-      email: SUPER_ADMIN_CONFIG.email,
-    };
+    const isValid = await verifyPasswordHash(cleanPass, SUPER_ADMIN_CONFIG.salt, SUPER_ADMIN_CONFIG.passwordHash);
+    if (isValid) {
+      return {
+        id: 'super-admin',
+        name: SUPER_ADMIN_CONFIG.name,
+        username: SUPER_ADMIN_CONFIG.username,
+        role: 'admin',
+        roleTitle: SUPER_ADMIN_CONFIG.roleTitle,
+        department: 'All',
+        email: SUPER_ADMIN_CONFIG.email,
+      };
+    }
   }
 
   // Check Department Heads
@@ -148,3 +155,4 @@ export function authenticateUser(usernameInput: string, passwordInput: string): 
 
   return null;
 }
+

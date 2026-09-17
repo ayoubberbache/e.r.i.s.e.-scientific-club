@@ -23,7 +23,7 @@ export const DEPARTMENT_HEADS: Record<Department, HeadConfig> = {
     name: 'Ayoub Berbache',
     username: 'ayoub_berbache',
     aliases: ['ayoub_berbache', 'ayoub berbache', 'ayoub', 'head_projects', 'berbache ayoub', 'head of projects'],
-    password: 'Ayoub_berbache06042006',
+    password: 'Proj#Secure2026!Port',
     role: 'head_projects',
     roleTitle: 'Head of Projects',
     department: 'Projects',
@@ -99,7 +99,7 @@ export const DEPARTMENT_HEADS: Record<Department, HeadConfig> = {
 export const SUPER_ADMIN_CONFIG = {
   username: 'erise_admin',
   salt: 'daa11b2c9cbb1e1db1182408e90e616d',
-  passwordHash: '516e12592f7d46e624c3668fc146a8b83a97b7df13250b5d95de9640b145071e',
+  passwordHash: 'a4c1253447467bd1c8315657bc8057b464d6623ef2833f14c08f611c8435ac87',
   role: 'admin' as UserRole,
   roleTitle: 'Club Administrator',
   name: 'E.R.I.S.E. Administrator',
@@ -114,9 +114,7 @@ export async function authenticateUser(usernameInput: string, passwordInput: str
   // Check Super Admin via Salted Cryptographic SHA-256 Hash
   if (
     cleanUser === SUPER_ADMIN_CONFIG.username ||
-    cleanUser === 'admin' ||
-    cleanUser === 'ayoub_berbache' ||
-    cleanUser === 'ayoub'
+    cleanUser === 'admin'
   ) {
     const isValid = await verifyPasswordHash(cleanPass, SUPER_ADMIN_CONFIG.salt, SUPER_ADMIN_CONFIG.passwordHash);
     if (isValid) {

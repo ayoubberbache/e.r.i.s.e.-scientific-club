@@ -1969,62 +1969,29 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               <ShieldCheck className="w-8 h-8" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-primary tracking-tight">
-              E.R.I.S.E. Portal Login
+              E.R.I.S.E. Admin Portal
             </h1>
             <p className="text-xs sm:text-sm text-secondary max-w-sm mx-auto">
-              Sign in as Administrator or Department Head (Projects, Organization, Media)
+              Sign in to access the E.R.I.S.E. Administrative Dashboard
             </p>
           </div>
 
-          {/* Quick Department Portals Directory */}
-          <div className="p-3.5 rounded-2xl bg-dominant/80 border border-subtle space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted block text-center">
-              Available Access Ports
-            </span>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div 
-                onClick={() => { setUsername('Ayoub Berbache'); setError(''); }}
-                className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 cursor-pointer transition-all flex items-center gap-2"
-              >
-                <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <div className="truncate">
-                  <span className="font-bold block truncate">Projects Head</span>
-                  <span className="text-[10px] text-muted truncate">Ayoub Berbache</span>
+          {/* Super Admin Access Badge */}
+          <div className="p-3 rounded-2xl bg-dominant/80 border border-subtle">
+            <div 
+              onClick={() => { setUsername('erise_admin'); setError(''); }}
+              className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 cursor-pointer transition-all flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                <div>
+                  <span className="font-bold block text-xs">Super Admin</span>
+                  <span className="text-[10px] text-muted">Click to auto-fill username</span>
                 </div>
               </div>
-
-              <div 
-                onClick={() => { setUsername('Ahmed Amine Helali'); setError(''); }}
-                className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20 cursor-pointer transition-all flex items-center gap-2"
-              >
-                <Building className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <div className="truncate">
-                  <span className="font-bold block truncate">Organization Head</span>
-                  <span className="text-[10px] text-muted truncate">Ahmed Amine Helali</span>
-                </div>
-              </div>
-
-              <div 
-                onClick={() => { setUsername('Matriche Abderrahmane'); setError(''); }}
-                className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300 hover:bg-purple-500/20 cursor-pointer transition-all flex items-center gap-2"
-              >
-                <Camera className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                <div className="truncate">
-                  <span className="font-bold block truncate">Media Head</span>
-                  <span className="text-[10px] text-muted truncate">Matriche Abderrahmane</span>
-                </div>
-              </div>
-
-              <div 
-                onClick={() => { setUsername('erise_admin'); setError(''); }}
-                className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 cursor-pointer transition-all flex items-center gap-2"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <div className="truncate">
-                  <span className="font-bold block truncate">Super Admin</span>
-                  <span className="text-[10px] text-muted truncate">erise_admin</span>
-                </div>
-              </div>
+              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                erise_admin
+              </span>
             </div>
           </div>
 
@@ -2038,13 +2005,13 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
-                Username / Head Name
+                Username
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. Ayoub Berbache or erise_admin"
+                placeholder="erise_admin"
                 className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-medium"
                 required
               />

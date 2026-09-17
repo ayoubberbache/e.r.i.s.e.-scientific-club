@@ -185,19 +185,19 @@ export function Footer() {
 
         </div>
 
-        {/* Minimal Global Sessions & First 4 Visitor Countries */}
+        {/* Minimal Global Visits & Dynamically Pulled Visitor Countries */}
         <div className="py-4 border-t border-subtle/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-          {/* Left: Minimal Session Metric */}
+          {/* Left: Minimal Visits Metric */}
           <div className="flex items-center gap-2 text-muted">
             <Globe className="w-3.5 h-3.5 text-muted/80 shrink-0" />
             <span className="font-medium text-secondary text-xs">
-              {language === 'ar' ? 'جلسات التصفح' : 'Global Sessions'}
+              {language === 'ar' ? 'زيارات الموقع' : 'Global Visits'}
             </span>
             <span className="text-subtle text-[10px] select-none">•</span>
             <span className="font-mono text-xs font-semibold text-primary">
               {visitorStats.total > 0
-                ? `${visitorStats.total.toLocaleString()} ${language === 'ar' ? 'جلسة' : 'sessions'}`
-                : (language === 'ar' ? 'جاري التحميل...' : '— sessions')}
+                ? `${visitorStats.total.toLocaleString()} ${language === 'ar' ? 'زيارة' : 'visits'}`
+                : (language === 'ar' ? 'جاري التحميل...' : '— visits')}
             </span>
           </div>
 
@@ -207,7 +207,7 @@ export function Footer() {
               <div
                 key={c.code}
                 className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-subtle/60 bg-dominant/40 text-[11px] text-muted hover:text-primary hover:border-subtle transition-colors"
-                title={`${c.name}: ${c.count} ${language === 'ar' ? 'جلسة' : 'sessions'}`}
+                title={`${c.name}: ${c.count} ${language === 'ar' ? 'زيارة' : 'visits'}`}
               >
                 <img
                   src={c.flagUrl || `https://flagcdn.com/w40/${c.code.toLowerCase()}.png`}

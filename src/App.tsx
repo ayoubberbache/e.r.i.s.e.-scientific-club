@@ -35,6 +35,22 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Uncaught runtime error:", error, errorInfo);
+
+    // Auto-recover from stale deployment chunk errors across releases
+    const isChunkError = 
+      error?.message?.includes('dynamically imported module') || 
+      error?.message?.includes('Loading chunk') ||
+      error?.message?.includes('Failed to fetch');
+
+    if (isChunkError) {
+      const reloadKey = 'erise_chunk_reload_ts';
+      const lastReload = Number(sessionStorage.getItem(reloadKey) || 0);
+      const now = Date.now();
+      if (now - lastReload > 15000) {
+        sessionStorage.setItem(reloadKey, String(now));
+        window.location.reload();
+      }
+    }
   }
 
   render() {
@@ -55,7 +71,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           )}
           <div className="flex flex-wrap items-center justify-center gap-3">
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                sessionStorage.clear();
+                window.location.reload();
+              }}
               className="px-6 py-2.5 rounded-xl bg-[#00e5ff] text-[#0a1628] font-bold text-sm hover:bg-[#5ef0ff] transition-colors"
             >
               Reload Page
@@ -63,6 +82,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <button
               onClick={() => {
                 localStorage.removeItem('erise_admin_session');
+                localStorage.removeItem('erise_auth_session_v2');
+                sessionStorage.clear();
                 window.location.href = '/#/admin';
                 window.location.reload();
               }}

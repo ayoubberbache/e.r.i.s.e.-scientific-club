@@ -8,7 +8,14 @@ import { UpcomingEventsNotification } from '../components/UpcomingEventsNotifica
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
 
-const ZaitonaViewer = React.lazy(() => import('../components/ZaitonaModel').then(m => ({ default: m.ZaitonaViewer })));
+const ZaitonaViewer = React.lazy(() => 
+  import('../components/ZaitonaModel')
+    .then(m => ({ default: m.ZaitonaViewer }))
+    .catch((err) => {
+      console.warn('Failed to load Zaitona 3D model component:', err);
+      return { default: () => null };
+    })
+);
 
 export function Home() {
   const { language, t, getLocalized } = useLanguage();

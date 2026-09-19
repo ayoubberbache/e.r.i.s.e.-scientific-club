@@ -46,14 +46,14 @@ export function calculateMemberRating(
  */
 export async function fetchMembersWithRatings(): Promise<ClubMember[]> {
   try {
-    // 1. Fetch registrations
+    // 1. Fetch registrations — actual columns: id, full_name, email, phone, study_year, specialization, departments (array), registered_at, status
     const { data: registrations, error: regError } = await supabase
       .from('registrations')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('registered_at', { ascending: false });
 
     if (regError || !registrations) {
-      console.warn('Could not fetch registrations directly from Supabase, attempting fallback:', regError);
+      console.warn('Could not fetch registrations from Supabase:', regError);
       return [];
     }
 
@@ -105,18 +105,22 @@ export async function fetchMembersWithRatings(): Promise<ClubMember[]> {
         manualAdj
       );
 
+      // departments is an array like ["Media","Organization","Projects"] — pick first
+      const depts: string[] = Array.isArray(reg.departments) ? reg.departments : [];
+      const primaryDept = depts[0] || 'General';
+
       return {
         id: reg.id,
-        full_name: reg.full_name || `${reg.first_name || ''} ${reg.last_name || ''}`.trim() || 'Club Member',
+        full_name: reg.full_name || 'Club Member',
         email: reg.email || '',
-        phone: reg.phone || reg.phone_number || '',
-        department: reg.department || 'General',
-        sub_department: reg.sub_department || '',
-        skills: reg.skills || reg.technical_skills || '',
-        academic_year: reg.academic_year || reg.study_level || '',
-        motivation: reg.motivation || '',
+        phone: reg.phone || '',
+        department: primaryDept,
+        sub_department: reg.specialization || '',
+        skills: reg.specialization || '',
+        academic_year: reg.study_year ? `Year ${reg.study_year}` : '',
+        motivation: '',
         status: reg.status || 'approved',
-        created_at: reg.created_at,
+        created_at: reg.registered_at,
         baseline_rating: BASELINE_RATING,
         overall_rating: overallRating,
         tasks_completed: tasksCompleted,
@@ -249,11 +253,11 @@ export async function fetchTasksFromSupabase(): Promise<DepartmentTask[]> {
 
     const { data: members } = await supabase
       .from('registrations')
-      .select('id, full_name, first_name, last_name');
+      .select('id, full_name');
 
     const memberNameMap = new Map<number, string>();
     (members || []).forEach((m: any) => {
-      memberNameMap.set(m.id, m.full_name || `${m.first_name || ''} ${m.last_name || ''}`.trim());
+      memberNameMap.set(m.id, m.full_name || `Member #${m.id}`);
     });
 
     const tasks: DepartmentTask[] = projects.map((p: any) => {
@@ -269,7 +273,8 @@ export async function fetchTasksFromSupabase(): Promise<DepartmentTask[]> {
       let status: DepartmentTask['status'] = 'pending';
       const s = (p.status || '').toLowerCase();
       if (s === 'completed' || s === 'done') status = 'completed';
-      else if (s === 'in_progress' || s === 'in progress') status = 'in_progress';
+      else if (s === 'in_progress' || s === 'in progress' || s === 'in development' || s === 'active') status = 'in_progress';
+      else if (s === 'planning' || s === 'pending' || s === 'draft') status = 'pending';
 
       return {
         id: String(p.id),

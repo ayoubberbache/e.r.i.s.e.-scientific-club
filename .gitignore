@@ -11,6 +11,8 @@ coverage/
 *.blend
 *.blend1
 *.zip
+*.exe
+*.lnk
 dist-electron/
 Erise-RH/dist/
 Erise-RH/dist-electron/

@@ -347,14 +347,18 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
                             Assigned Members:
                           </span>
                           <div className="flex flex-wrap gap-1">
-                            {task.assigned_members.map((m) => (
-                              <span
-                                key={m.id}
-                                className="text-[11px] px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-800 font-medium"
-                              >
-                                {m.name}
-                              </span>
-                            ))}
+                            {task.assigned_members.map((m) => {
+                              const foundMember = members.find((mem) => String(mem.id) === String(m.id));
+                              const displayName = foundMember?.full_name || (m.name && !String(m.name).startsWith('Member #') ? m.name : `Member #${m.id}`);
+                              return (
+                                <span
+                                  key={m.id}
+                                  className="text-[11px] px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-800 font-medium"
+                                >
+                                  {displayName}
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                       )}

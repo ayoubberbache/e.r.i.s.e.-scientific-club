@@ -903,10 +903,15 @@ export async function fetchDepartmentTasks(dept: Department): Promise<ClubTask[]
             description: p.description || '',
             department: dept,
             assigned_member_ids: assignedIds,
-            assigned_members: assignedIds.map((mId: any) => ({
-              id: mId,
-              name: `Member #${mId}`
-            })),
+            assigned_members: Array.isArray(p.assigned_members) && p.assigned_members.length > 0
+              ? p.assigned_members.map((m: any) => ({
+                  id: m.id,
+                  name: m.name && !String(m.name).startsWith('Member #') ? m.name : `Member #${m.id}`
+                }))
+              : assignedIds.map((mId: any) => ({
+                  id: mId,
+                  name: `Member #${mId}`
+                })),
             priority: customRoles.priority || 'High',
             deadline: customRoles.deadline || undefined,
             status: p.status || 'Pending',

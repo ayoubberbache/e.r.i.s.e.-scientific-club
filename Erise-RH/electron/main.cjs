@@ -566,8 +566,9 @@ ipcMain.handle('db-fetch-tasks', async () => {
           };
         });
 
-        const existingTitles = new Set(primaryTasks.map((p) => (p.title || '').trim().toLowerCase()));
-        const uniqueOrgTasks = orgFormattedTasks.filter((ot) => !existingTitles.has((ot.title || '').trim().toLowerCase()));
+        const existingIds = new Set(primaryTasks.map((p) => String(p.id)));
+        const mirroredOrgIds = new Set(primaryTasks.map((p) => p.member_custom_roles?.org_task_id).filter(Boolean));
+        const uniqueOrgTasks = orgFormattedTasks.filter((ot) => !existingIds.has(String(ot.id)) && !mirroredOrgIds.has(String(ot.id)));
         mergedTasks = [...uniqueOrgTasks, ...primaryTasks];
       } catch (orgErr) {
         console.warn('[Main] Error merging Org DB tasks in db-fetch-tasks:', orgErr);

@@ -182,8 +182,9 @@ export default async function handler(req: any, res: any) {
             };
           });
 
-          const existingTitles = new Set(mergedProjects.map((p: any) => (p.title || '').trim().toLowerCase()));
-          const newOrgTasks = orgTasks.filter((ot: any) => !existingTitles.has((ot.title || '').trim().toLowerCase()));
+          const existingIds = new Set(mergedProjects.map((p: any) => String(p.id)));
+          const mirroredOrgIds = new Set(mergedProjects.map((p: any) => p.member_custom_roles?.org_task_id).filter(Boolean));
+          const newOrgTasks = orgTasks.filter((ot: any) => !existingIds.has(String(ot.id)) && !mirroredOrgIds.has(String(ot.id)));
           mergedProjects = [...newOrgTasks, ...mergedProjects];
         } catch (orgErr) {
           console.warn('Could not merge organization app tasks:', orgErr);

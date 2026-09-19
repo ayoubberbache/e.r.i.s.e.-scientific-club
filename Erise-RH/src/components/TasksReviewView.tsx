@@ -6,21 +6,35 @@ import {
   Award, 
   CheckCircle2, 
   Filter, 
-  FolderKanban
+  FolderKanban,
+  RefreshCw
 } from 'lucide-react';
 import { DepartmentTask } from '../types';
 
 interface TasksReviewViewProps {
   tasks: DepartmentTask[];
   onAwardPoints: (taskId: string) => void;
+  onRefresh?: () => Promise<void> | void;
 }
 
 export const TasksReviewView: React.FC<TasksReviewViewProps> = ({
   tasks,
   onAwardPoints,
+  onRefresh,
 }) => {
   const [deptFilter, setDeptFilter] = useState<'All' | 'Projects' | 'Organization' | 'Media'>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | 'completed' | 'in_progress' | 'pending'>('All');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    if (!onRefresh || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const filtered = tasks.filter((t) => {
     const matchesDept = deptFilter === 'All' || t.department === deptFilter;
@@ -43,6 +57,15 @@ export const TasksReviewView: React.FC<TasksReviewViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
             <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs font-mono">
               <span className="text-slate-500">Completed: </span>
               <span className="font-bold text-emerald-700">

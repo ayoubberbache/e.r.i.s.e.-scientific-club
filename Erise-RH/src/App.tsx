@@ -40,6 +40,10 @@ export const App: React.FC = () => {
       ]);
       setMembers(mems);
       setTasks(dbTasks);
+      // If data loads successfully, mark as connected even if WebSocket isn't up
+      if (mems.length > 0 || dbTasks.length > 0) {
+        setIsRealtimeConnected(true);
+      }
     } catch (e) {
       console.error('Error loading HR members/tasks:', e);
     } finally {
@@ -61,6 +65,20 @@ export const App: React.FC = () => {
     } else {
       setActivities([]);
     }
+
+    // Polling fallback: refresh data every 15 seconds for guaranteed sync
+    const pollInterval = setInterval(() => {
+      loadData();
+    }, 15000);
+
+    // Reload data when window regains focus
+    const handleFocus = () => { loadData(); };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [loadData]);
 
   // Handle incoming notification
@@ -92,53 +110,73 @@ export const App: React.FC = () => {
     [soundEnabled]
   );
 
-  // Supabase Realtime Channels
+  // Supabase Realtime Channels — listen to ALL events (INSERT/UPDATE/DELETE)
   useEffect(() => {
     const channel = supabase
       .channel('rh-live-feed')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'registrations' },
+        { event: '*', schema: 'public', table: 'registrations' },
         (payload) => {
-          const newReg = payload.new;
-          handleIncomingNotification({
-            type: 'member_registered',
-            title: `New Club Application: ${newReg.full_name || 'Candidate'}`,
-            description: `Registered for ${newReg.department || 'General'} department. Study Year: ${newReg.academic_year || 'N/A'}.`,
-            department: newReg.department,
-            metadata: newReg,
-          });
+          if (payload.eventType === 'INSERT') {
+            const newReg = payload.new;
+            handleIncomingNotification({
+              type: 'member_registered',
+              title: `New Club Application: ${newReg.full_name || 'Candidate'}`,
+              description: `Registered for ${newReg.department || 'General'} department. Study Year: ${newReg.academic_year || 'N/A'}.`,
+              department: newReg.department,
+              metadata: newReg,
+            });
+          }
           loadData();
         }
       )
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'event_registrations' },
+        { event: '*', schema: 'public', table: 'event_registrations' },
         (payload) => {
-          handleIncomingNotification({
-            type: 'event_signup',
-            title: 'New Event Registration',
-            description: `Participant enrolled in club event.`,
-            metadata: payload.new,
-          });
+          if (payload.eventType === 'INSERT') {
+            handleIncomingNotification({
+              type: 'event_signup',
+              title: 'New Event Registration',
+              description: `Participant enrolled in club event.`,
+              metadata: payload.new,
+            });
+          }
+          loadData();
         }
       )
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'projects' },
+        { event: '*', schema: 'public', table: 'projects' },
         (payload) => {
-          const proj = payload.new;
-          handleIncomingNotification({
-            type: 'project_created',
-            title: `New Project Release: ${proj.title || 'Untitled'}`,
-            description: `Domain: ${proj.domain || 'Renewable Tech'}. Status: ${proj.status || 'Active'}.`,
-            department: 'Projects',
-            metadata: proj,
-          });
+          if (payload.eventType === 'INSERT') {
+            const proj = payload.new;
+            handleIncomingNotification({
+              type: 'project_created',
+              title: `New Project Release: ${proj.title || 'Untitled'}`,
+              description: `Domain: ${proj.domain || 'Renewable Tech'}. Status: ${proj.status || 'Active'}.`,
+              department: 'Projects',
+              metadata: proj,
+            });
+          }
+          loadData();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'attendance_logs' },
+        () => { loadData(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'member_ratings' },
+        () => { loadData(); }
+      )
       .subscribe((status) => {
-        setIsRealtimeConnected(status === 'SUBSCRIBED');
+        if (status === 'SUBSCRIBED') {
+          setIsRealtimeConnected(true);
+        }
       });
 
     return () => {
@@ -284,6 +322,7 @@ export const App: React.FC = () => {
                 <TasksReviewView
                   tasks={tasks}
                   onAwardPoints={handleAwardTaskPoints}
+                  onRefresh={loadData}
                 />
               )}
 

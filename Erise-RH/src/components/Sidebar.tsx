@@ -11,7 +11,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-export type TabKey = 'members' | 'ticker' | 'tasks' | 'attendance' | 'applications';
+export type TabKey = 'members' | 'ticker' | 'tasks' | 'attendance' | 'applications' | 'events';
 
 interface SidebarProps {
   activeTab: TabKey;
@@ -36,11 +36,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Users,
     },
     {
-      key: 'ticker' as TabKey,
-      label: 'Activity Feed',
-      sublabel: 'Club Events & Log',
-      icon: Activity,
-      badge: unreadTickerCount > 0 ? unreadTickerCount : undefined,
+      key: 'applications' as TabKey,
+      label: 'Intake Applications',
+      sublabel: 'Candidate Review',
+      icon: UserCheck,
+      badge: pendingApplicationsCount > 0 ? pendingApplicationsCount : undefined,
+    },
+    {
+      key: 'events' as TabKey,
+      label: 'Events & Hackathons',
+      sublabel: 'Participant Lists & Export',
+      icon: CalendarCheck,
+    },
+    {
+      key: 'attendance' as TabKey,
+      label: 'Attendance Records',
+      sublabel: 'Workshops & Events',
+      icon: CalendarCheck,
     },
     {
       key: 'tasks' as TabKey,
@@ -50,17 +62,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: activeTasksCount > 0 ? activeTasksCount : undefined,
     },
     {
-      key: 'attendance' as TabKey,
-      label: 'Attendance Records',
-      sublabel: 'Workshops & Events',
-      icon: CalendarCheck,
-    },
-    {
-      key: 'applications' as TabKey,
-      label: 'Intake Applications',
-      sublabel: 'Candidate Review',
-      icon: UserCheck,
-      badge: pendingApplicationsCount > 0 ? pendingApplicationsCount : undefined,
+      key: 'ticker' as TabKey,
+      label: 'Activity Feed',
+      sublabel: 'Club Events & Log',
+      icon: Activity,
+      badge: unreadTickerCount > 0 ? unreadTickerCount : undefined,
     },
   ];
 

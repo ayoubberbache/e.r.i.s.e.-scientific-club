@@ -1,4 +1,4 @@
-import { ClubMember, AttendanceLog, DepartmentTask, AppraisalInput } from '../types';
+import { ClubMember, AttendanceLog, DepartmentTask, AppraisalInput, EventItem, EventRegistration, EventRegistrationMember } from '../types';
 import { supabase } from './supabase';
 
 const BASELINE_RATING = 50.0;
@@ -276,3 +276,108 @@ export function saveStoredTasks(tasks: DepartmentTask[]): void {
     localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
   } catch (e) {}
 }
+
+/**
+ * Fetch all events from Supabase
+ */
+export async function fetchEvents(): Promise<EventItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .order('id', { ascending: false });
+
+    if (error || !data) return [];
+    return data;
+  } catch (e) {
+    console.error('Error fetching events:', e);
+    return [];
+  }
+}
+
+/**
+ * Fetch event registrations and their participants (teams, companions, members)
+ */
+export async function fetchEventRegistrations(eventId?: number): Promise<EventRegistration[]> {
+  try {
+    let query = supabase
+      .from('event_registrations')
+      .select('*')
+      .order('registered_at', { ascending: false });
+
+    if (eventId) {
+      query = query.eq('event_id', eventId);
+    }
+
+    const { data: registrations, error: regErr } = await query;
+    if (regErr || !registrations) return [];
+
+    const { data: allMembers } = await supabase
+      .from('event_registration_members')
+      .select('*');
+
+    const { data: allEvents } = await supabase
+      .from('events')
+      .select('id, title');
+
+    const eventTitleMap = new Map<number, string>();
+    (allEvents || []).forEach((e: any) => eventTitleMap.set(e.id, e.title));
+
+    const membersByRegId = new Map<number, EventRegistrationMember[]>();
+    (allMembers || []).forEach((m: any) => {
+      const list = membersByRegId.get(m.registration_id) || [];
+      list.push(m);
+      membersByRegId.set(m.registration_id, list);
+    });
+
+    return registrations.map((r: any) => ({
+      id: r.id,
+      event_id: r.event_id,
+      event_title: eventTitleMap.get(r.event_id) || `Event #${r.event_id}`,
+      registration_type: r.registration_type || 'individual',
+      team_name: r.team_name,
+      institution: r.institution || 'N/A',
+      study_year: r.study_year || 'N/A',
+      has_companion: !!r.has_companion,
+      companion_name: r.companion_name,
+      companion_role: r.companion_role,
+      status: r.status || 'pending',
+      registered_at: r.registered_at,
+      members: membersByRegId.get(r.id) || [],
+    }));
+  } catch (e) {
+    console.error('Error fetching event registrations:', e);
+    return [];
+  }
+}
+
+/**
+ * Export arbitrary tabular data to CSV with UTF-8 BOM encoding for Excel compatibility
+ */
+export function exportToCSV(
+  filename: string, 
+  headers: string[], 
+  rows: (string | number | boolean | null | undefined)[][]
+): void {
+  const escapeCell = (cell: any) => {
+    if (cell === null || cell === undefined) return '""';
+    const str = String(cell).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const csvContent = [
+    headers.map(escapeCell).join(','),
+    ...rows.map(row => row.map(escapeCell).join(','))
+  ].join('\r\n');
+
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename.endsWith('.csv') ? filename : `${filename}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+

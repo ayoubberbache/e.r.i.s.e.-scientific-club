@@ -7,6 +7,7 @@ import { RealTimeTickerView } from './components/RealTimeTickerView';
 import { TasksReviewView } from './components/TasksReviewView';
 import { AttendanceReviewView } from './components/AttendanceReviewView';
 import { ApplicationsView } from './components/ApplicationsView';
+import { EventsReviewView } from './components/EventsReviewView';
 import { 
   fetchMembersWithRatings, 
   submitAppraisal, 
@@ -297,6 +298,10 @@ export const App: React.FC = () => {
                   }}
                   onRefresh={loadData}
                 />
+              )}
+
+              {activeTab === 'events' && (
+                <EventsReviewView />
               )}
             </motion.div>
           </AnimatePresence>

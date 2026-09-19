@@ -103,7 +103,7 @@ export const DEPARTMENT_HEADS: Record<Department, HeadConfig> = {
 export const SUPER_ADMIN_CONFIG = {
   username: 'erise_admin',
   salt: 'erise_salt_super_alpha982_2026',
-  passwordHash: '33edd6f3e9e0cb5f8a1df580f26a0c9498ece17684b152ad13fe6df77a81e7cc',
+  passwordHash: '47649377eaa9986440667d4b2c783370bd720e90d7bbbda38ad6d22165e313e4',
   role: 'admin' as UserRole,
   roleTitle: 'Club Administrator',
   name: 'E.R.I.S.E. Administrator',
@@ -184,9 +184,7 @@ export async function authenticateUser(usernameInput: string, passwordInput: str
   // First try direct password resolution (automatic portal assignment)
   const passwordMatch = await authenticateByPassword(cleanPass);
   if (passwordMatch) {
-    if (!cleanUser || cleanUser === 'admin' || cleanUser === passwordMatch.username.toLowerCase()) {
-      return passwordMatch;
-    }
+    return passwordMatch;
   }
 
   // Check Super Admin via Salted Cryptographic SHA-256 Hash

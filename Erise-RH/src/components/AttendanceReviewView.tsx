@@ -3,10 +3,12 @@ import {
   CalendarCheck, 
   Search, 
   CheckCircle2, 
-  XCircle
+  XCircle,
+  Download
 } from 'lucide-react';
 import { AttendanceLog } from '../types';
 import { supabase } from '../lib/supabase';
+import { exportToCSV } from '../lib/hrEngine';
 
 interface AttendanceReviewViewProps {
   onRefreshMembers: () => void;
@@ -79,6 +81,32 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
     ? Math.round((presentCount / filtered.length) * 100) 
     : 100;
 
+  const handleExportCSV = () => {
+    const headers = [
+      'Log ID',
+      'Member ID',
+      'Member Name',
+      'Event / Workshop Title',
+      'Session Date',
+      'Status',
+      'Absence Reason',
+      'Logged At'
+    ];
+
+    const rows = filtered.map((l) => [
+      l.id,
+      l.member_id,
+      l.member_name || '',
+      l.event_title,
+      l.session_date,
+      l.status,
+      l.absence_reason || '',
+      l.created_at ? new Date(l.created_at).toLocaleString() : ''
+    ]);
+
+    exportToCSV(`ERISE_Attendance_${selectedEvent}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#f8fcfd] text-slate-900">
       {/* Header */}
@@ -93,26 +121,38 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
             </p>
           </div>
 
-          {/* Aggregate Metrics */}
-          <div className="flex items-center gap-2">
-            <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs">
-              <div className="text-[10px] uppercase font-bold text-slate-500">Total Check-ins</div>
-              <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
-                {logs.length}
-              </div>
-            </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportCSV}
+              disabled={filtered.length === 0}
+              className="px-3 py-1.5 bg-[#0d5c63] hover:bg-[#094247] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40"
+              title="Download CSV containing filtered attendance records"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export Attendance File (CSV)
+            </button>
 
-            <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs">
-              <div className="text-[10px] uppercase font-bold text-emerald-700">Turnout Rate</div>
-              <div className="text-base font-bold font-mono text-emerald-700 mt-0.5">
-                {attendanceRate}%
+            {/* Aggregate Metrics */}
+            <div className="flex items-center gap-2">
+              <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs">
+                <div className="text-[10px] uppercase font-bold text-slate-500">Total Check-ins</div>
+                <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
+                  {logs.length}
+                </div>
               </div>
-            </div>
 
-            <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs">
-              <div className="text-[10px] uppercase font-bold text-slate-500">Present / Absent</div>
-              <div className="text-base font-bold font-mono text-slate-800 mt-0.5">
-                <span className="text-emerald-700">{presentCount}</span> / <span className="text-rose-700">{absentCount}</span>
+              <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs">
+                <div className="text-[10px] uppercase font-bold text-emerald-700">Turnout Rate</div>
+                <div className="text-base font-bold font-mono text-emerald-700 mt-0.5">
+                  {attendanceRate}%
+                </div>
+              </div>
+
+              <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs">
+                <div className="text-[10px] uppercase font-bold text-slate-500">Present / Absent</div>
+                <div className="text-base font-bold font-mono text-slate-800 mt-0.5">
+                  <span className="text-emerald-700">{presentCount}</span> / <span className="text-rose-700">{absentCount}</span>
+                </div>
               </div>
             </div>
           </div>

@@ -74,6 +74,44 @@ export interface AppraisalInput {
   notes: string;
 }
 
+export interface EventItem {
+  id: number;
+  title: string;
+  title_ar?: string;
+  description?: string;
+  date?: string;
+  time?: string;
+  location?: string;
+  registration_type?: 'individual' | 'team';
+  registration_deadline?: string;
+  status?: string;
+}
+
+export interface EventRegistrationMember {
+  id: number;
+  registration_id: number;
+  is_leader: boolean;
+  full_name: string;
+  email: string;
+  phone?: string;
+}
+
+export interface EventRegistration {
+  id: number;
+  event_id: number;
+  event_title?: string;
+  registration_type: string;
+  team_name?: string | null;
+  institution: string;
+  study_year: string;
+  has_companion: boolean;
+  companion_name?: string | null;
+  companion_role?: string | null;
+  status: string;
+  registered_at: string;
+  members: EventRegistrationMember[];
+}
+
 declare global {
   interface Window {
     electronAPI?: {

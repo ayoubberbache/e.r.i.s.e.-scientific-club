@@ -6,9 +6,11 @@ import {
   Mail, 
   Phone, 
   GraduationCap, 
-  Filter
+  Filter,
+  Download
 } from 'lucide-react';
 import { ClubMember } from '../types';
+import { exportToCSV } from '../lib/hrEngine';
 
 interface ApplicationsViewProps {
   members: ClubMember[];
@@ -45,6 +47,38 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
     }
   };
 
+  const handleExportCSV = () => {
+    const headers = [
+      'Member ID',
+      'Full Name',
+      'Email',
+      'Phone',
+      'Department',
+      'Sub Department',
+      'Study Level / Year',
+      'Skills',
+      'Motivation',
+      'Status',
+      'Applied Date'
+    ];
+
+    const rows = filtered.map(m => [
+      m.id,
+      m.full_name,
+      m.email,
+      m.phone || '',
+      m.department,
+      m.sub_department || '',
+      m.academic_year || '',
+      m.skills || '',
+      m.motivation || '',
+      m.status,
+      m.created_at ? new Date(m.created_at).toLocaleDateString() : ''
+    ]);
+
+    exportToCSV(`ERISE_Club_Members_${filter}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   const pendingCount = members.filter(m => m.status === 'pending').length;
 
   return (
@@ -62,8 +96,18 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200">
-              {pendingCount} Pending Candidates
+            <button
+              onClick={handleExportCSV}
+              disabled={filtered.length === 0}
+              className="px-3 py-1.5 bg-[#0d5c63] hover:bg-[#094247] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40"
+              title="Download CSV containing filtered members list"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export Members File (CSV)
+            </button>
+
+            <span className="text-xs font-mono font-bold px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200">
+              {pendingCount} Pending
             </span>
           </div>
         </div>

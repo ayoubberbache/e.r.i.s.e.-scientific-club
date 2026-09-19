@@ -29,6 +29,17 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
   const fetchLogs = async () => {
     setLoading(true);
     try {
+      if (typeof window !== 'undefined' && (window as any).electronAPI?.fetchAttendanceLogs) {
+        try {
+          const logs = await (window as any).electronAPI.fetchAttendanceLogs();
+          setLogs(logs || []);
+          setLoading(false);
+          return;
+        } catch (e) {
+          console.warn('IPC fetchAttendanceLogs failed:', e);
+        }
+      }
+
       const { data, error } = await supabase
         .from('attendance_logs')
         .select('*')
@@ -37,11 +48,11 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
       if (data && !error) {
         const { data: regs } = await supabase
           .from('registrations')
-          .select('id, full_name, first_name, last_name');
+          .select('id, full_name');
 
         const memberMap = new Map<number, string>();
         (regs || []).forEach((r: any) => {
-          memberMap.set(r.id, r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim());
+          memberMap.set(r.id, r.full_name || `Member #${r.id}`);
         });
 
         const mapped: AttendanceLog[] = data.map((d: any) => ({

@@ -40,6 +40,7 @@ export const App: React.FC = () => {
       ]);
       setMembers(mems);
       setTasks(dbTasks);
+      console.log('[Renderer] Loaded members count:', mems.length, 'tasks count:', dbTasks.length);
       // If data loads successfully, mark as connected even if WebSocket isn't up
       if (mems.length > 0 || dbTasks.length > 0) {
         setIsRealtimeConnected(true);
@@ -178,6 +179,35 @@ export const App: React.FC = () => {
           setIsRealtimeConnected(true);
         }
       });
+
+    // Also listen to Main Process IPC Realtime bridge
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.onDbChange) {
+      (window as any).electronAPI.onDbChange((data: any) => {
+        console.log('[App] Realtime event from Main process:', data);
+        setIsRealtimeConnected(true);
+        if (data?.table === 'registrations' && data?.payload?.eventType === 'INSERT') {
+          const newReg = data.payload.new;
+          handleIncomingNotification({
+            type: 'member_registered',
+            title: `New Club Application: ${newReg?.full_name || 'Candidate'}`,
+            description: `Registered for ${Array.isArray(newReg?.departments) ? newReg.departments[0] : 'General'} department.`,
+            department: Array.isArray(newReg?.departments) ? newReg.departments[0] : 'General',
+            metadata: newReg,
+          });
+        }
+        if (data?.table === 'projects' && data?.payload?.eventType === 'INSERT') {
+          const proj = data.payload.new;
+          handleIncomingNotification({
+            type: 'project_created',
+            title: `New Project Release: ${proj?.title || 'Untitled'}`,
+            description: `Status: ${proj?.status || 'Active'}.`,
+            department: proj?.department || 'Projects',
+            metadata: proj,
+          });
+        }
+        loadData();
+      });
+    }
 
     return () => {
       supabase.removeChannel(channel);

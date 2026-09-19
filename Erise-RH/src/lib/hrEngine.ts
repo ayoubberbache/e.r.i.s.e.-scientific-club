@@ -45,6 +45,18 @@ export function calculateMemberRating(
  * Fetch all members with computed baseline ratings from registrations and related tables
  */
 export async function fetchMembersWithRatings(): Promise<ClubMember[]> {
+  // 0. Try direct IPC bridge to Node.js main process first (bypasses browser RLS and restrictions)
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.fetchMembers) {
+    try {
+      const ipcMembers = await (window as any).electronAPI.fetchMembers();
+      if (Array.isArray(ipcMembers) && ipcMembers.length > 0) {
+        return ipcMembers;
+      }
+    } catch (e) {
+      console.warn('IPC fetchMembers error, falling back to direct query:', e);
+    }
+  }
+
   try {
     // 1. Fetch registrations — actual columns: id, full_name, email, phone, study_year, specialization, departments (array), registered_at, status
     const { data: registrations, error: regError } = await supabase
@@ -53,7 +65,7 @@ export async function fetchMembersWithRatings(): Promise<ClubMember[]> {
       .order('registered_at', { ascending: false });
 
     if (regError || !registrations) {
-      console.warn('Could not fetch registrations from Supabase:', regError);
+      console.warn('Could not fetch registrations from Supabase:', regError?.message, regError?.details, regError?.hint, regError?.code);
       return [];
     }
 
@@ -142,6 +154,15 @@ export async function fetchMembersWithRatings(): Promise<ClubMember[]> {
  * Submit an HR appraisal for a member and update member_ratings
  */
 export async function submitAppraisal(appraisal: AppraisalInput): Promise<boolean> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.submitAppraisal) {
+    try {
+      const ok = await (window as any).electronAPI.submitAppraisal(appraisal);
+      if (ok) return true;
+    } catch (e) {
+      console.warn('IPC submitAppraisal failed:', e);
+    }
+  }
+
   const totalDelta = appraisal.punctuality + appraisal.teamwork + appraisal.initiative + appraisal.quality_of_work;
   const now = new Date().toISOString();
 
@@ -203,6 +224,15 @@ export async function submitAppraisal(appraisal: AppraisalInput): Promise<boolea
  * Update member admission status (approved / rejected)
  */
 export async function updateMemberStatus(id: number, status: 'approved' | 'rejected'): Promise<boolean> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.updateMemberStatus) {
+    try {
+      const ok = await (window as any).electronAPI.updateMemberStatus(id, status);
+      if (ok) return true;
+    } catch (e) {
+      console.warn('IPC updateMemberStatus failed:', e);
+    }
+  }
+
   try {
     const { error } = await supabase
       .from('registrations')
@@ -243,13 +273,28 @@ export function getStoredTasks(): DepartmentTask[] {
 }
 
 export async function fetchTasksFromSupabase(): Promise<DepartmentTask[]> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.fetchTasks) {
+    try {
+      const ipcTasks = await (window as any).electronAPI.fetchTasks();
+      if (Array.isArray(ipcTasks)) {
+        saveStoredTasks(ipcTasks);
+        return ipcTasks;
+      }
+    } catch (e) {
+      console.warn('IPC fetchTasks failed:', e);
+    }
+  }
+
   try {
     const { data: projects, error } = await supabase
       .from('projects')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !projects) return getStoredTasks();
+    if (error || !projects) {
+      console.warn('Could not fetch projects:', error?.message, error?.details, error?.hint, error?.code);
+      return getStoredTasks();
+    }
 
     const { data: members } = await supabase
       .from('registrations')
@@ -314,6 +359,15 @@ export function saveStoredTasks(tasks: DepartmentTask[]): void {
  * Fetch all events from Supabase
  */
 export async function fetchEvents(): Promise<EventItem[]> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.fetchEvents) {
+    try {
+      const data = await (window as any).electronAPI.fetchEvents();
+      if (Array.isArray(data)) return data;
+    } catch (e) {
+      console.warn('IPC fetchEvents failed:', e);
+    }
+  }
+
   try {
     const { data, error } = await supabase
       .from('events')
@@ -332,6 +386,15 @@ export async function fetchEvents(): Promise<EventItem[]> {
  * Fetch event registrations and their participants (teams, companions, members)
  */
 export async function fetchEventRegistrations(eventId?: number): Promise<EventRegistration[]> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.fetchEventRegistrations) {
+    try {
+      const data = await (window as any).electronAPI.fetchEventRegistrations(eventId);
+      if (Array.isArray(data)) return data;
+    } catch (e) {
+      console.warn('IPC fetchEventRegistrations failed:', e);
+    }
+  }
+
   try {
     let query = supabase
       .from('event_registrations')

@@ -16,4 +16,7 @@ coverage/
 dist-electron/
 Erise-RH/dist/
 Erise-RH/dist-electron/
+Erise-RH/release/
+Erise-RH/build/
 Erise-RH/node_modules/
+test-rh-sync.cjs

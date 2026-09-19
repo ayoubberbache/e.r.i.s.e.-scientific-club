@@ -4,6 +4,7 @@ export interface ClubMember {
   email: string;
   phone?: string;
   department: string;
+  departments?: string[];
   sub_department?: string;
   skills?: string;
   academic_year?: string;

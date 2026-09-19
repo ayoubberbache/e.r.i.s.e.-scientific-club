@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar as CalendarIcon, MapPin, Clock, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight, X, Users, UserCheck } from 'lucide-react';
+import { Calendar as CalendarIcon, MapPin, Clock, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight, X, Users, UserCheck, GraduationCap, Tag } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { supabase } from '../lib/supabase';
 import { ModelViewer } from '../components/ModelViewer';
@@ -277,7 +277,19 @@ export function Events() {
                         {activeTab === 'upcoming' && !event.no_registration && !event.noRegistration && (
                           <div className="mt-6 flex items-center justify-between flex-wrap gap-3 pt-4 border-t border-subtle/50">
                             <div className="text-xs text-muted">
-                              {event.registration_type === 'team' ? (
+                              {event.registration_type === 'hackathon' ? (
+                                <span className="inline-flex items-center gap-1 text-purple-400 font-bold bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/20">
+                                  <Users className="w-3.5 h-3.5" /> {language === 'ar' ? 'هاكاثون (فريق أو فردي)' : 'Hackathon (Team / Solo)'}
+                                </span>
+                              ) : event.registration_type === 'workshop' || event.registration_type === 'bootcamp' ? (
+                                <span className="inline-flex items-center gap-1 text-cyan-400 font-bold bg-cyan-500/10 px-2.5 py-1 rounded-full border border-cyan-500/20">
+                                  <GraduationCap className="w-3.5 h-3.5" /> {language === 'ar' ? 'ورشة عمل / تدريب (رقم التسجيل)' : 'Workshop / Bootcamp (Student ID)'}
+                                </span>
+                              ) : event.registration_type?.startsWith('custom') ? (
+                                <span className="inline-flex items-center gap-1 text-amber-400 font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                                  <Tag className="w-3.5 h-3.5" /> {event.registration_type.startsWith('custom:') ? event.registration_type.split(':')[1] : (language === 'ar' ? 'فعالية خاصة' : 'Custom Event')}
+                                </span>
+                              ) : event.registration_type === 'team' ? (
                                 <span className="inline-flex items-center gap-1 text-purple-400 font-bold bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/20">
                                   <Users className="w-3.5 h-3.5" /> {t.eventsPage.teamReg} ({event.min_team_size || 2}-{event.max_team_size || 5} {t.eventsPage.members})
                                 </span>

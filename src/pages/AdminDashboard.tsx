@@ -669,6 +669,13 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       if ((activeTab === 'events' || activeTab === 'achievements') && !itemData.images && itemData.image) {
         itemData.images = [itemData.image];
       }
+      if (activeTab === 'events' && itemData.registration_type) {
+        if (itemData.registration_type.startsWith('custom')) {
+          const parts = itemData.registration_type.split(':');
+          itemData.custom_event_type = parts.slice(1).join(':').trim();
+          itemData.registration_type = 'custom';
+        }
+      }
       setFormData(itemData);
       setDeadlinePreset('custom');
     } else {
@@ -678,6 +685,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         setFormData({
           registration_enabled: true,
           registration_type: 'individual',
+          custom_event_type: '',
           min_team_size: 2,
           max_team_size: 5,
           registration_deadline: d.toISOString().slice(0, 16)
@@ -814,6 +822,12 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         if (payload.no_registration === undefined) payload.no_registration = false;
         if (payload.registration_enabled === undefined) payload.registration_enabled = true;
         if (payload.registration_type === undefined) payload.registration_type = 'individual';
+        if (payload.registration_type === 'custom') {
+          payload.registration_type = payload.custom_event_type?.trim()
+            ? `custom:${payload.custom_event_type.trim()}`
+            : 'custom';
+        }
+        delete payload.custom_event_type;
         if (payload.start_date && !payload.date) {
           const sd = new Date(payload.start_date);
           const formatted = sd.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -822,6 +836,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             : formatted;
         }
       } else {
+        delete payload.custom_event_type;
         delete payload.registration_enabled;
         delete payload.registration_type;
         delete payload.min_team_size;
@@ -918,7 +933,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     }
 
     const headers = [
-      'Event', 'Type', 'Team Name', 'Leader Name', 'Leader Email', 'Leader Phone', 
+      'Event', 'Type', 'Student ID', 'Team Name', 'Leader Name', 'Leader Email', 'Leader Phone', 
       'Institution', 'Study Year', 'Members Count', 'All Members', 
       'Companion Present', 'Companion Name', 'Companion Role', 'Status', 'Registered At'
     ];
@@ -927,10 +942,13 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       const members = item.event_registration_members || [];
       const leader = members.find((m: any) => m.is_leader) || members[0] || {};
       const allMembersStr = members.map((m: any) => `${m.full_name} (${m.phone}, ${m.email})`).join(' | ');
+      const studentIdMatch = item.institution?.match(/\[ID:\s*(\d+)\]/) || item.companion_role?.match(/Student ID:\s*(\d+)/) || item.team_name?.match(/Student ID:\s*(\d+)/);
+      const studentId = studentIdMatch ? studentIdMatch[1] : '—';
 
       return [
         item.events?.title || `Event #${item.event_id}`,
         item.registration_type || 'individual',
+        studentId,
         item.team_name || '—',
         leader.full_name || '—',
         leader.email || '—',
@@ -1395,17 +1413,39 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     onChange={(e) => handleInputChange('registration_type', e.target.value)}
                     className="w-full bg-white border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-slate-800 focus:outline-none cursor-pointer"
                   >
-                    <option value="individual">Individual Registration</option>
-                    <option value="team">Team Registration</option>
+                    <option value="hackathon">Hackathon / Ideathon (Team or Solo)</option>
+                    <option value="workshop">Bootcamp / Workshop (12-Digit Student ID)</option>
+                    <option value="custom">Custom Event</option>
+                    <option value="individual">Standard Individual Registration</option>
+                    <option value="team">Standard Team Only Registration</option>
                   </select>
                 </div>
               </div>
 
-              {/* Team Size options */}
-              {formData.registration_type === 'team' && (
+              {/* Custom Event Category Name */}
+              {formData.registration_type === 'custom' && (
+                <div className="pt-2 border-t border-slate-200">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Custom Event Category / Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.custom_event_type || ''}
+                    onChange={(e) => handleInputChange('custom_event_type', e.target.value)}
+                    placeholder="e.g., Panel Discussion, Exhibition, Scientific Forum..."
+                    className="w-full bg-white border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">Specify what type of custom event this is.</p>
+                </div>
+              )}
+
+              {/* Team Size options for team and hackathon */}
+              {(formData.registration_type === 'team' || formData.registration_type === 'hackathon') && (
                 <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Min Team Size</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      {formData.registration_type === 'hackathon' ? 'Min Team Size (if team)' : 'Min Team Size'}
+                    </label>
                     <input
                       type="number"
                       min={1}
@@ -1416,7 +1456,9 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Max Team Size</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      {formData.registration_type === 'hackathon' ? 'Max Team Size (if team)' : 'Max Team Size'}
+                    </label>
                     <input
                       type="number"
                       min={1}
@@ -1693,6 +1735,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               const members: any[] = item.event_registration_members || [];
               const leader = members.find((m: any) => m.is_leader) || members[0] || {};
               const isTeam = item.registration_type === 'team';
+              const studentIdMatch = item.institution?.match(/\[ID:\s*(\d+)\]/) || item.companion_role?.match(/Student ID:\s*(\d+)/) || item.team_name?.match(/Student ID:\s*(\d+)/);
+              const studentId = studentIdMatch ? studentIdMatch[1] : null;
 
               return (
                 <div
@@ -1721,6 +1765,11 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                           }`}>
                             {item.status || 'pending'}
                           </span>
+                          {studentId && (
+                            <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-sky-50 text-sky-800 border border-sky-300">
+                              Student ID: {studentId}
+                            </span>
+                          )}
                         </div>
 
                         <p className="text-xs text-slate-500 mt-0.5">

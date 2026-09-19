@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, Clock, MapPin, ArrowRight, ArrowLeft, 
-  BellRing, CheckCircle2, XCircle, Sparkles, ChevronRight, ChevronLeft,
-  Users, UserCheck, Megaphone
+  BellRing, CheckCircle2, XCircle, ChevronRight, ChevronLeft,
+  Users, UserCheck, Megaphone, GraduationCap, Tag
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -228,12 +228,27 @@ export function UpcomingEventsNotification() {
                   </div>
                 )}
 
-                {currentEvent.registration_type === 'team' && (
+                {currentEvent.registration_type === 'hackathon' ? (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                    <Users className="w-3.5 h-3.5 shrink-0" />
+                    <span>{language === 'ar' ? 'هاكاثون (فريق أو فردي)' : 'Hackathon (Team / Solo)'}</span>
+                  </div>
+                ) : currentEvent.registration_type === 'workshop' || currentEvent.registration_type === 'bootcamp' ? (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20">
+                    <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+                    <span>{language === 'ar' ? 'ورشة عمل / تدريب' : 'Workshop / Bootcamp'}</span>
+                  </div>
+                ) : currentEvent.registration_type?.startsWith('custom') ? (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                    <Tag className="w-3.5 h-3.5 shrink-0" />
+                    <span>{currentEvent.registration_type.startsWith('custom:') ? currentEvent.registration_type.split(':')[1] : (language === 'ar' ? 'فعالية خاصة' : 'Custom Event')}</span>
+                  </div>
+                ) : currentEvent.registration_type === 'team' ? (
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
                     <Users className="w-3.5 h-3.5 shrink-0" />
                     <span>{t.eventsPage.teamReg} ({currentEvent.min_team_size || 2}-{currentEvent.max_team_size || 5})</span>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Pure Text Description */}

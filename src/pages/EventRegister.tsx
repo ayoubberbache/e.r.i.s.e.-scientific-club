@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, Clock, MapPin, ArrowLeft, ArrowRight, CheckCircle2, AlertCircle, Loader2, 
-  Users, User, Plus, Trash2, ShieldCheck, Check
+  Users, User, Plus, Trash2, ShieldCheck, Check, GraduationCap, UserCheck, Tag
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ALGERIAN_INSTITUTIONS } from '../data/algerianInstitutions';
@@ -68,6 +68,8 @@ export function EventRegister() {
   const [institution, setInstitution] = useState('');
   const [customInstitution, setCustomInstitution] = useState('');
   const [studyYear, setStudyYear] = useState('');
+  const [participationMode, setParticipationMode] = useState<'team' | 'individual'>('team');
+  const [studentNumber, setStudentNumber] = useState('');
 
   // Members (Member 0 is always the Leader)
   const [members, setMembers] = useState<MemberInput[]>([
@@ -171,9 +173,10 @@ export function EventRegister() {
     return () => clearInterval(interval);
   }, [event]);
 
-  // Adjust team members array size based on min_team_size
+  // Adjust team members array size based on min_team_size and participationMode
   useEffect(() => {
-    if (event && event.registration_type === 'team') {
+    const isTeamActive = event?.registration_type === 'team' || (event?.registration_type === 'hackathon' && participationMode === 'team');
+    if (event && isTeamActive) {
       const minSize = event.min_team_size || 2;
       if (members.length < minSize) {
         const additional = Array.from({ length: minSize - members.length }, () => ({
@@ -183,8 +186,12 @@ export function EventRegister() {
         }));
         setMembers(prev => [...prev, ...additional]);
       }
+    } else if (event && !isTeamActive) {
+      if (members.length > 1) {
+        setMembers(prev => [prev[0]]);
+      }
     }
-  }, [event]);
+  }, [event, participationMode]);
 
   const handleMemberChange = (index: number, field: keyof MemberInput, value: string) => {
     setMembers(prev => {
@@ -238,12 +245,23 @@ export function EventRegister() {
       return;
     }
 
-    const isTeam = event.registration_type === 'team';
+    const isHackathon = event.registration_type === 'hackathon';
+    const isWorkshopOrBootcamp = event.registration_type === 'workshop' || event.registration_type === 'bootcamp';
+    const isTeam = isHackathon ? participationMode === 'team' : event.registration_type === 'team';
     const cleanTeamName = sanitizeString(teamName);
 
     if (isTeam && !cleanTeamName) {
       setError(language === 'ar' ? 'يرجى إدخال اسم الفريق.' : 'Please enter team name.');
       return;
+    }
+
+    // 12-digit student registration number validation for workshops/bootcamps
+    if (isWorkshopOrBootcamp) {
+      const cleanStudentNum = studentNumber.trim();
+      if (!cleanStudentNum || !/^\d{12}$/.test(cleanStudentNum)) {
+        setError(language === 'ar' ? 'يرجى إدخال رقم تسجيل جامعي صالح مكوّن من 12 رقماً.' : 'Please enter a valid 12-digit student registration number.');
+        return;
+      }
     }
 
     const selectedInst = institution === 'Other Institution / University' || institution === 'تحديد مؤسسة أخرى'
@@ -291,7 +309,7 @@ export function EventRegister() {
 
     const cleanCompanionName = sanitizeString(companionName);
     const cleanCompanionRole = sanitizeString(companionRole);
-    if (hasCompanion && !cleanCompanionName) {
+    if (isTeam && hasCompanion && !cleanCompanionName) {
       setError(language === 'ar' ? 'يرجى كتابة اسم المرافق كاملاً.' : 'Please enter companion full name.');
       return;
     }
@@ -300,15 +318,20 @@ export function EventRegister() {
     setLastSubmitTime(now);
 
     try {
+      const cleanStudentNum = studentNumber.trim();
+      const instWithId = cleanStudentNum ? `${selectedInst} [ID: ${cleanStudentNum}]` : selectedInst;
+      const teamOrStudent = isTeam ? cleanTeamName : (cleanStudentNum ? `Student ID: ${cleanStudentNum}` : null);
+      const companionOrStudent = isTeam && hasCompanion ? cleanCompanionRole : (cleanStudentNum ? `Student ID: ${cleanStudentNum}` : null);
+
       const regPayload = {
         event_id: Number(event.id),
-        registration_type: event.registration_type || 'individual',
-        team_name: isTeam ? cleanTeamName : null,
-        institution: selectedInst,
+        registration_type: isHackathon ? (isTeam ? 'team' : 'individual') : (event.registration_type || 'individual'),
+        team_name: teamOrStudent,
+        institution: instWithId,
         study_year: sanitizeString(studyYear),
-        has_companion: hasCompanion,
-        companion_name: hasCompanion ? cleanCompanionName : null,
-        companion_role: hasCompanion ? cleanCompanionRole : null,
+        has_companion: isTeam ? hasCompanion : false,
+        companion_name: isTeam && hasCompanion ? cleanCompanionName : null,
+        companion_role: companionOrStudent,
         status: 'pending'
       };
 
@@ -412,7 +435,10 @@ export function EventRegister() {
     );
   }
 
-  const isTeam = event.registration_type === 'team';
+  const isHackathon = event.registration_type === 'hackathon';
+  const isWorkshopOrBootcamp = event.registration_type === 'workshop' || event.registration_type === 'bootcamp';
+  const isCustom = event.registration_type === 'custom' || (!['hackathon', 'workshop', 'bootcamp', 'individual', 'team'].includes(event.registration_type) && !!event.registration_type);
+  const isTeam = isHackathon ? participationMode === 'team' : event.registration_type === 'team';
   const eventTitle = getLocalized(event, 'title') || event.title;
   const eventDesc = getLocalized(event, 'description') || event.description;
   const eventLocation = getLocalized(event, 'location') || event.location;
@@ -437,7 +463,19 @@ export function EventRegister() {
           <span className={`text-xs font-mono font-medium px-2.5 py-1 border ${
             isDark ? 'bg-slate-800 border-slate-700 text-[#00e5ff]' : 'bg-teal-50 border-teal-200 text-[#0d5c63]'
           }`}>
-            {isTeam ? (language === 'ar' ? 'تسجيل فرق' : 'Team Registration') : (language === 'ar' ? 'تسجيل فردي' : 'Individual Registration')}
+            {isHackathon ? (
+              language === 'ar' ? 'هاكاثون (فريق أو فردي)' : 'Hackathon (Team / Individual)'
+            ) : isWorkshopOrBootcamp ? (
+              language === 'ar' ? 'ورشة عمل / تدريب (رقم التسجيل مطلوب)' : 'Workshop / Bootcamp (Student ID Required)'
+            ) : isCustom ? (
+              event.registration_type?.startsWith('custom:') 
+                ? event.registration_type.split(':')[1]
+                : (language === 'ar' ? 'فعالية خاصة' : 'Custom Event')
+            ) : isTeam ? (
+              language === 'ar' ? 'تسجيل فرق' : 'Team Registration'
+            ) : (
+              language === 'ar' ? 'تسجيل فردي' : 'Individual Registration'
+            )}
           </span>
         </div>
 
@@ -462,6 +500,37 @@ export function EventRegister() {
 
             {/* Event Meta Badges */}
             <div className={`flex flex-wrap gap-3 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 border font-semibold ${
+                isDark ? 'bg-slate-800 border-slate-700 text-[#00e5ff]' : 'bg-slate-50 border-slate-200 text-[#0d5c63]'
+              }`}>
+                {isHackathon ? (
+                  <>
+                    <Users className="w-3.5 h-3.5" />
+                    <span>{language === 'ar' ? 'هاكاثون / أفكار ابتكارية' : 'Hackathon / Ideathon'}</span>
+                  </>
+                ) : isWorkshopOrBootcamp ? (
+                  <>
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>{language === 'ar' ? 'ورشة عمل / تدريب مكثف' : 'Bootcamp / Workshop'}</span>
+                  </>
+                ) : isCustom ? (
+                  <>
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>{event.registration_type?.startsWith('custom:') ? event.registration_type.split(':')[1] : (language === 'ar' ? 'فعالية خاصة' : 'Custom Event')}</span>
+                  </>
+                ) : isTeam ? (
+                  <>
+                    <Users className="w-3.5 h-3.5" />
+                    <span>{language === 'ar' ? 'تسجيل فِرق' : 'Team Registration'}</span>
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>{language === 'ar' ? 'تسجيل فردي' : 'Individual Registration'}</span>
+                  </>
+                )}
+              </div>
+
               {event.date && (
                 <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 border ${
                   isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
@@ -554,6 +623,90 @@ export function EventRegister() {
                   <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
                     <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Hackathon Participation Mode Selector */}
+                {isHackathon && (
+                  <div className={`p-4 border space-y-2.5 ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <label className={`block text-xs font-bold uppercase tracking-wider ${
+                      isDark ? 'text-slate-300' : 'text-slate-700'
+                    }`}>
+                      {language === 'ar' ? 'طريقة المشاركة في الهاكاثون *' : 'Hackathon Participation Mode *'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setParticipationMode('team')}
+                        className={`p-3 text-xs font-bold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          participationMode === 'team'
+                            ? (isDark ? 'bg-[#00e5ff]/15 border-[#00e5ff] text-[#00e5ff]' : 'bg-[#0d5c63] border-[#0d5c63] text-white shadow-xs')
+                            : (isDark ? 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100')
+                        }`}
+                      >
+                        <Users className="w-4 h-4" />
+                        <span>{language === 'ar' ? 'مشاركة كفريق' : 'Team Participation'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setParticipationMode('individual')}
+                        className={`p-3 text-xs font-bold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          participationMode === 'individual'
+                            ? (isDark ? 'bg-[#00e5ff]/15 border-[#00e5ff] text-[#00e5ff]' : 'bg-[#0d5c63] border-[#0d5c63] text-white shadow-xs')
+                            : (isDark ? 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100')
+                        }`}
+                      >
+                        <User className="w-4 h-4" />
+                        <span>{language === 'ar' ? 'مشاركة فردية' : 'Individual Participation'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 12-Digit Student Registration Number for Workshops / Bootcamps */}
+                {isWorkshopOrBootcamp && (
+                  <div className={`p-4 border space-y-2 ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <label className={`block text-xs font-bold uppercase tracking-wider ${
+                        isDark ? 'text-slate-300' : 'text-slate-700'
+                      }`}>
+                        {language === 'ar' ? 'رقم التسجيل الجامعي (12 رقماً) *' : 'Student Registration Number (12 Digits) *'}
+                      </label>
+                      <span className={`text-[11px] font-mono font-bold ${
+                        studentNumber.trim().length === 12
+                          ? 'text-emerald-500'
+                          : (studentNumber.trim().length > 0 ? 'text-amber-500' : 'text-slate-400')
+                      }`}>
+                        {studentNumber.trim().length} / 12
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]{12}"
+                      maxLength={12}
+                      value={studentNumber}
+                      onChange={(e) => {
+                        const digitsOnly = e.target.value.replace(/\D/g, '');
+                        if (digitsOnly.length <= 12) setStudentNumber(digitsOnly);
+                      }}
+                      placeholder={language === 'ar' ? 'مثال: 202331048912' : 'e.g. 202331048912'}
+                      required
+                      className={`w-full px-3.5 py-2 text-sm font-mono tracking-wider border transition-colors ${
+                        isDark
+                          ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                      }`}
+                    />
+                    <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {language === 'ar'
+                        ? 'رقم بطاقة الطالب أو شهادة التسجيل الجامعي المكوّن من 12 رقماً.'
+                        : 'Official 12-digit university student registration number (Matricule).'}
+                    </p>
                   </div>
                 )}
 
@@ -739,51 +892,53 @@ export function EventRegister() {
                   ))}
                 </div>
 
-                {/* Optional Companion / Driver / Chaperone */}
-                <div className={`pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                  <label className={`flex items-center gap-2 cursor-pointer text-xs font-semibold ${
-                    isDark ? 'text-slate-300' : 'text-slate-700'
-                  }`}>
-                    <input
-                      type="checkbox"
-                      checked={hasCompanion}
-                      onChange={(e) => setHasCompanion(e.target.checked)}
-                      className="border-slate-300"
-                    />
-                    <span>{language === 'ar' ? 'هل يرافقكم سائق أو مؤطر / مرافق؟ (اختياري)' : 'Do you have an accompanying driver or chaperone? (Optional)'}</span>
-                  </label>
-
-                  {hasCompanion && (
-                    <div className={`mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 border ${
-                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                {/* Optional Companion / Driver / Chaperone (Only for Teams) */}
+                {isTeam && (
+                  <div className={`pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                    <label className={`flex items-center gap-2 cursor-pointer text-xs font-semibold ${
+                      isDark ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       <input
-                        type="text"
-                        value={companionName}
-                        onChange={(e) => setCompanionName(e.target.value)}
-                        placeholder={language === 'ar' ? 'اسم المرافق *' : 'Companion Full Name *'}
-                        className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
-                          isDark
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
-                            : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
-                        }`}
+                        type="checkbox"
+                        checked={hasCompanion}
+                        onChange={(e) => setHasCompanion(e.target.checked)}
+                        className="border-slate-300"
                       />
-                      <select
-                        value={companionRole}
-                        onChange={(e) => setCompanionRole(e.target.value)}
-                        className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
-                          isDark
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
-                            : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
-                        }`}
-                      >
-                        {COMPANION_ROLES.map((role, idx) => (
-                          <option key={idx} value={role}>{role}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
+                      <span>{language === 'ar' ? 'هل يرافقكم سائق أو مؤطر / مرافق؟ (اختياري)' : 'Do you have an accompanying driver or chaperone? (Optional)'}</span>
+                    </label>
+
+                    {hasCompanion && (
+                      <div className={`mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 border ${
+                        isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <input
+                          type="text"
+                          value={companionName}
+                          onChange={(e) => setCompanionName(e.target.value)}
+                          placeholder={language === 'ar' ? 'اسم المرافق *' : 'Companion Full Name *'}
+                          className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
+                            isDark
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                              : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                          }`}
+                        />
+                        <select
+                          value={companionRole}
+                          onChange={(e) => setCompanionRole(e.target.value)}
+                          className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
+                            isDark
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                              : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                          }`}
+                        >
+                          {COMPANION_ROLES.map((role, idx) => (
+                            <option key={idx} value={role}>{role}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Submit button */}
                 <div className={`pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>

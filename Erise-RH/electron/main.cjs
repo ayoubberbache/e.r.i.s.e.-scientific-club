@@ -241,6 +241,7 @@ ipcMain.handle('db-fetch-members', async () => {
         email: reg.email || '',
         phone: reg.phone || '',
         department: primaryDept,
+        departments: depts,
         sub_department: reg.specialization || '',
         skills: reg.specialization || '',
         academic_year: reg.study_year ? `Year ${reg.study_year}` : '',

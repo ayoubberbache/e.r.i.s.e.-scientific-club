@@ -184,7 +184,7 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
                     </div>
 
                     {/* Info Rows */}
-                    <div className="mt-3 space-y-1 text-xs text-slate-600">
+                    <div className="mt-3 space-y-1.5 text-xs text-slate-600">
                       <div className="flex items-center gap-1.5 truncate">
                         <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="truncate">{candidate.email}</span>
@@ -195,19 +195,29 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
                       </div>
                       <div className="flex items-center gap-1.5">
                         <GraduationCap className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>Year {candidate.study_year} &bull; {candidate.specialization || 'Engineering'}</span>
+                        <span>{candidate.academic_year || 'Undergraduate'} &bull; {candidate.sub_department || 'Engineering'}</span>
                       </div>
                     </div>
 
-                    {/* Candidate Statement / Skills */}
-                    {candidate.skills && (
-                      <div className="mt-3 p-2.5 bg-slate-50 border border-slate-200 text-xs">
-                        <div className="text-[10px] uppercase font-bold text-slate-500 mb-0.5">Skills / Background</div>
-                        <p className="text-slate-700 leading-relaxed line-clamp-3">
-                          {candidate.skills}
-                        </p>
+                    {/* Departments Wanted to Join */}
+                    <div className="mt-3 pt-2.5 border-t border-slate-100">
+                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">
+                        Departments Desired to Join
                       </div>
-                    )}
+                      <div className="flex flex-wrap gap-1">
+                        {(candidate.departments && candidate.departments.length > 0 
+                          ? candidate.departments 
+                          : [candidate.department]
+                        ).map((dept, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-800"
+                          >
+                            {dept}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Decision Actions */}

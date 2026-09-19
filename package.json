@@ -7,7 +7,11 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "match:members": "node scripts/match-members.cjs",
+    "keepalive": "node scripts/keepalive-both.cjs",
+    "keepalive:primary": "node scripts/keepalive-primary-db.cjs",
+    "keepalive:org": "node scripts/keepalive-org-db.cjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

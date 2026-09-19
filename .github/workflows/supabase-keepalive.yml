@@ -1,0 +1,29 @@
+name: Supabase Keep-Alive Heartbeat
+
+on:
+  schedule:
+    # Runs every 2 days at 06:00 UTC (prevents 7-day inactivity pause)
+    - cron: '0 6 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    name: Ping Databases
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install @supabase/supabase-js --no-audit --no-fund
+
+      - name: Run Dual Database Heartbeat
+        run: node scripts/keepalive-both.cjs

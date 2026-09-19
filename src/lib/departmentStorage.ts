@@ -999,8 +999,8 @@ export async function markDepartmentTaskDone(
   const current = await fetchDepartmentTasks(dept);
   let updatedTask: ClubTask | null = null;
 
-  // 1. Sync to Supabase projects table if numeric ID
-  if (!isNaN(Number(taskId))) {
+  // 1. Sync to Supabase projects / organization todo database
+  if (taskId && !String(taskId).startsWith('temp-')) {
     try {
       const headers = getApiAuthHeaders();
       await fetch('/api/admin-data', {
@@ -1009,7 +1009,7 @@ export async function markDepartmentTaskDone(
         body: JSON.stringify({
           action: 'update_status',
           table: 'projects',
-          id: Number(taskId),
+          id: isNaN(Number(taskId)) ? taskId : Number(taskId),
           status: 'Completed'
         })
       });
@@ -1036,7 +1036,7 @@ export async function markDepartmentTaskDone(
 }
 
 export async function deleteDepartmentTask(dept: Department, taskId: string): Promise<void> {
-  if (!isNaN(Number(taskId))) {
+  if (taskId && !String(taskId).startsWith('temp-')) {
     try {
       const headers = getApiAuthHeaders();
       await fetch('/api/admin-data', {
@@ -1045,7 +1045,7 @@ export async function deleteDepartmentTask(dept: Department, taskId: string): Pr
         body: JSON.stringify({
           action: 'delete',
           table: 'projects',
-          id: Number(taskId)
+          id: isNaN(Number(taskId)) ? taskId : Number(taskId)
         })
       });
     } catch (err) {}

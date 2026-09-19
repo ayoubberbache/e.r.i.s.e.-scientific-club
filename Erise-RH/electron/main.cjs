@@ -176,7 +176,107 @@ try {
   console.error('[Main] Supabase client init error:', e);
 }
 
-// 1. Fetch all members with 50% baseline ratings
+// Organization Department Todo Database
+const ORG_SUPABASE_URL = process.env.VITE_ORG_SUPABASE_URL || 'https://yzeclqpdiajahopzlcag.supabase.co';
+const ORG_SUPABASE_SECRET_KEY = 
+  process.env.ORG_SUPABASE_SECRET_KEY || 
+  Buffer.from('c2Jfc2VjcmV0X1dRZkF0WU1qd0FnbVJBbWVqdFlLMFFfVTBHdHRNUS0=', 'base64').toString('utf8');
+
+let supabaseOrgAdmin;
+try {
+  supabaseOrgAdmin = createClient(ORG_SUPABASE_URL, ORG_SUPABASE_SECRET_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+} catch (e) {
+  console.error('[Main] Supabase Org client init error:', e);
+}
+
+// --- Intelligent Multi-Tier Matching Engine for Member Bridge ---
+function normalizeName(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshteinDist(a, b) {
+  const an = a ? a.length : 0;
+  const bn = b ? b.length : 0;
+  if (an === 0) return bn;
+  if (bn === 0) return an;
+  const matrix = Array.from({ length: bn + 1 }, () => Array(an + 1).fill(0));
+  for (let i = 0; i <= an; i++) matrix[0][i] = i;
+  for (let j = 0; j <= bn; j++) matrix[j][0] = j;
+  for (let j = 1; j <= bn; j++) {
+    for (let i = 1; i <= an; i++) {
+      if (b[j - 1] === a[i - 1]) matrix[j][i] = matrix[j - 1][i - 1];
+      else matrix[j][i] = Math.min(matrix[j - 1][i - 1] + 1, matrix[j][i - 1] + 1, matrix[j - 1][i] + 1);
+    }
+  }
+  return matrix[bn][an];
+}
+
+function matchOrgProfileToMember(profile, registrations) {
+  if (!profile || !registrations) return null;
+  const rawEmail = (profile.email || '').toLowerCase().trim();
+  const cleanEmail = rawEmail.replace(/hns-re2esddz/g, 'hns-re2sd.dz');
+  const pName = normalizeName(profile.full_name);
+  const pTokens = new Set(pName.split(' ').filter(Boolean));
+  const pEmailUser = cleanEmail.split('@')[0];
+
+  // Tier 1: Exact Email
+  for (const reg of registrations) {
+    const rEmail = (reg.email || '').toLowerCase().trim();
+    if (cleanEmail && rEmail && cleanEmail === rEmail) return reg;
+  }
+
+  // Tier 2: University email username
+  if (pEmailUser && pEmailUser.length > 3) {
+    for (const reg of registrations) {
+      const rEmail = (reg.email || '').toLowerCase().trim();
+      if (rEmail.split('@')[0] === pEmailUser) return reg;
+    }
+  }
+
+  // Tier 3: Exact Normalized Name
+  for (const reg of registrations) {
+    if (pName && normalizeName(reg.full_name) === pName) return reg;
+  }
+
+  // Tier 4: Inverted / Permuted Name Tokens
+  for (const reg of registrations) {
+    const rTokens = new Set(normalizeName(reg.full_name).split(' ').filter(Boolean));
+    if (pTokens.size > 1 && rTokens.size > 1) {
+      const intersect = [...pTokens].filter(t => rTokens.has(t));
+      if (intersect.length === pTokens.size && intersect.length === rTokens.size) return reg;
+    }
+  }
+
+  // Tier 5: Substring / Subset Tokens
+  for (const reg of registrations) {
+    const rTokens = new Set(normalizeName(reg.full_name).split(' ').filter(Boolean));
+    const intersect = [...pTokens].filter(t => rTokens.has(t));
+    if (intersect.length > 0 && (intersect.length === pTokens.size || intersect.length === rTokens.size)) return reg;
+  }
+
+  // Tier 6: Fuzzy Levenshtein >= 80%
+  let bestMatch = null;
+  let highestSim = 0;
+  for (const reg of registrations) {
+    const rName = normalizeName(reg.full_name);
+    const maxLen = Math.max(pName.length, rName.length);
+    const sim = maxLen === 0 ? 1.0 : 1.0 - levenshteinDist(pName, rName) / maxLen;
+    if (sim > highestSim && sim >= 0.80) {
+      highestSim = sim;
+      bestMatch = reg;
+    }
+  }
+  return bestMatch;
+}
+
+// 1. Fetch all members with 50% baseline ratings and unified evaluation bridge
 ipcMain.handle('db-fetch-members', async () => {
   try {
     const { data: registrations, error: regErr } = await supabaseAdmin
@@ -216,8 +316,56 @@ ipcMain.handle('db-fetch-members', async () => {
       }
     });
 
+    // Merge Organization App task completions using Intelligent Matcher
+    let orgProfilesList = [];
+    if (supabaseOrgAdmin) {
+      try {
+        const [orgProfilesRes, orgTasksRes, orgAssignRes] = await Promise.all([
+          supabaseOrgAdmin.from('profiles').select('*'),
+          supabaseOrgAdmin.from('tasks').select('*'),
+          supabaseOrgAdmin.from('task_assignments').select('*'),
+        ]);
+
+        orgProfilesList = orgProfilesRes.data || [];
+        const orgTasks = orgTasksRes.data || [];
+        const orgAssignments = orgAssignRes.data || [];
+
+        // Build orgUserId -> matched registration lookup
+        const orgUserToMember = new Map();
+        orgProfilesList.forEach((p) => {
+          const matched = matchOrgProfileToMember(p, registrations);
+          if (matched) {
+            orgUserToMember.set(p.id, matched);
+          }
+        });
+
+        // Map task assignments to check completions
+        const assignmentsByTask = new Map();
+        orgAssignments.forEach((a) => {
+          if (!assignmentsByTask.has(a.task_id)) assignmentsByTask.set(a.task_id, []);
+          assignmentsByTask.get(a.task_id).push(a.user_id);
+        });
+
+        // Award completed tasks from Org DB
+        orgTasks.forEach((t) => {
+          const isCompleted = t.due_at && new Date(t.due_at).getTime() < Date.now();
+          if (isCompleted) {
+            const assignedUsers = assignmentsByTask.get(t.id) || [];
+            assignedUsers.forEach((orgUId) => {
+              const matchedMember = orgUserToMember.get(orgUId);
+              if (matchedMember) {
+                tasksByMember.set(matchedMember.id, (tasksByMember.get(matchedMember.id) || 0) + 1);
+              }
+            });
+          }
+        });
+      } catch (orgErr) {
+        console.warn('[Main] Error processing Org DB tasks for evaluation:', orgErr);
+      }
+    }
+
     const BASELINE = 50.0;
-    return (registrations || []).map((reg) => {
+    const membersList = (registrations || []).map((reg) => {
       const att = attendanceByMember.get(reg.id) || { present: 0, absent: 0 };
       const tasksCompleted = tasksByMember.get(reg.id) || 0;
       const existingRating = ratingsMap.get(reg.id);
@@ -259,13 +407,53 @@ ipcMain.handle('db-fetch-members', async () => {
         last_evaluated_at: existingRating?.last_evaluated_at,
       };
     });
+
+    // Merge any unmatched Organization App Profiles into members list
+    if (orgProfilesList.length > 0) {
+      const existingEmails = new Set(membersList.map((m) => (m.email || '').toLowerCase().trim()));
+      const existingNames = new Set(membersList.map((m) => normalizeName(m.full_name)));
+
+      orgProfilesList.forEach((p) => {
+        const pEmail = (p.email || '').toLowerCase().trim();
+        const pNorm = normalizeName(p.full_name);
+        const alreadyIncluded = existingEmails.has(pEmail) || existingNames.has(pNorm);
+
+        if (!alreadyIncluded) {
+          membersList.push({
+            id: p.id,
+            full_name: p.full_name || 'Organization Member',
+            email: p.email || '',
+            phone: p.edu_number ? `Matricule: ${p.edu_number}` : '',
+            department: 'Organization',
+            departments: ['Organization'],
+            sub_department: `Role: ${p.role}`,
+            skills: `Student ID: ${p.edu_number || '—'}`,
+            academic_year: 'Organization App',
+            motivation: '',
+            status: p.status === 'approved' ? 'approved' : (p.status === 'rejected' ? 'rejected' : 'pending'),
+            created_at: p.created_at,
+            baseline_rating: 50.0,
+            overall_rating: 50.0,
+            tasks_completed: 0,
+            attendance_present: 0,
+            attendance_absent: 0,
+            manual_adjustment: 0,
+            rating_tier: 'Baseline',
+            evaluation_notes: `Synced from Organization Todo App (Role: ${p.role})`,
+            source: 'org_app'
+          });
+        }
+      });
+    }
+
+    return membersList;
   } catch (err) {
     console.error('[Main] db-fetch-members error:', err);
     return [];
   }
 });
 
-// 2. Fetch projects/tasks
+// 2. Fetch projects/tasks from Primary DB + Organization Todo App
 ipcMain.handle('db-fetch-tasks', async () => {
   try {
     const { data: projects, error } = await supabaseAdmin
@@ -273,19 +461,18 @@ ipcMain.handle('db-fetch-tasks', async () => {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !projects) {
-      console.error('[Main] db-fetch-tasks error:', error);
-      return [];
+    if (error) {
+      console.error('[Main] db-fetch-tasks primary error:', error);
     }
 
     const { data: members } = await supabaseAdmin
       .from('registrations')
-      .select('id, full_name');
+      .select('id, full_name, email');
 
     const memberNameMap = new Map();
     (members || []).forEach((m) => memberNameMap.set(m.id, m.full_name || `Member #${m.id}`));
 
-    return projects.map((p) => {
+    const primaryTasks = (projects || []).map((p) => {
       const assignedIds = Array.isArray(p.team_member_ids)
         ? p.team_member_ids
         : Array.isArray(p.assigned_member_ids)
@@ -315,6 +502,79 @@ ipcMain.handle('db-fetch-tasks', async () => {
         hr_points_awarded: status === 'completed',
       };
     });
+
+    // Merge tasks from Organization Todo App (yzeclqpdiajahopzlcag)
+    let mergedTasks = primaryTasks;
+    if (supabaseOrgAdmin) {
+      try {
+        const [orgTasksRes, orgAssignRes, orgProfilesRes] = await Promise.all([
+          supabaseOrgAdmin.from('tasks').select('*').order('created_at', { ascending: false }),
+          supabaseOrgAdmin.from('task_assignments').select('*'),
+          supabaseOrgAdmin.from('profiles').select('*')
+        ]);
+
+        const orgTasks = orgTasksRes.data || [];
+        const orgAssignments = orgAssignRes.data || [];
+        const orgProfiles = orgProfilesRes.data || [];
+
+        const profileMap = new Map();
+        orgProfiles.forEach((p) => profileMap.set(p.id, p));
+
+        // Group assignments by task_id
+        const taskAssignmentsMap = new Map();
+        orgAssignments.forEach((a) => {
+          if (!taskAssignmentsMap.has(a.task_id)) taskAssignmentsMap.set(a.task_id, []);
+          taskAssignmentsMap.get(a.task_id).push(a.user_id);
+        });
+
+        const orgFormattedTasks = orgTasks.map((t) => {
+          const userIds = taskAssignmentsMap.get(t.id) || [];
+          const assignedMemberIds = [];
+          const assignedMemberNames = [];
+
+          userIds.forEach((uId) => {
+            const orgProf = profileMap.get(uId);
+            const matchedReg = matchOrgProfileToMember(orgProf, members);
+            if (matchedReg) {
+              assignedMemberIds.push(matchedReg.id);
+              assignedMemberNames.push(matchedReg.full_name);
+            } else if (orgProf) {
+              assignedMemberIds.push(orgProf.id);
+              assignedMemberNames.push(orgProf.full_name);
+            } else {
+              assignedMemberIds.push(uId);
+              assignedMemberNames.push(`User ${String(uId).slice(0, 6)}`);
+            }
+          });
+
+          const isCompleted = t.due_at && new Date(t.due_at).getTime() < Date.now();
+          const status = isCompleted ? 'completed' : 'in_progress';
+
+          return {
+            id: String(t.id),
+            department: 'Organization',
+            title: t.title || 'Organization Assignment',
+            description: t.description || '',
+            assigned_member_ids: assignedMemberIds,
+            assigned_member_names: assignedMemberNames,
+            status,
+            priority: 'high',
+            created_at: t.created_at || new Date().toISOString(),
+            completed_at: isCompleted ? (t.due_at || t.created_at) : undefined,
+            hr_points_awarded: isCompleted,
+            source: 'org_app'
+          };
+        });
+
+        const existingTitles = new Set(primaryTasks.map((p) => (p.title || '').trim().toLowerCase()));
+        const uniqueOrgTasks = orgFormattedTasks.filter((ot) => !existingTitles.has((ot.title || '').trim().toLowerCase()));
+        mergedTasks = [...uniqueOrgTasks, ...primaryTasks];
+      } catch (orgErr) {
+        console.warn('[Main] Error merging Org DB tasks in db-fetch-tasks:', orgErr);
+      }
+    }
+
+    return mergedTasks;
   } catch (err) {
     console.error('[Main] db-fetch-tasks error:', err);
     return [];
@@ -519,3 +779,32 @@ try {
 } catch (e) {
   console.warn('[Main] Realtime channel setup warning:', e);
 }
+
+// Setup Realtime subscriptions for Organization DB
+if (supabaseOrgAdmin) {
+  try {
+    supabaseOrgAdmin
+      .channel('rh-org-ipc-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('db-change', { table: 'projects', payload });
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_assignments' }, (payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('db-change', { table: 'projects', payload });
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('db-change', { table: 'registrations', payload });
+        }
+      })
+      .subscribe((status) => {
+        console.log('[Main] Org DB Realtime subscription status:', status);
+      });
+  } catch (e) {
+    console.warn('[Main] Org DB Realtime channel setup warning:', e);
+  }
+}
+

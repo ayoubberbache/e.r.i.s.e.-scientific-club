@@ -102,6 +102,51 @@ function apiDevMiddleware() {
           return;
         }
 
+        if (url === '/api/admin-data') {
+          let bodyStr = '';
+          req.on('data', (chunk: any) => { bodyStr += chunk; });
+          req.on('end', async () => {
+            try {
+              try {
+                req.body = bodyStr ? JSON.parse(bodyStr) : {};
+              } catch {
+                req.body = {};
+              }
+
+              const searchParams = new URL(req.url, 'http://localhost').searchParams;
+              req.query = Object.fromEntries(searchParams.entries());
+
+              const { default: handler } = await server.ssrLoadModule('/api/admin-data.ts');
+              
+              const mockRes = {
+                statusCode: 200,
+                setHeader: (k: string, v: string) => res.setHeader(k, v),
+                status: function (code: number) {
+                  this.statusCode = code;
+                  return this;
+                },
+                json: function (data: any) {
+                  res.statusCode = this.statusCode;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(data));
+                },
+                end: function (data?: any) {
+                  res.statusCode = this.statusCode;
+                  res.end(data);
+                }
+              };
+
+              await handler(req, mockRes);
+            } catch (err: any) {
+              console.error('Dev API Error (/api/admin-data):', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message || 'Internal error in dev API' }));
+            }
+          });
+          return;
+        }
+
         next();
       });
     }

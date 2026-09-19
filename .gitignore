@@ -10,3 +10,8 @@ coverage/
 .vercel
 *.blend
 *.blend1
+*.zip
+dist-electron/
+Erise-RH/dist/
+Erise-RH/dist-electron/
+Erise-RH/node_modules/

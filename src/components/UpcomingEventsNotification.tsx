@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
+import { slugify } from '../lib/slugs';
 
 export function UpcomingEventsNotification() {
   const { language, t, getLocalized } = useLanguage();
@@ -253,8 +254,8 @@ export function UpcomingEventsNotification() {
                   {/* Direct Registration Form Button if Open */}
                   {isRegistrationOpen ? (
                     <Link
-                      to={`/events/${currentEvent.id}/register`}
-                      className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold text-sm sm:text-base shadow-xl shadow-accent/25 hover:bg-accent-muted hover:shadow-2xl transition-all active:scale-95"
+                      to={`/events/${slugify(currentEvent.title || String(currentEvent.id))}/register`}
+                      className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold text-sm sm:text-base shadow-lg shadow-accent/20 hover:bg-accent-muted transition-all active:scale-95"
                     >
                       <Sparkles className="w-4 h-4" />
                       <span>{t.eventsBanner.registerNow}</span>

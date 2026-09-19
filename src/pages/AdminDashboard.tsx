@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { 
   User, LogIn, LogOut, Loader2, Save, Trash2, Plus, X, Upload, Edit, 
@@ -22,7 +23,7 @@ import {
 } from '../lib/authCrypto';
 
 // Configuration toggle to mask/hide Projects, Organization, and Media portals from Super Admin panel
-const MASK_PORTAL_BUTTONS = true;
+const MASK_PORTAL_BUTTONS = false;
 
 const getAdminAuthHeaders = (): Record<string, string> => {
   const session = getValidAuthSession();
@@ -39,13 +40,28 @@ const getAdminAuthHeaders = (): Record<string, string> => {
 };
 
 export function AdminDashboard() {
+  const { portalSlug } = useParams<{ portalSlug?: string }>();
+  const navigate = useNavigate();
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<DepartmentHeadUser | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (lockoutSeconds > 0) {
+      const timer = setTimeout(() => {
+        setLockoutSeconds((prev) => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [lockoutSeconds]);
   
   const [activeTab, setActiveTab] = useState<
     'leaders' | 'events' | 'event_registrations' | 'achievements' | 'star_members' | 'registrations' | 'portal_projects' | 'portal_organization' | 'portal_media'
@@ -93,7 +109,7 @@ export function AdminDashboard() {
   const [emailErrorMsg, setEmailErrorMsg] = useState<string | null>(null);
   const [targetEmail, setTargetEmail] = useState('');
   const [targetRecipientName, setTargetRecipientName] = useState('');
-  const [meetingLocation, setMeetingLocation] = useState('Higher National School of Renewable Energies, Batna');
+  const [meetingLocation, setMeetingLocation] = useState('Batna Campus');
   const [meetingDateTime, setMeetingDateTime] = useState('Tomorrow at 10:00 AM');
   const [acceptanceDepts, setAcceptanceDepts] = useState('');
   const [eventTitle, setEventTitle] = useState('');
@@ -103,33 +119,6 @@ export function AdminDashboard() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
 
-  // Portal Password Gate State (Super Admin)
-  const [unlockedPortals, setUnlockedPortals] = useState<Set<string>>(new Set());
-  const [portalPasswordInput, setPortalPasswordInput] = useState('');
-  const [portalPasswordError, setPortalPasswordError] = useState('');
-  const [showPortalPassword, setShowPortalPassword] = useState(false);
-
-  const PORTAL_TAB_TO_DEPARTMENT: Record<string, Department> = {
-    portal_projects: 'Projects',
-    portal_organization: 'Organization',
-    portal_media: 'Media',
-  };
-
-  const handlePortalUnlock = (portalKey: string) => {
-    const dept = PORTAL_TAB_TO_DEPARTMENT[portalKey];
-    if (!dept) return;
-    const headConfig = DEPARTMENT_HEADS[dept];
-    if (!headConfig) return;
-
-    if (portalPasswordInput.trim() === headConfig.password) {
-      setUnlockedPortals(prev => new Set(prev).add(portalKey));
-      setPortalPasswordInput('');
-      setPortalPasswordError('');
-      setShowPortalPassword(false);
-    } else {
-      setPortalPasswordError('Incorrect password. Please try again.');
-    }
-  };
 
   const handleMemberStatusChange = async (id: number, newStatus: 'approved' | 'rejected' | 'pending') => {
     setStatusUpdatingId(id);
@@ -334,13 +323,28 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       if (validSession.user.role === 'admin') {
         fetchRegistrationStatus();
         fetchEventsList();
+        if (!portalSlug) {
+          navigate('/admin/super', { replace: true });
+        }
+      } else if (validSession.user.role === 'head_projects') {
+        if (portalSlug !== 'projects') {
+          navigate('/admin/projects', { replace: true });
+        }
+      } else if (validSession.user.role === 'head_organization') {
+        if (portalSlug !== 'organization') {
+          navigate('/admin/organization', { replace: true });
+        }
+      } else if (validSession.user.role === 'head_media') {
+        if (portalSlug !== 'media') {
+          navigate('/admin/media', { replace: true });
+        }
       }
     } else {
       setIsAuthenticated(false);
       setUserRole(null);
       setCurrentUser(null);
     }
-  }, []);
+  }, [portalSlug, navigate]);
 
   useEffect(() => {
     if (MASK_PORTAL_BUTTONS && activeTab.startsWith('portal_')) {
@@ -464,6 +468,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (lockoutSeconds > 0) {
+      setError(`Login temporarily locked. Please wait ${lockoutSeconds} seconds.`);
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -471,6 +479,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       // 1. Check local authentication helper for department heads & super admin (cryptographic salted hash verification)
       const localAuth = await authenticateUser(username, password);
       if (localAuth) {
+        setFailedAttempts(0);
+        setPassword('');
         await saveAuthSession(localAuth);
         setIsAuthenticated(true);
         setUserRole(localAuth.role);
@@ -479,44 +489,66 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         if (localAuth.role === 'admin') {
           fetchRegistrationStatus();
           fetchEventsList();
+          navigate('/admin/super');
+        } else if (localAuth.role === 'head_projects') {
+          navigate('/admin/projects');
+        } else if (localAuth.role === 'head_organization') {
+          navigate('/admin/organization');
+        } else if (localAuth.role === 'head_media') {
+          navigate('/admin/media');
         }
         return;
       }
 
-      // 2. Fallback to Supabase admin_users table
-      const { data, error } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('username', username.trim())
-        .single();
+      // 2. Fallback to Supabase admin_users table (if DB-managed admin exists)
+      if (username.trim()) {
+        const { data, error: dbErr } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('username', username.trim())
+          .single();
 
-      if (error || !data) {
-        setError('Invalid username or password. Please check your credentials.');
-      } else {
-        const isMatch = await verifyPasswordHash(password.trim(), SUPER_ADMIN_CONFIG.salt, data.password);
-        if (!isMatch && password.trim() !== data.password) {
-          setError('Invalid username or password. Please check your credentials.');
-          return;
+        if (data && !dbErr) {
+          const isMatch = await verifyPasswordHash(password.trim(), SUPER_ADMIN_CONFIG.salt, data.password);
+          if (isMatch || password.trim() === data.password) {
+            setFailedAttempts(0);
+            setPassword('');
+            const adminUser: DepartmentHeadUser = {
+              id: 'admin-' + data.id,
+              name: 'E.R.I.S.E. Administrator',
+              username: data.username,
+              role: 'admin',
+              roleTitle: 'Club Administrator',
+              department: 'All',
+              email: 'erise.club@gmail.com',
+            };
+            await saveAuthSession(adminUser);
+            setIsAuthenticated(true);
+            setUserRole('admin');
+            setCurrentUser(adminUser);
+            fetchRegistrationStatus();
+            fetchEventsList();
+            navigate('/admin/super');
+            return;
+          }
         }
+      }
 
-        const adminUser: DepartmentHeadUser = {
-          id: 'admin-' + data.id,
-          name: 'E.R.I.S.E. Administrator',
-          username: data.username,
-          role: 'admin',
-          roleTitle: 'Club Administrator',
-          department: 'All',
-          email: 'erise.club@gmail.com',
-        };
-        await saveAuthSession(adminUser);
-        setIsAuthenticated(true);
-        setUserRole('admin');
-        setCurrentUser(adminUser);
-        fetchRegistrationStatus();
-        fetchEventsList();
+      // Failed attempt: increment counter, wipe password input field
+      const newAttempts = failedAttempts + 1;
+      setFailedAttempts(newAttempts);
+      setPassword('');
+
+      if (newAttempts >= 5) {
+        setLockoutSeconds(30);
+        setError('Security Lockout: 5 failed attempts. Login disabled for 30 seconds.');
+      } else if (newAttempts >= 3) {
+        setError(`Invalid credentials. ${5 - newAttempts} attempt(s) remaining before security lockout.`);
+      } else {
+        setError('Invalid credentials. Please verify your password.');
       }
     } catch (err) {
-      setError('An error occurred during login.');
+      setError('An error occurred during authentication.');
     } finally {
       setLoading(false);
     }
@@ -527,6 +559,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     setIsAuthenticated(false);
     setUserRole(null);
     setCurrentUser(null);
+    navigate('/admin');
   };
 
   const fetchData = async (table: string) => {
@@ -931,54 +964,54 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     const isAchievements = activeTab === 'achievements';
 
     return (
-      <div className="space-y-5">
+      <div className="space-y-4">
         {/* Language Tabs Selector */}
-        <div className="flex items-center justify-between p-2 bg-dominant/60 border border-subtle rounded-2xl">
-          <span className="text-xs font-bold text-muted px-2">Editing Language:</span>
+        <div className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider px-2">Editing Language:</span>
           <div className="flex gap-1">
             <button
               type="button"
               onClick={() => setFormLang('both')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 text-xs font-bold transition-all ${
                 formLang === 'both'
-                  ? 'bg-accent text-white shadow-md shadow-accent/20'
-                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
             >
-              🌐 Both (EN & AR)
+              Both (EN & AR)
             </button>
             <button
               type="button"
               onClick={() => setFormLang('en')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 text-xs font-bold transition-all ${
                 formLang === 'en'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
             >
-              🇬🇧 English
+              English
             </button>
             <button
               type="button"
               onClick={() => setFormLang('ar')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 text-xs font-bold transition-all ${
                 formLang === 'ar'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
             >
-              🇩🇿 العربية
+              العربية
             </button>
           </div>
         </div>
 
-        {/* ─── Name / Title (Bilingual) ─── */}
+        {/* Name / Title (Bilingual) */}
         <div className="space-y-3">
           {(formLang === 'both' || formLang === 'en') && (
             <div>
-              <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
-                <span>{isLeaders || isStar ? 'Full Name' : 'Title'} (English) <span className="text-red-400">*</span></span>
-                <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">EN</span>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>{isLeaders || isStar ? 'Full Name' : 'Title'} (English) <span className="text-red-500">*</span></span>
+                <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5">EN</span>
               </label>
               <input
                 type="text"
@@ -986,16 +1019,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 value={formData.name || formData.title || ''}
                 onChange={(e) => handleInputChange(isLeaders || isStar ? 'name' : 'title', e.target.value)}
                 placeholder={isLeaders || isStar ? 'e.g. John Doe' : 'e.g. Green Hydrogen Workshop'}
-                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
               />
             </div>
           )}
 
           {(formLang === 'both' || formLang === 'ar') && (
             <div>
-              <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                 <span>{isLeaders || isStar ? 'الاسم واللقب' : 'العنوان'} (بالعربية)</span>
-                <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">AR</span>
+                <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5">AR</span>
               </label>
               <input
                 type="text"
@@ -1003,60 +1036,60 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 value={formData.name_ar || formData.title_ar || ''}
                 onChange={(e) => handleInputChange(isLeaders || isStar ? 'name_ar' : 'title_ar', e.target.value)}
                 placeholder={isLeaders || isStar ? 'مثال: أحمد بن علي' : 'مثال: ورشة عمل الهيدروجين الأخضر'}
-                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
               />
             </div>
           )}
         </div>
 
-        {/* ─── Single Image for Leaders & Star Members ─── */}
+        {/* Single Image for Leaders & Star Members */}
         {(isLeaders || isStar) && (
           <div>
-            <label className="block text-xs font-bold text-secondary mb-1">Image URL or Upload</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Image URL or Upload</label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={formData.image || ''}
                 onChange={(e) => handleInputChange('image', e.target.value)}
                 placeholder="https://... or click upload ->"
-                className="flex-1 bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                className="flex-1 bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
               />
-              <label className="bg-surface-elevated border border-subtle hover:border-accent cursor-pointer flex items-center justify-center px-4 rounded-xl transition-colors">
-                {uploadingImage ? <Loader2 className="w-5 h-5 animate-spin text-accent" /> : <Upload className="w-5 h-5 text-secondary" />}
+              <label className="bg-slate-100 border border-slate-300 hover:border-slate-800 cursor-pointer flex items-center justify-center px-4 transition-colors">
+                {uploadingImage ? <Loader2 className="w-5 h-5 animate-spin text-slate-700" /> : <Upload className="w-5 h-5 text-slate-600" />}
                 <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
               </label>
             </div>
             {formData.image && (
-              <div className="mt-2 h-28 w-28 rounded-xl border border-subtle overflow-hidden">
+              <div className="mt-2 h-28 w-28 border border-slate-300 overflow-hidden bg-slate-100">
                 <img src={formData.image} alt="Preview" className="w-full h-full object-cover" />
               </div>
             )}
           </div>
         )}
 
-        {/* ─── Multi Image for Events & Achievements ─── */}
+        {/* Multi Image for Events & Achievements */}
         {(isEvents || isAchievements) && (
           <div>
-            <label className="block text-xs font-bold text-secondary mb-1">
+            <label className="block text-xs font-bold text-slate-700 mb-1">
               Images (up to 4) — First image is used as cover
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
               {((formData.images as string[]) || []).map((imgUrl: string, idx: number) => (
-                <div key={idx} className="relative h-28 rounded-xl border border-subtle overflow-hidden group">
+                <div key={idx} className="relative h-28 border border-slate-300 overflow-hidden group bg-slate-100">
                   <img src={imgUrl} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
                   <button
                     type="button"
                     onClick={() => removeMultiImage(idx)}
-                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-1 right-1 w-6 h-6 bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ))}
               {((formData.images as string[]) || []).length < 4 && (
-                <label className="h-28 rounded-xl border-2 border-dashed border-subtle hover:border-accent cursor-pointer flex flex-col items-center justify-center gap-1 transition-colors bg-dominant/50">
-                  {uploadingImage ? <Loader2 className="w-5 h-5 animate-spin text-accent" /> : <Upload className="w-5 h-5 text-muted" />}
-                  <span className="text-[10px] text-muted font-medium">Add Photo</span>
+                <label className="h-28 border-2 border-dashed border-slate-300 hover:border-slate-800 cursor-pointer flex flex-col items-center justify-center gap-1 transition-colors bg-slate-50">
+                  {uploadingImage ? <Loader2 className="w-5 h-5 animate-spin text-slate-700" /> : <Upload className="w-5 h-5 text-slate-400" />}
+                  <span className="text-[10px] text-slate-500 font-medium">Add Photo</span>
                   <input type="file" accept="image/*" className="hidden" onChange={handleMultiImageUpload} />
                 </label>
               )}
@@ -1064,15 +1097,15 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </div>
         )}
 
-        {/* ─── Leaders Specific Fields (Role, Specialty, Bio, Socials) ─── */}
+        {/* Leaders Specific Fields (Role, Specialty, Bio, Socials) */}
         {isLeaders && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(formLang === 'both' || formLang === 'en') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
-                    <span>Role / Position (EN) <span className="text-red-400">*</span></span>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Role / Position (EN) <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">EN</span>
                   </label>
                   <input
                     type="text"
@@ -1080,16 +1113,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={formData.role || ''}
                     onChange={(e) => handleInputChange('role', e.target.value)}
                     placeholder="e.g. Club President"
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   />
                 </div>
               )}
 
               {(formLang === 'both' || formLang === 'ar') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>المنصب / الصفة (AR)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                   </label>
                   <input
                     type="text"
@@ -1097,7 +1130,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={formData.role_ar || ''}
                     onChange={(e) => handleInputChange('role_ar', e.target.value)}
                     placeholder="مثال: رئيس النادي"
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                   />
                 </div>
               )}
@@ -1106,25 +1139,25 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(formLang === 'both' || formLang === 'en') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Specialty / Status (EN)</span>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">EN</span>
                   </label>
                   <input
                     type="text"
                     value={formData.specialty || ''}
                     onChange={(e) => handleInputChange('specialty', e.target.value)}
                     placeholder="e.g. Renewable Energy Engineer"
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   />
                 </div>
               )}
 
               {(formLang === 'both' || formLang === 'ar') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>التخصص / الحالة (AR)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                   </label>
                   <input
                     type="text"
@@ -1132,7 +1165,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={formData.specialty_ar || ''}
                     onChange={(e) => handleInputChange('specialty_ar', e.target.value)}
                     placeholder="مثال: مهندس طاقات متجددة"
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                   />
                 </div>
               )}
@@ -1141,25 +1174,25 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             <div className="space-y-3">
               {(formLang === 'both' || formLang === 'en') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Bio / Summary (EN)</span>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">EN</span>
                   </label>
                   <textarea
                     rows={2}
                     value={formData.bio || ''}
                     onChange={(e) => handleInputChange('bio', e.target.value)}
                     placeholder="Brief leader bio..."
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   />
                 </div>
               )}
 
               {(formLang === 'both' || formLang === 'ar') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>نبذة تعريفية (AR)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                   </label>
                   <textarea
                     rows={2}
@@ -1167,40 +1200,40 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={formData.bio_ar || ''}
                     onChange={(e) => handleInputChange('bio_ar', e.target.value)}
                     placeholder="نبذة مختصرة عن القائد..."
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                   />
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-subtle/50">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-200">
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">LinkedIn URL</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">LinkedIn URL</label>
                 <input
                   type="url"
                   value={formData.socials?.linkedin || ''}
                   onChange={(e) => handleSocialChange('linkedin', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   placeholder="https://linkedin.com/in/..."
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">GitHub URL</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">GitHub URL</label>
                 <input
                   type="url"
                   value={formData.socials?.github || ''}
                   onChange={(e) => handleSocialChange('github', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   placeholder="https://github.com/..."
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">Email</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={formData.socials?.mail || ''}
                   onChange={(e) => handleSocialChange('mail', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   placeholder="email@example.com"
                 />
               </div>
@@ -1208,31 +1241,31 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </>
         )}
 
-        {/* ─── Events Specific Fields ─── */}
+        {/* Events Specific Fields */}
         {isEvents && (
           <>
             <div className="space-y-3">
               {(formLang === 'both' || formLang === 'en') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Description (English)</span>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">EN</span>
                   </label>
                   <textarea
                     rows={3}
                     value={formData.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     placeholder="Event description in English..."
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   />
                 </div>
               )}
 
               {(formLang === 'both' || formLang === 'ar') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>وصف الفعالية (بالعربية)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                   </label>
                   <textarea
                     rows={3}
@@ -1240,7 +1273,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={formData.description_ar || ''}
                     onChange={(e) => handleInputChange('description_ar', e.target.value)}
                     placeholder="تفاصيل ووصف الفعالية باللغة العربية..."
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                   />
                 </div>
               )}
@@ -1248,22 +1281,22 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">Start Date</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Start Date</label>
                 <input
                   type="date"
                   required
                   value={formData.start_date || ''}
                   onChange={(e) => handleInputChange('start_date', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">End Date</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">End Date</label>
                 <input
                   type="date"
                   value={formData.end_date || ''}
                   onChange={(e) => handleInputChange('end_date', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                 />
               </div>
             </div>
@@ -1271,25 +1304,25 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(formLang === 'both' || formLang === 'en') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Time (EN)</span>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">EN</span>
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. 09:00 AM - 04:00 PM"
                     value={formData.time || ''}
                     onChange={(e) => handleInputChange('time', e.target.value)}
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   />
                 </div>
               )}
 
               {(formLang === 'both' || formLang === 'ar') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>التوقيت (AR)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                   </label>
                   <input
                     type="text"
@@ -1297,7 +1330,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     placeholder="مثال: من 09:00 صباحاً إلى 04:00 مساءً"
                     value={formData.time_ar || ''}
                     onChange={(e) => handleInputChange('time_ar', e.target.value)}
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                   />
                 </div>
               )}
@@ -1306,25 +1339,25 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(formLang === 'both' || formLang === 'en') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Location (EN)</span>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">EN</span>
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. Main Auditorium, Batna"
                     value={formData.location || ''}
                     onChange={(e) => handleInputChange('location', e.target.value)}
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   />
                 </div>
               )}
 
               {(formLang === 'both' || formLang === 'ar') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>المكان (AR)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                   </label>
                   <input
                     type="text"
@@ -1332,35 +1365,35 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     placeholder="مثال: قاعة المحاضرات الكبرى، باتنة"
                     value={formData.location_ar || ''}
                     onChange={(e) => handleInputChange('location_ar', e.target.value)}
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                   />
                 </div>
               )}
             </div>
 
             {/* Event Registration Setup Box */}
-            <div className="p-4 rounded-2xl border border-accent/30 bg-accent/5 space-y-4 mt-2">
-              <h4 className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-2">
-                <UserCheck className="w-4 h-4" /> Event Registration Settings
+            <div className="p-4 border border-slate-300 bg-slate-50 space-y-4 mt-2">
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-slate-700" /> Event Registration Settings
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className="flex items-center gap-3 p-3 rounded-xl border border-subtle bg-dominant cursor-pointer">
+                <label className="flex items-center gap-3 p-3 border border-slate-300 bg-white cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.registration_enabled ?? true}
                     onChange={(e) => handleInputChange('registration_enabled', e.target.checked)}
-                    className="w-4 h-4 accent-accent"
+                    className="w-4 h-4 accent-slate-900"
                   />
-                  <span className="text-xs font-bold text-primary">Enable Registration Form</span>
+                  <span className="text-xs font-bold text-slate-900">Enable Registration Form</span>
                 </label>
 
                 <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">Registration Format</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Registration Format</label>
                   <select
                     value={formData.registration_type || 'individual'}
                     onChange={(e) => handleInputChange('registration_type', e.target.value)}
-                    className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-xs font-bold text-primary focus:border-accent focus:outline-none cursor-pointer"
+                    className="w-full bg-white border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-slate-800 focus:outline-none cursor-pointer"
                   >
                     <option value="individual">Individual Registration</option>
                     <option value="team">Team Registration</option>
@@ -1370,35 +1403,35 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
               {/* Team Size options */}
               {formData.registration_type === 'team' && (
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-subtle/50">
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
                   <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Min Team Size</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Min Team Size</label>
                     <input
                       type="number"
                       min={1}
                       max={10}
                       value={formData.min_team_size || 2}
                       onChange={(e) => handleInputChange('min_team_size', Number(e.target.value))}
-                      className="w-full bg-dominant border border-subtle rounded-xl px-3 py-1.5 text-xs text-primary"
+                      className="w-full bg-white border border-slate-300 px-3 py-1.5 text-xs text-slate-900"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-secondary mb-1">Max Team Size</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Max Team Size</label>
                     <input
                       type="number"
                       min={1}
                       max={15}
                       value={formData.max_team_size || 5}
                       onChange={(e) => handleInputChange('max_team_size', Number(e.target.value))}
-                      className="w-full bg-dominant border border-subtle rounded-xl px-3 py-1.5 text-xs text-primary"
+                      className="w-full bg-white border border-slate-300 px-3 py-1.5 text-xs text-slate-900"
                     />
                   </div>
                 </div>
               )}
 
               {/* Registration Deadline Presets */}
-              <div className="pt-2 border-t border-subtle/50">
-                <label className="block text-xs font-medium text-secondary mb-1.5">
+              <div className="pt-2 border-t border-slate-200">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Registration Window / Timer Duration
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
@@ -1412,10 +1445,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       key={p.id}
                       type="button"
                       onClick={() => handleDeadlinePresetChange(p.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                      className={`px-3 py-1.5 text-xs font-bold transition-all border ${
                         deadlinePreset === p.id 
-                          ? 'bg-accent text-white border-accent' 
-                          : 'bg-dominant text-secondary border-subtle hover:border-accent/40'
+                          ? 'bg-slate-900 text-white border-slate-900' 
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                       }`}
                     >
                       {p.label}
@@ -1425,12 +1458,12 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
                 {deadlinePreset === 'custom' && (
                   <div>
-                    <label className="block text-[11px] text-muted mb-1">Set Exact Deadline Date & Time</label>
+                    <label className="block text-[11px] text-slate-600 mb-1">Set Exact Deadline Date & Time</label>
                     <input
                       type="datetime-local"
                       value={formData.registration_deadline || ''}
                       onChange={(e) => handleInputChange('registration_deadline', e.target.value)}
-                      className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-xs text-primary focus:border-accent"
+                      className="w-full bg-white border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-800"
                     />
                   </div>
                 )}
@@ -1439,31 +1472,31 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </>
         )}
 
-        {/* ─── Achievements Specific Fields ─── */}
+        {/* Achievements Specific Fields */}
         {isAchievements && (
           <>
             <div className="space-y-3">
               {(formLang === 'both' || formLang === 'en') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>Description (English)</span>
-                    <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded">EN</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">EN</span>
                   </label>
                   <textarea
                     rows={3}
                     value={formData.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     placeholder="Achievement details in English..."
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                   />
                 </div>
               )}
 
               {(formLang === 'both' || formLang === 'ar') && (
                 <div>
-                  <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span>تفاصيل الإنجاز (بالعربية)</span>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                   </label>
                   <textarea
                     rows={3}
@@ -1471,7 +1504,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={formData.description_ar || ''}
                     onChange={(e) => handleInputChange('description_ar', e.target.value)}
                     placeholder="تفاصيل وقصة هذا الإنجاز باللغة العربية..."
-                    className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                   />
                 </div>
               )}
@@ -1479,21 +1512,21 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">Year</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Year</label>
                 <input
                   type="text"
                   placeholder="e.g. 2025"
                   value={formData.year || ''}
                   onChange={(e) => handleInputChange('year', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">Category (EN)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Category (EN)</label>
                 <select
                   value={formData.category || 'ACHIEVEMENT'}
                   onChange={(e) => handleInputChange('category', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                 >
                   <option value="ACHIEVEMENT">ACHIEVEMENT</option>
                   <option value="EVENT PARTICIPATION">EVENT PARTICIPATION</option>
@@ -1502,21 +1535,21 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1">Date</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Date</label>
                 <input
                   type="date"
                   value={formData.date || ''}
                   onChange={(e) => handleInputChange('date', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none"
                 />
               </div>
             </div>
 
             {(formLang === 'both' || formLang === 'ar') && (
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                   <span>الفئة أو التصنيف بالعربية</span>
-                  <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                 </label>
                 <input
                   type="text"
@@ -1524,18 +1557,18 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   placeholder="مثال: تكريم وجائزة تقديرية"
                   value={formData.category_ar || ''}
                   onChange={(e) => handleInputChange('category_ar', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                 />
               </div>
             )}
           </>
         )}
 
-        {/* ─── Star Members Specific Fields (Organization EN & AR) ─── */}
+        {/* Star Members Specific Fields (Organization EN & AR) */}
         {isStar && (
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-secondary mb-2">Departments (English Tags)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-2">Departments (English Tags)</label>
               <div className="flex flex-wrap gap-3">
                 {['Projects', 'Organization', 'Media'].map((dept) => {
                   const currentOrgs = Array.from(
@@ -1558,17 +1591,17 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     <label
                       key={dept}
                       onClick={toggleDept}
-                      className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border cursor-pointer font-semibold text-sm transition-all select-none ${
+                      className={`flex items-center gap-2.5 px-4 py-2 border cursor-pointer font-semibold text-sm transition-all select-none ${
                         isChecked
-                          ? 'bg-accent/15 border-accent text-accent shadow-sm'
-                          : 'bg-dominant border-subtle text-secondary hover:border-accent/40'
+                          ? 'bg-slate-900 border-slate-900 text-white'
+                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => {}}
-                        className="w-4 h-4 rounded text-accent focus:ring-accent accent-accent cursor-pointer"
+                        className="w-4 h-4 accent-slate-900 cursor-pointer"
                       />
                       <span>{dept}</span>
                     </label>
@@ -1579,9 +1612,9 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
             {(formLang === 'both' || formLang === 'ar') && (
               <div>
-                <label className="block text-xs font-bold text-secondary mb-1 flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                   <span>اللجنة / القسم (بالعربية)</span>
-                  <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">AR</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5">AR</span>
                 </label>
                 <input
                   type="text"
@@ -1589,7 +1622,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   placeholder="مثال: لجنة المشاريع، لجنة التنظيم"
                   value={formData.organization_ar || ''}
                   onChange={(e) => handleInputChange('organization_ar', e.target.value)}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2 text-primary text-sm focus:border-accent focus:outline-none font-arabic"
+                  className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-sm focus:border-slate-800 focus:bg-white focus:outline-none font-arabic"
                 />
               </div>
             )}
@@ -1607,18 +1640,18 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     const rejectedCount = eventRegistrations.filter(r => r.status === 'rejected').length;
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Header Controls */}
-        <div className="bg-surface border border-subtle rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="bg-white border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="w-full sm:w-auto">
-            <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">Filter by Event</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Filter by Event</label>
             <select
               value={selectedEventId}
               onChange={(e) => {
                 setSelectedEventId(e.target.value);
                 fetchEventRegistrations(e.target.value);
               }}
-              className="w-full sm:w-72 bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-sm font-bold text-primary focus:border-accent focus:outline-none cursor-pointer"
+              className="w-full sm:w-72 bg-slate-50 border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-slate-800 focus:bg-white focus:outline-none cursor-pointer"
             >
               <option value="all">All Events ({eventsList.length})</option>
               {eventsList.map((ev) => (
@@ -1627,18 +1660,18 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             </select>
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end flex-wrap">
             <div className="flex items-center gap-3 text-xs font-bold">
-              <span className="text-emerald-500">{approvedCount} Approved</span>
-              <span className="text-amber-500">{pendingCount} Pending</span>
-              <span className="text-red-400">{rejectedCount} Rejected</span>
+              <span className="text-emerald-700 font-mono">{approvedCount} Approved</span>
+              <span className="text-amber-700 font-mono">{pendingCount} Pending</span>
+              <span className="text-rose-700 font-mono">{rejectedCount} Rejected</span>
             </div>
             {totalCount > 0 && (
               <button
                 onClick={exportEventRegistrationsCSV}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 text-emerald-500 text-xs font-bold hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 transition-colors"
               >
-                <Download className="w-4 h-4" /> Export CSV
+                <Download className="w-3.5 h-3.5" /> Export CSV
               </button>
             )}
           </div>
@@ -1646,15 +1679,15 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
         {/* List of Event Registrations */}
         {eventRegsLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-accent" />
+          <div className="flex justify-center py-12 bg-white border border-slate-200">
+            <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
           </div>
         ) : eventRegistrations.length === 0 ? (
-          <div className="bg-surface border border-subtle rounded-2xl p-12 text-center text-secondary">
+          <div className="bg-white border border-slate-200 p-8 text-center text-slate-500 text-xs">
             No event registrations found for this filter.
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {eventRegistrations.map((item) => {
               const isExpanded = expandedRows.has(item.id);
               const members: any[] = item.event_registration_members || [];
@@ -1664,89 +1697,87 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               return (
                 <div
                   key={item.id}
-                  className="bg-surface border border-subtle rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                  className="bg-white border border-slate-200 transition-colors"
                 >
                   {/* Collapsed Header */}
                   <div 
                     onClick={() => toggleRowExpand(item.id)}
-                    className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-subtle/20 transition-colors"
+                    className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors"
                   >
-                    <div className="flex items-start gap-4 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 uppercase ${
-                        isTeam ? 'bg-purple-500/15 text-purple-400' : 'bg-emerald-500/15 text-emerald-400'
-                      }`}>
-                        {isTeam ? <Users className="w-5 h-5" /> : <User className="w-5 h-5" />}
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-9 h-9 bg-slate-100 border border-slate-300 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
+                        {isTeam ? <Users className="w-4 h-4" /> : <User className="w-4 h-4" />}
                       </div>
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-primary text-base">
+                          <span className="font-bold text-slate-900 text-sm">
                             {isTeam ? (item.team_name || 'Team Registration') : leader.full_name}
                           </span>
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            item.status === 'approved' ? 'bg-emerald-500/15 text-emerald-500' :
-                            item.status === 'rejected' ? 'bg-red-500/10 text-red-400' :
-                            'bg-amber-500/10 text-amber-500'
+                          <span className={`px-2 py-0.5 text-[10px] font-mono uppercase border ${
+                            item.status === 'approved' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' :
+                            item.status === 'rejected' ? 'bg-rose-50 text-rose-800 border-rose-300' :
+                            'bg-amber-50 text-amber-800 border-amber-300'
                           }`}>
                             {item.status || 'pending'}
                           </span>
                         </div>
 
-                        <p className="text-xs text-muted mt-1">
-                          Event: <strong className="text-primary">{item.events?.title || `#${item.event_id}`}</strong> · {item.institution} ({item.study_year})
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Event: <strong className="text-slate-800">{item.events?.title || `#${item.event_id}`}</strong> • {item.institution} ({item.study_year})
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between md:justify-end gap-4 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-subtle">
+                    <div className="flex items-center justify-between md:justify-end gap-3 shrink-0 border-t md:border-t-0 pt-2.5 md:pt-0 border-slate-100 text-xs">
                       <div className="flex items-center gap-2">
                         {item.has_companion && (
-                          <span className="px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-bold flex items-center gap-1">
-                            <Car className="w-3.5 h-3.5" /> Companion
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-300 text-[11px] font-bold flex items-center gap-1">
+                            <Car className="w-3 h-3" /> Companion
                           </span>
                         )}
                         {isTeam && (
-                          <span className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-400 text-xs font-bold">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-300 text-[11px] font-bold font-mono">
                             {members.length} Members
                           </span>
                         )}
                       </div>
-                      {isExpanded ? <ChevronUp className="w-5 h-5 text-muted" /> : <ChevronDown className="w-5 h-5 text-muted" />}
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                     </div>
                   </div>
 
                   {/* Expanded Body */}
                   {isExpanded && (
-                    <div className="border-t border-subtle bg-dominant/40 p-5 space-y-5">
+                    <div className="border-t border-slate-200 bg-slate-50/50 p-4 space-y-4">
                       {/* Companion Banner if present */}
                       {item.has_companion && (
-                        <div className="p-4 rounded-xl border border-accent/30 bg-accent/5 flex items-center gap-3 text-xs">
-                          <Car className="w-5 h-5 text-accent shrink-0" />
+                        <div className="p-3 bg-white border border-slate-200 flex items-center gap-2.5 text-xs">
+                          <Car className="w-4 h-4 text-slate-600 shrink-0" />
                           <div>
-                            <span className="block font-bold text-accent uppercase">Accompanying Companion</span>
-                            <span className="text-primary font-medium">{item.companion_name}</span>
-                            <span className="text-muted ml-2">({item.companion_role})</span>
+                            <span className="font-bold text-slate-800 block text-xs">Accompanying Companion</span>
+                            <span className="text-slate-900 font-medium">{item.companion_name}</span>
+                            <span className="text-slate-500 ml-1.5">({item.companion_role})</span>
                           </div>
                         </div>
                       )}
 
                       {/* Members Grid */}
                       <div>
-                        <h4 className="text-xs font-bold text-muted uppercase tracking-wider mb-3">
+                        <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
                           Registered Member(s) ({members.length})
                         </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                           {members.map((m: any, idx: number) => (
-                            <div key={m.id || idx} className={`p-4 rounded-xl border ${m.is_leader ? 'bg-accent/5 border-accent/40' : 'bg-surface border-subtle'}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="font-bold text-primary text-sm">{m.full_name}</span>
+                            <div key={m.id || idx} className={`p-3 bg-white border ${m.is_leader ? 'border-slate-800 shadow-xs' : 'border-slate-200'}`}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="font-bold text-slate-900 text-xs">{m.full_name}</span>
                                 {m.is_leader && (
-                                  <span className="px-2 py-0.5 rounded bg-accent text-white text-[9px] font-bold uppercase">Leader ⭐</span>
+                                  <span className="px-1.5 py-0.2 bg-slate-900 text-white text-[9px] font-bold uppercase">Leader</span>
                                 )}
                               </div>
-                              <div className="space-y-1 text-xs text-muted">
-                                <p><strong className="text-secondary">Email:</strong> <a href={`mailto:${m.email}`} className="text-accent hover:underline">{m.email}</a></p>
-                                <p><strong className="text-secondary">Phone:</strong> <a href={`tel:${m.phone}`} className="text-primary">{m.phone}</a></p>
+                              <div className="space-y-0.5 text-xs text-slate-600">
+                                <p><strong className="text-slate-500 font-normal">Email:</strong> <a href={`mailto:${m.email}`} className="text-slate-800 hover:underline">{m.email}</a></p>
+                                <p><strong className="text-slate-500 font-normal">Phone:</strong> <a href={`tel:${m.phone}`} className="text-slate-800 font-mono hover:underline">{m.phone}</a></p>
                               </div>
                             </div>
                           ))}
@@ -1754,28 +1785,28 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       </div>
 
                       {/* Actions */}
-                      <div className="pt-4 border-t border-subtle flex items-center justify-between flex-wrap gap-3">
-                        <div className="flex items-center gap-2">
+                      <div className="pt-3 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {item.status !== 'approved' && (
                             <button
                               onClick={() => handleEventRegStatusChange(item.id, 'approved')}
-                              className="px-3.5 py-1.5 rounded-lg text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-bold border border-emerald-500/20 flex items-center gap-1.5 transition-colors"
+                              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                             >
-                              <CheckCircle className="w-4 h-4" /> Approve
+                              <CheckCircle className="w-3.5 h-3.5" /> Approve
                             </button>
                           )}
                           {item.status !== 'rejected' && (
                             <button
                               onClick={() => handleEventRegStatusChange(item.id, 'rejected')}
-                              className="px-3.5 py-1.5 rounded-lg text-red-400 bg-red-500/10 hover:bg-red-500/20 text-xs font-bold border border-red-500/20 flex items-center gap-1.5 transition-colors"
+                              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                             >
-                              <XCircle className="w-4 h-4" /> Reject
+                              <XCircle className="w-3.5 h-3.5" /> Reject
                             </button>
                           )}
                           {item.status && item.status !== 'pending' && (
                             <button
                               onClick={() => handleEventRegStatusChange(item.id, 'pending')}
-                              className="px-3.5 py-1.5 rounded-lg text-muted hover:text-primary text-xs font-medium transition-colors"
+                              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 text-xs font-medium transition-colors cursor-pointer"
                             >
                               Reset to Pending
                             </button>
@@ -1784,14 +1815,14 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
                         <button
                           onClick={() => handleDeleteEventReg(item.id)}
-                          className="px-3.5 py-1.5 rounded-lg text-red-500 hover:bg-red-500/10 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                          className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-slate-300 hover:border-rose-200 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
                         >
-                          <Trash2 className="w-4 h-4" /> Delete Registration
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
                         </button>
                       </div>
 
                       {/* Event Email Action (Combined Invitation & Selection Pass) */}
-                      <div className="w-full pt-3 border-t border-subtle/50">
+                      <div className="w-full pt-2.5 border-t border-slate-200">
                         <button
                           onClick={() => {
                             const targetName = isTeam ? (item.team_name || 'Team') : leader.full_name;
@@ -1803,10 +1834,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                             setEmailErrorMsg(null);
                             setEmailModalOpen(true);
                           }}
-                          className="w-full py-2.5 px-4 rounded-xl bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                          className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                         >
-                          <Mail className="w-4 h-4 text-purple-400" />
-                          <span>Send Event Invitation &amp; Selection Pass</span>
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Send Event Invitation & Selection Pass</span>
                         </button>
                       </div>
                     </div>
@@ -1846,41 +1877,41 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     });
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Top Header Card */}
-        <div className="bg-surface border border-subtle rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="bg-white border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-primary font-bold text-base flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-accent" /> Club Membership Intake Status
+            <h3 className="text-slate-900 font-bold text-base flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-slate-700" /> Club Membership Intake Status
             </h3>
-            <p className="text-sm text-muted mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               {registrationOpen ? 'Club intake form is currently OPEN for new student applications.' : 'Club intake form is currently CLOSED.'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {totalCount > 0 && (
               <button
                 onClick={exportClubRegistrationsCSV}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 text-xs font-bold hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 transition-colors"
               >
-                <Download className="w-4 h-4" /> Export CSV
+                <Download className="w-3.5 h-3.5" /> Export CSV
               </button>
             )}
             <button
               onClick={toggleRegistration}
               disabled={togglingRegistration}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 ${
+              className={`flex items-center gap-2 px-4 py-1.5 font-bold text-xs transition-all shrink-0 border cursor-pointer ${
                 registrationOpen
-                  ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30'
-                  : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                  : 'bg-rose-50 text-rose-800 border-rose-300'
               }`}
             >
               {togglingRegistration ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : registrationOpen ? (
-                <ToggleRight className="w-5 h-5" />
+                <ToggleRight className="w-4 h-4 text-emerald-700" />
               ) : (
-                <ToggleLeft className="w-5 h-5" />
+                <ToggleLeft className="w-4 h-4 text-rose-700" />
               )}
               {registrationOpen ? 'Intake Open' : 'Intake Closed'}
             </button>
@@ -1888,21 +1919,21 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         </div>
 
         {/* Filter and Search Bar */}
-        <div className="bg-surface border border-subtle rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="bg-white border border-slate-200 p-3 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           {/* Search Box */}
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search member by name, email, phone, year, department..."
               value={memberSearchQuery}
               onChange={(e) => setMemberSearchQuery(e.target.value)}
-              className="w-full bg-dominant border border-subtle rounded-xl pl-10 pr-4 py-2 text-xs sm:text-sm text-primary placeholder:text-muted focus:border-accent focus:outline-none"
+              className="w-full bg-slate-50 border border-slate-300 pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-800 focus:bg-white focus:outline-none"
             />
             {memberSearchQuery && (
               <button
                 onClick={() => setMemberSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1913,17 +1944,17 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {[
               { id: 'all', label: `All (${totalCount})` },
-              { id: 'pending', label: `Pending (${pendingCount})`, color: 'text-amber-500' },
-              { id: 'approved', label: `Approved (${approvedCount})`, color: 'text-emerald-500' },
-              { id: 'rejected', label: `Rejected (${rejectedCount})`, color: 'text-red-400' },
+              { id: 'pending', label: `Pending (${pendingCount})`, color: 'text-amber-700' },
+              { id: 'approved', label: `Approved (${approvedCount})`, color: 'text-emerald-700' },
+              { id: 'rejected', label: `Rejected (${rejectedCount})`, color: 'text-rose-700' },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setMemberStatusFilter(tab.id as any)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer border ${
                   memberStatusFilter === tab.id
-                    ? 'bg-accent text-white shadow-md'
-                    : 'bg-dominant text-secondary hover:bg-subtle/50 border border-subtle'
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-600 hover:text-slate-900 border-slate-300'
                 }`}
               >
                 {tab.label}
@@ -1934,17 +1965,17 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
         {/* Member List */}
         {dataLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-accent" />
+          <div className="flex justify-center py-12 bg-white border border-slate-200">
+            <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
           </div>
         ) : filteredMembers.length === 0 ? (
-          <div className="bg-surface border border-subtle rounded-2xl p-12 text-center text-secondary">
+          <div className="bg-white border border-slate-200 p-8 text-center text-slate-500 text-xs">
             {memberSearchQuery || memberStatusFilter !== 'all'
               ? 'No member registrations match your search or filter.'
               : 'No club registrations found.'}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {filteredMembers.map((item) => {
               const status = item.status || 'pending';
               const depts: string[] = Array.isArray(item.departments)
@@ -1960,42 +1991,42 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     setSelectedMember(item);
                     setMemberModalOpen(true);
                   }}
-                  className="bg-surface border border-subtle hover:border-accent/50 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+                  className="bg-white border border-slate-200 hover:border-slate-400 p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors cursor-pointer group"
                 >
-                  <div className="flex items-start gap-4 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent font-bold flex items-center justify-center text-sm uppercase shrink-0 group-hover:bg-accent group-hover:text-white transition-colors">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="w-9 h-9 bg-slate-100 border border-slate-300 text-slate-700 font-bold flex items-center justify-center text-xs uppercase shrink-0">
                       {item.full_name ? item.full_name.charAt(0) : 'M'}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-primary text-base group-hover:text-accent transition-colors">
+                        <span className="font-bold text-slate-900 text-sm">
                           {item.full_name}
                         </span>
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          className={`px-2 py-0.2 text-[10px] font-mono uppercase border ${
                             status === 'approved'
-                              ? 'bg-emerald-500/15 text-emerald-500'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                               : status === 'rejected'
-                              ? 'bg-red-500/10 text-red-400'
-                              : 'bg-amber-500/10 text-amber-500'
+                              ? 'bg-rose-50 text-rose-800 border-rose-300'
+                              : 'bg-amber-50 text-amber-800 border-amber-300'
                           }`}
                         >
                           {status}
                         </span>
                       </div>
 
-                      <p className="text-xs text-muted mt-1 flex items-center gap-2 flex-wrap">
-                        <span>Year {item.study_year}</span>
-                        {item.specialization && <span>· {item.specialization}</span>}
-                        <span>· {item.email}</span>
-                        <span>· {item.phone}</span>
+                      <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                        <span>Yr {item.study_year}</span>
+                        {item.specialization && <span>• {item.specialization}</span>}
+                        <span>• {item.email}</span>
+                        <span className="font-mono">• {item.phone}</span>
                       </p>
 
                       {depts.length > 0 && (
-                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                           {depts.map((d) => (
-                            <span key={d} className="px-2 py-0.5 rounded-md bg-subtle/40 text-[10px] font-semibold text-secondary">
+                            <span key={d} className="px-1.5 py-0.2 bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-700">
                               {d}
                             </span>
                           ))}
@@ -2007,20 +2038,20 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   {/* Actions */}
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="flex items-center justify-between md:justify-end gap-2 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-subtle"
+                    className="flex items-center justify-between md:justify-end gap-2 shrink-0 border-t md:border-t-0 pt-2.5 md:pt-0 border-slate-100"
                   >
-                    <span className="text-[11px] font-medium text-accent hover:underline hidden sm:inline mr-2">
-                      Click for details & actions →
+                    <span className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hidden sm:inline mr-2">
+                      Details →
                     </span>
 
                     {status !== 'approved' && (
                       <button
                         onClick={() => handleMemberStatusChange(item.id, 'approved')}
                         disabled={statusUpdatingId === item.id}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20 text-xs font-bold flex items-center gap-1 transition-colors"
+                        className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                         title="Accept / Approve Member"
                       >
-                        <CheckCircle className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Accept</span>
+                        <CheckCircle className="w-3.5 h-3.5" /> <span>Accept</span>
                       </button>
                     )}
 
@@ -2028,16 +2059,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       <button
                         onClick={() => handleMemberStatusChange(item.id, 'rejected')}
                         disabled={statusUpdatingId === item.id}
-                        className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 text-xs font-bold flex items-center gap-1 transition-colors"
+                        className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                         title="Reject Member"
                       >
-                        <XCircle className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Reject</span>
+                        <XCircle className="w-3.5 h-3.5" /> <span>Reject</span>
                       </button>
                     )}
 
                     <button
                       onClick={() => handleDeleteMember(item.id, item.full_name)}
-                      className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"
                       title="Delete Member"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -2054,253 +2085,260 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-dominant flex items-center justify-center p-4 py-12 relative overflow-hidden">
-        {/* Background glow effects */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-accent/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="bg-surface p-6 sm:p-8 rounded-3xl border border-subtle shadow-2xl w-full max-w-lg relative z-10 space-y-6">
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-[#f8fcfd] flex items-center justify-center p-4 [color-scheme:light] font-sans text-slate-900">
+        <div className="bg-white p-6 sm:p-8 border border-slate-300 w-full max-w-md space-y-5 shadow-sm">
           <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-accent/10 text-accent rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-accent/10 border border-accent/20">
-              <ShieldCheck className="w-8 h-8" />
+            <div className="w-12 h-12 bg-slate-100 text-slate-800 border border-slate-300 flex items-center justify-center mx-auto">
+              <ShieldCheck className="w-6 h-6" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-primary tracking-tight">
-              E.R.I.S.E. Admin Portal
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              E.R.I.S.E. Administrative Portals
             </h1>
-            <p className="text-xs sm:text-sm text-secondary max-w-sm mx-auto">
-              Sign in to access the E.R.I.S.E. Administrative Dashboard
-            </p>
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+              <span className="font-mono text-slate-600">Connected</span>
+              <span>•</span>
+              <span>Secure Gateway</span>
+            </div>
           </div>
 
           {error && (
-            <div className="bg-red-500/15 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-xs font-bold flex items-center gap-2">
+            <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 text-xs font-medium flex items-center gap-2">
               <XCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
+          {lockoutSeconds > 0 && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-900 p-3 text-xs font-bold flex items-center gap-2">
+              <Clock className="w-4 h-4 shrink-0 animate-spin text-amber-700" />
+              <span>Security lockout active: {lockoutSeconds}s remaining</span>
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
-                Username
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Dashboard Password
               </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
-                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-medium"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password..."
+                  disabled={lockoutSeconds > 0 || loading}
+                  className="w-full bg-slate-50 border border-slate-300 pl-3.5 pr-10 py-2.5 text-slate-900 text-xs focus:border-slate-800 focus:bg-white focus:outline-none transition-colors disabled:opacity-50"
+                  required
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors p-1"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
+            {/* Optional Username Accordion if specific user login is needed */}
             <div>
-              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-accent focus:outline-none font-medium"
-                required
-              />
+              <button
+                type="button"
+                onClick={() => setUsername(username ? '' : 'admin')}
+                className="text-[11px] text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                {username ? 'Hide custom username' : 'Specify custom username (optional)'}
+              </button>
+
+              {username !== '' && (
+                <div className="mt-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="e.g. admin or ayoub_berbache"
+                    disabled={lockoutSeconds > 0 || loading}
+                    className="w-full bg-slate-50 border border-slate-300 px-3 py-2 text-slate-900 text-xs focus:border-slate-800 focus:bg-white focus:outline-none disabled:opacity-50"
+                  />
+                </div>
+              )}
             </div>
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-accent hover:bg-accent-muted text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-accent/20 active:scale-95 disabled:opacity-50 text-sm"
+              disabled={loading || lockoutSeconds > 0}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-xs tracking-wider uppercase cursor-pointer"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-              <span>Sign In to Portal</span>
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Verifying Credentials...</span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-4 h-4" />
+                  <span>Authenticate & Enter Dashboard</span>
+                </>
+              )}
             </button>
           </form>
+
+          <div className="pt-3 border-t border-slate-200 text-center">
+            <p className="text-[11px] text-slate-500">
+              Department credentials automatically route to the corresponding department dashboard.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ─── IF LOGGED IN AS A DEPARTMENT HEAD ──────────────────────────────────────
-  if (userRole === 'head_projects') {
-    return (
-      <div className="min-h-screen bg-dominant flex flex-col">
-        <header className="bg-surface border-b border-subtle p-4 px-6 sm:px-8 flex justify-between items-center z-20">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center font-bold">
-              <Cpu className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold text-primary">Projects Portal</h1>
-              <p className="text-[11px] text-muted">Head: {currentUser?.name || 'Ayoub Berbache'}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-colors"
-          >
-            <LogOut className="w-4 h-4" /> <span>Logout</span>
-          </button>
-        </header>
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
-          <ProjectsPortal />
-        </main>
-      </div>
-    );
-  }
+  // ─── AUTHENTICATED DASHBOARD VIEW ──────────────────────────────────────────
+  const isViewingProjects = userRole === 'head_projects' || (userRole === 'admin' && (portalSlug === 'projects' || activeTab === 'portal_projects'));
+  const isViewingOrganization = userRole === 'head_organization' || (userRole === 'admin' && (portalSlug === 'organization' || activeTab === 'portal_organization'));
+  const isViewingMedia = userRole === 'head_media' || (userRole === 'admin' && (portalSlug === 'media' || activeTab === 'portal_media'));
 
-  if (userRole === 'head_organization') {
-    return (
-      <div className="min-h-screen bg-dominant flex flex-col">
-        <header className="bg-surface border-b border-subtle p-4 px-6 sm:px-8 flex justify-between items-center z-20">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold">
-              <Building className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold text-primary">Organization Portal</h1>
-              <p className="text-[11px] text-muted">Head: {currentUser?.name || 'Ahmed Amine Helali'}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-colors"
-          >
-            <LogOut className="w-4 h-4" /> <span>Logout</span>
-          </button>
-        </header>
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
-          <OrganizationPortal />
-        </main>
-      </div>
-    );
-  }
+  const roleTitle = 
+    userRole === 'admin' ? 'Super Admin' :
+    userRole === 'head_projects' ? 'Projects Head' :
+    userRole === 'head_organization' ? 'Organization Head' :
+    userRole === 'head_media' ? 'Media Head' : 'Staff';
 
-  if (userRole === 'head_media') {
-    return (
-      <div className="min-h-screen bg-dominant flex flex-col">
-        <header className="bg-surface border-b border-subtle p-4 px-6 sm:px-8 flex justify-between items-center z-20">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center font-bold">
-              <Camera className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold text-primary">Media Portal</h1>
-              <p className="text-[11px] text-muted">Head: {currentUser?.name || 'Matriche Abderrahmane'}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-colors"
-          >
-            <LogOut className="w-4 h-4" /> <span>Logout</span>
-          </button>
-        </header>
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
-          <MediaPortal />
-        </main>
-      </div>
-    );
-  }
-
-  // ─── SUPER ADMIN VIEW (Full access + Department Portals switcher) ────────────
-  const allSidebarTabs = [
+  const sidebarTabs = [
     { key: 'leaders', label: 'Leaders', icon: Users },
     { key: 'events', label: 'Events', icon: Calendar },
     { key: 'event_registrations', label: 'Event Registrations', icon: UserCheck },
     { key: 'achievements', label: 'Achievements', icon: Award },
     { key: 'star_members', label: 'Star Members', icon: Star },
     { key: 'registrations', label: 'Club Intake', icon: ClipboardList },
-    { key: 'portal_projects', label: '⚙️ Projects Portal', icon: Cpu, isPortal: true },
-    { key: 'portal_organization', label: '🏛️ Organization Portal', icon: Building, isPortal: true },
-    { key: 'portal_media', label: '📸 Media Portal', icon: Camera, isPortal: true },
   ] as const;
 
-  const sidebarTabs = allSidebarTabs.filter(t => !MASK_PORTAL_BUTTONS || !(t as any).isPortal);
+  const departmentLinks = [
+    { slug: 'projects', label: 'Projects Portal', icon: Cpu },
+    { slug: 'organization', label: 'Organization Portal', icon: Building },
+    { slug: 'media', label: 'Media Portal', icon: Camera },
+  ];
 
   return (
-    <div className="min-h-screen bg-dominant flex flex-col relative">
-      {/* Header */}
-      <header className="bg-surface border-b border-subtle p-4 px-4 sm:px-8 flex justify-between items-center z-20">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-2 rounded-lg bg-dominant text-primary border border-subtle"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-accent" />
-            <h1 className="text-lg sm:text-xl font-bold text-primary">E.R.I.S.E. Super Admin</h1>
+    <div className="fixed inset-0 z-50 overflow-hidden bg-[#f8fcfd] text-slate-900 flex flex-col [color-scheme:light] font-sans">
+      {/* Top Static Header */}
+      <header className="h-14 shrink-0 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-20">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 bg-slate-100 border border-slate-300 text-slate-800 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-900 text-sm sm:text-base truncate">
+                {isViewingProjects ? 'Projects Administration' :
+                 isViewingOrganization ? 'Organization & Logistics' :
+                 isViewingMedia ? 'Media & Production' : 'E.R.I.S.E. Administrative Portal'}
+              </span>
+              <span className="text-slate-300 hidden xs:inline">•</span>
+              <span className="text-xs font-mono text-slate-500 hidden xs:inline">
+                Connected
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 truncate">
+              {currentUser?.name || 'Administrator'} • <span className="font-mono text-slate-700">{roleTitle}</span>
+            </p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs sm:text-sm font-bold transition-colors"
-        >
-          <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Logout</span>
-        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {userRole === 'admin' && (isViewingProjects || isViewingOrganization || isViewingMedia) && (
+            <button
+              onClick={() => {
+                setActiveTab('leaders');
+                navigate('/admin/super');
+              }}
+              className="px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-colors cursor-pointer"
+            >
+              <span className="hidden sm:inline">← Return to </span>Core Admin
+            </button>
+          )}
+
+          <button
+            onClick={handleLogout}
+            className="px-2.5 sm:px-3 py-1.5 bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Logout</span>
+          </button>
+        </div>
       </header>
 
-      {/* Horizontal Scrollable Tabs for Mobile Screens */}
-      <div className="lg:hidden bg-surface border-b border-subtle px-4 py-2 overflow-x-auto flex gap-2 no-scrollbar">
-        {sidebarTabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 whitespace-nowrap transition-colors ${
-                isActive ? 'bg-accent text-white shadow-md' : 'text-secondary hover:bg-subtle/40'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex w-64 bg-surface border-r border-subtle p-4 flex-col gap-2 z-10 shrink-0 overflow-y-auto">
-          <div className="px-3 py-1 text-[11px] font-bold text-muted uppercase tracking-wider">
-            Club Core Modules
-          </div>
-          {sidebarTabs.filter(t => !(t as any).isPortal).map((tab) => {
+      {/* Horizontal Mobile Navigation Bar for Super Admin */}
+      {userRole === 'admin' && !isViewingProjects && !isViewingOrganization && !isViewingMedia && (
+        <div className="lg:hidden bg-white border-b border-slate-200 px-3 py-2 overflow-x-auto flex items-center gap-1.5 no-scrollbar shrink-0">
+          {sidebarTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.key;
             return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`text-left px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-3 ${
-                  isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:bg-subtle/50'
+                onClick={() => {
+                  setActiveTab(tab.key as any);
+                  if (portalSlug !== 'super') navigate('/admin/super');
+                }}
+                className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors shrink-0 cursor-pointer border ${
+                  isActive
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 border-slate-200'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
               </button>
             );
           })}
+          {!MASK_PORTAL_BUTTONS && departmentLinks.map((dept) => {
+            const Icon = dept.icon;
+            return (
+              <button
+                key={dept.slug}
+                onClick={() => {
+                  setActiveTab(`portal_${dept.slug}` as any);
+                  navigate(`/admin/${dept.slug}`);
+                }}
+                className="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap bg-white text-slate-700 hover:text-slate-900 border border-slate-300 shrink-0 cursor-pointer"
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{dept.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-          {!MASK_PORTAL_BUTTONS && (
-            <>
-              <div className="px-3 pt-4 pb-1 text-[11px] font-bold text-muted uppercase tracking-wider border-t border-subtle/60 mt-2">
-                Department Portals
+      {/* Main Body Layout */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Desktop Sidebar (Only in Super Admin core view) */}
+        {userRole === 'admin' && !isViewingProjects && !isViewingOrganization && !isViewingMedia && (
+          <aside className="hidden lg:flex w-56 shrink-0 bg-white border-r border-slate-200 p-3 flex-col justify-between overflow-y-auto">
+            <div className="space-y-1">
+              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Club Core Modules
               </div>
-              {sidebarTabs.filter(t => (t as any).isPortal).map((tab) => {
+              {sidebarTabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.key;
                 return (
                   <button
                     key={tab.key}
-                    onClick={() => setActiveTab(tab.key as any)}
-                    className={`text-left px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-3 ${
-                      isActive ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-secondary hover:bg-subtle/50'
+                    onClick={() => {
+                      setActiveTab(tab.key as any);
+                      if (portalSlug !== 'super') navigate('/admin/super');
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs font-bold flex items-center gap-2.5 transition-colors cursor-pointer border ${
+                      isActive
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'text-slate-700 hover:bg-slate-100 border-transparent'
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -2308,162 +2346,134 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   </button>
                 );
               })}
-            </>
-          )}
-        </aside>
 
-        {/* Content Area */}
-        <main className="flex-1 overflow-auto p-4 sm:p-8 relative">
-          {(activeTab === 'portal_projects' || activeTab === 'portal_organization' || activeTab === 'portal_media') ? (
-            !unlockedPortals.has(activeTab) ? (
-              /* ─── Portal Password Gate ──────────────────────────── */
-              <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="w-full max-w-md">
-                  <div className="bg-surface border border-subtle rounded-2xl p-8 shadow-xl">
-                    <div className="flex flex-col items-center mb-6">
-                      <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
-                        <Lock className="w-8 h-8 text-accent" />
-                      </div>
-                      <h2 className="text-xl font-bold text-primary">{PORTAL_TAB_TO_DEPARTMENT[activeTab]} Portal</h2>
-                      <p className="text-sm text-muted mt-1 text-center">
-                        Enter the department head password to access this portal.
-                      </p>
-                    </div>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        handlePortalUnlock(activeTab);
-                      }}
-                      className="space-y-4"
-                    >
-                      <div>
-                        <label className="block text-xs font-bold text-secondary mb-1.5">Head Password</label>
-                        <div className="relative">
-                          <input
-                            type={showPortalPassword ? 'text' : 'password'}
-                            value={portalPasswordInput}
-                            onChange={(e) => { setPortalPasswordInput(e.target.value); setPortalPasswordError(''); }}
-                            placeholder="Enter department head password"
-                            className="w-full px-4 py-3 rounded-xl bg-dominant border border-subtle text-primary placeholder-muted text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent pr-12"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPortalPassword(!showPortalPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-secondary transition-colors"
-                          >
-                            {showPortalPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-                      {portalPasswordError && (
-                        <div className="flex items-center gap-2 text-red-400 text-xs font-semibold bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                          <XCircle className="w-3.5 h-3.5 shrink-0" /> {portalPasswordError}
-                        </div>
-                      )}
-                      <button
-                        type="submit"
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-accent hover:bg-accent/90 text-white font-bold text-sm transition-colors shadow-lg shadow-accent/20"
-                      >
-                        <KeyRound className="w-4 h-4" /> Unlock Portal
-                      </button>
-                    </form>
-                    <div className="mt-4 pt-4 border-t border-subtle">
-                      <p className="text-[11px] text-muted text-center">
-                        🔒 Access is restricted to the {PORTAL_TAB_TO_DEPARTMENT[activeTab]} department head credentials.
-                      </p>
-                    </div>
+              {!MASK_PORTAL_BUTTONS && (
+                <>
+                  <div className="px-2.5 pt-4 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-t border-slate-200 mt-3">
+                    Department Portals
                   </div>
-                </div>
-              </div>
-            ) : activeTab === 'portal_projects' ? (
-              <ProjectsPortal isSuperAdmin={true} onBackToAdmin={() => setActiveTab('leaders')} />
-            ) : activeTab === 'portal_organization' ? (
-              <OrganizationPortal isSuperAdmin={true} onBackToAdmin={() => setActiveTab('leaders')} />
-            ) : (
-              <MediaPortal isSuperAdmin={true} onBackToAdmin={() => setActiveTab('leaders')} />
-            )
+                  {departmentLinks.map((dept) => {
+                    const Icon = dept.icon;
+                    return (
+                      <button
+                        key={dept.slug}
+                        onClick={() => {
+                          setActiveTab(`portal_${dept.slug}` as any);
+                          navigate(`/admin/${dept.slug}`);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-bold flex items-center gap-2.5 text-slate-700 hover:bg-slate-100 border border-transparent transition-colors cursor-pointer"
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span>{dept.label}</span>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+
+            <div className="p-2.5 bg-slate-50 border border-slate-200 text-[11px] text-slate-500 space-y-1">
+              <div className="font-semibold text-slate-700">Status: <span className="font-mono text-slate-900">Connected</span></div>
+              <div>Direct DB Connection</div>
+            </div>
+          </aside>
+        )}
+
+        {/* Scrollable Content Viewport */}
+        <main className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 bg-[#f8fcfd]">
+          {isViewingProjects ? (
+            <ProjectsPortal isSuperAdmin={userRole === 'admin'} onBackToAdmin={() => { setActiveTab('leaders'); navigate('/admin/super'); }} />
+          ) : isViewingOrganization ? (
+            <OrganizationPortal isSuperAdmin={userRole === 'admin'} onBackToAdmin={() => { setActiveTab('leaders'); navigate('/admin/super'); }} />
+          ) : isViewingMedia ? (
+            <MediaPortal isSuperAdmin={userRole === 'admin'} onBackToAdmin={() => { setActiveTab('leaders'); navigate('/admin/super'); }} />
           ) : activeTab === 'event_registrations' ? (
             <>
-              <div className="mb-6">
-                <h2 className="text-xl sm:text-2xl font-bold text-primary">Event Registrations</h2>
-                <p className="text-xs sm:text-sm text-muted">Manage participant and team registrations per event.</p>
+              <div className="mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">Event Registrations</h2>
+                <p className="text-xs text-slate-500">Manage participant and team registrations per event.</p>
               </div>
               {renderEventRegistrationsTab()}
             </>
           ) : activeTab === 'registrations' ? (
             <>
-              <div className="mb-6">
-                <h2 className="text-xl sm:text-2xl font-bold text-primary">Club Intake Registrations</h2>
+              <div className="mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">Club Intake Registrations</h2>
+                <p className="text-xs text-slate-500">Review student applicants and approve new club recruits.</p>
               </div>
               {renderRegistrationsTab()}
             </>
           ) : (
             <>
-              <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+              <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-primary capitalize">{activeTab.replace('_', ' ')} Management</h2>
+                  <h2 className="text-lg sm:text-xl font-bold text-slate-900 capitalize">{activeTab.replace('_', ' ')} Management</h2>
+                  <p className="text-xs text-slate-500">Manage club {activeTab.replace('_', ' ')} records.</p>
                 </div>
                 <button 
                   onClick={() => openModal('add')}
-                  className="flex items-center gap-2 bg-accent text-white px-4 py-2.5 rounded-xl hover:bg-accent-muted transition-colors shadow-lg shadow-accent/20 font-bold text-xs sm:text-sm"
+                  className="flex items-center gap-1.5 bg-slate-900 text-white px-3.5 py-1.5 hover:bg-slate-800 transition-colors font-bold text-xs cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> Add New
+                  <Plus className="w-3.5 h-3.5" /> Add New
                 </button>
               </div>
 
               {dataLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                <div className="flex justify-center py-12 bg-white border border-slate-200">
+                  <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
+                </div>
+              ) : data.length === 0 ? (
+                <div className="p-8 text-center bg-white border border-slate-200 text-slate-500 text-xs">
+                  No records found for this module. Click "Add New" to create one.
                 </div>
               ) : (
-                <div className="bg-surface border border-subtle rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-white border border-slate-200 overflow-hidden">
                   {/* Desktop Table View */}
                   <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead className="bg-subtle/30 text-secondary text-xs uppercase">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 text-slate-600 uppercase tracking-wider text-[11px] border-b border-slate-200">
                         <tr>
-                          <th className="px-6 py-4 font-medium w-16">ID</th>
-                          <th className="px-6 py-4 font-medium w-24">Image</th>
-                          <th className="px-6 py-4 font-medium">Name/Title</th>
-                          <th className="px-6 py-4 font-medium w-32">Actions</th>
+                          <th className="px-4 py-2.5 font-bold w-14">ID</th>
+                          <th className="px-4 py-2.5 font-bold w-20">Image</th>
+                          <th className="px-4 py-2.5 font-bold">Name / Title</th>
+                          <th className="px-4 py-2.5 font-bold w-28 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-subtle text-sm">
+                      <tbody className="divide-y divide-slate-200">
                         {data.map((item) => (
-                          <tr key={item.id} className="hover:bg-subtle/20 transition-colors">
-                            <td className="px-6 py-4 text-primary font-bold">{item.id}</td>
-                            <td className="px-6 py-4">
+                          <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 text-slate-900 font-mono font-bold">{item.id}</td>
+                            <td className="px-4 py-3">
                               {item.image ? (
-                                <div className="w-10 h-10 rounded-lg overflow-hidden border border-subtle">
-                                  <img src={item.image} alt="Thumbnail" className="w-full h-full object-cover" />
+                                <div className="w-9 h-9 border border-slate-200 overflow-hidden">
+                                  <img src={item.image} alt="" className="w-full h-full object-cover" />
                                 </div>
                               ) : (
-                                <div className="w-10 h-10 rounded-lg bg-dominant border border-subtle flex items-center justify-center text-[10px] text-muted">None</div>
+                                <div className="w-9 h-9 bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] text-slate-400">None</div>
                               )}
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3">
                               <div className="flex flex-col">
-                                <span className="text-primary font-bold">{item.name || item.title}</span>
+                                <span className="text-slate-900 font-bold text-xs">{item.name || item.title}</span>
                                 {(item.name_ar || item.title_ar) && (
-                                  <span className="text-xs text-emerald-400/90 font-arabic font-medium dir-rtl text-right">
+                                  <span className="text-xs text-emerald-800 font-arabic font-medium dir-rtl text-right">
                                     {item.name_ar || item.title_ar}
                                   </span>
                                 )}
                                 {(item.role || item.role_ar) && (
-                                  <span className="text-[11px] text-muted">
+                                  <span className="text-[11px] text-slate-500">
                                     {item.role} {item.role_ar ? `• ${item.role_ar}` : ''}
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <button onClick={() => openModal('edit', item)} className="text-blue-400 p-2 hover:bg-blue-500/10 rounded-lg">
-                                  <Edit className="w-4 h-4" />
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button onClick={() => openModal('edit', item)} className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer" title="Edit">
+                                  <Edit className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={() => handleDelete(item.id)} className="text-red-400 p-2 hover:bg-red-500/10 rounded-lg">
-                                  <Trash2 className="w-4 h-4" />
+                                <button onClick={() => handleDelete(item.id)} className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer" title="Delete">
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </td>
@@ -2474,32 +2484,37 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   </div>
 
                   {/* Mobile Cards View */}
-                  <div className="md:hidden divide-y divide-subtle">
+                  <div className="md:hidden divide-y divide-slate-200">
                     {data.map((item) => (
-                      <div key={item.id} className="p-4 flex items-center justify-between gap-3">
+                      <div key={item.id} className="p-3.5 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           {item.image ? (
-                            <img src={item.image} alt="" className="w-12 h-12 rounded-xl object-cover border border-subtle shrink-0" />
+                            <img src={item.image} alt="" className="w-11 h-11 object-cover border border-slate-200 shrink-0" />
                           ) : (
-                            <div className="w-12 h-12 rounded-xl bg-dominant border border-subtle shrink-0 flex items-center justify-center text-[10px] text-muted">No Image</div>
+                            <div className="w-11 h-11 bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-[10px] text-slate-400">None</div>
                           )}
                           <div className="min-w-0">
-                            <span className="block font-bold text-primary text-sm truncate">{item.name || item.title}</span>
+                            <span className="block font-bold text-slate-900 text-xs truncate">{item.name || item.title}</span>
                             {(item.name_ar || item.title_ar) && (
-                              <span className="block text-xs text-emerald-400 font-arabic truncate font-medium dir-rtl">
+                              <span className="block text-xs text-emerald-800 font-arabic truncate font-medium dir-rtl">
                                 {item.name_ar || item.title_ar}
                               </span>
                             )}
-                            <span className="block text-[11px] text-muted">ID: {item.id}</span>
+                            {(item.role || item.role_ar) && (
+                              <span className="block text-[11px] text-slate-500 truncate">
+                                {item.role} {item.role_ar ? `• ${item.role_ar}` : ''}
+                              </span>
+                            )}
+                            <span className="block text-[10px] text-slate-400 font-mono">ID #{item.id}</span>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => openModal('edit', item)} className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg">
-                            <Edit className="w-4 h-4" />
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button onClick={() => openModal('edit', item)} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer" title="Edit">
+                            <Edit className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => handleDelete(item.id)} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg">
-                            <Trash2 className="w-4 h-4" />
+                          <button onClick={() => handleDelete(item.id)} className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -2514,24 +2529,24 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-surface border border-subtle rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
-            <div className="p-4 sm:p-6 border-b border-subtle flex justify-between items-center bg-dominant/30">
-              <h3 className="text-lg sm:text-xl font-bold text-primary capitalize">{modalMode} {activeTab.replace('_', ' ')}</h3>
-              <button onClick={closeModal} className="p-2 text-secondary hover:bg-subtle/50 rounded-xl transition-colors">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-300 w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="text-base font-bold text-slate-900 capitalize">{modalMode} {activeTab.replace('_', ' ')}</h3>
+              <button onClick={closeModal} className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1">
               <form id="crud-form" onSubmit={handleSave}>
                 {renderFormFields()}
               </form>
             </div>
-            <div className="p-4 sm:p-6 border-t border-subtle flex justify-end gap-3 bg-dominant/50">
+            <div className="p-4 border-t border-slate-200 flex justify-end gap-2.5 bg-slate-50">
               <button 
                 type="button" 
                 onClick={closeModal}
-                className="px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm text-secondary hover:bg-subtle/50 transition-colors"
+                className="px-4 py-2 border border-slate-300 font-bold text-xs text-slate-700 bg-white hover:bg-slate-100 transition-colors"
               >
                 Cancel
               </button>
@@ -2539,7 +2554,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 form="crud-form"
                 type="submit"
                 disabled={saving || uploadingImage}
-                className="px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-accent text-white hover:bg-accent-muted transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-accent/20"
+                className="px-5 py-2 font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Save Changes
@@ -2548,84 +2563,85 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </div>
         </div>
       )}
+
       {/* Member Detail Panel Modal */}
       {memberModalOpen && selectedMember && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-surface border border-subtle rounded-3xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-300 w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
             {/* Modal Header */}
-            <div className="p-5 border-b border-subtle flex justify-between items-center bg-dominant/40">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-12 h-12 rounded-2xl bg-accent/15 text-accent font-bold flex items-center justify-center text-lg uppercase shrink-0">
+                <div className="w-10 h-10 bg-slate-200 text-slate-800 font-bold flex items-center justify-center text-base uppercase shrink-0">
                   {selectedMember.full_name ? selectedMember.full_name.charAt(0) : 'M'}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-lg font-bold text-primary truncate">{selectedMember.full_name}</h3>
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      selectedMember.status === 'approved' ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30' :
-                      selectedMember.status === 'rejected' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                      'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                    <h3 className="text-base font-bold text-slate-900 truncate">{selectedMember.full_name}</h3>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
+                      selectedMember.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
+                      selectedMember.status === 'rejected' ? 'bg-rose-50 text-rose-700 border-rose-300' :
+                      'bg-amber-50 text-amber-700 border-amber-300'
                     }`}>
                       {selectedMember.status || 'pending'}
                     </span>
                   </div>
-                  <p className="text-xs text-muted">Member ID: #{selectedMember.id}</p>
+                  <p className="text-xs text-slate-500 font-mono">Member ID: #{selectedMember.id}</p>
                 </div>
               </div>
               <button 
                 onClick={() => { setMemberModalOpen(false); setSelectedMember(null); }}
-                className="p-2 text-secondary hover:bg-subtle/50 rounded-xl transition-colors shrink-0"
+                className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
               {/* Contact Information */}
               <div>
-                <h4 className="text-xs font-bold text-muted uppercase tracking-wider mb-2.5">Contact Details</h4>
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-dominant border border-subtle">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Mail className="w-4 h-4 text-accent shrink-0" />
-                      <a href={`mailto:${selectedMember.email}`} className="text-sm font-medium text-primary hover:text-accent truncate">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Contact Details</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Mail className="w-4 h-4 text-slate-500 shrink-0" />
+                      <a href={`mailto:${selectedMember.email}`} className="text-xs font-medium text-slate-900 hover:underline truncate">
                         {selectedMember.email}
                       </a>
                     </div>
                     <button
                       onClick={() => copyToClipboard(selectedMember.email, 'email')}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface border border-subtle hover:border-accent text-xs font-medium text-secondary transition-colors shrink-0"
+                      className="flex items-center gap-1 px-2 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-[11px] font-medium text-slate-700 transition-colors shrink-0"
                       title="Copy Email"
                     >
-                      {copiedField === 'email' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedField === 'email' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedField === 'email' ? 'Copied' : 'Copy'}</span>
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-dominant border border-subtle">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Phone className="w-4 h-4 text-accent shrink-0" />
-                      <a href={`tel:${selectedMember.phone}`} className="text-sm font-medium text-primary hover:text-accent truncate">
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+                      <a href={`tel:${selectedMember.phone}`} className="text-xs font-medium text-slate-900 hover:underline truncate">
                         {selectedMember.phone}
                       </a>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <a
                         href={`https://wa.me/${selectedMember.phone?.replace(/[^0-9]/g, '')}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors"
+                        className="p-1 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
                         title="WhatsApp"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                       <button
                         onClick={() => copyToClipboard(selectedMember.phone, 'phone')}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface border border-subtle hover:border-accent text-xs font-medium text-secondary transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-[11px] font-medium text-slate-700 transition-colors"
                         title="Copy Phone"
                       >
-                        {copiedField === 'phone' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedField === 'phone' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                         <span>{copiedField === 'phone' ? 'Copied' : 'Copy'}</span>
                       </button>
                     </div>
@@ -2635,17 +2651,17 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
               {/* Academic Background */}
               <div>
-                <h4 className="text-xs font-bold text-muted uppercase tracking-wider mb-2.5">Academic Background</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 rounded-xl bg-dominant border border-subtle">
-                    <span className="block text-xs text-muted mb-0.5">Study Year</span>
-                    <span className="font-bold text-primary text-sm flex items-center gap-1.5">
-                      <GraduationCap className="w-4 h-4 text-accent" /> Year {selectedMember.study_year}
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Academic Background</h4>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200">
+                    <span className="block text-[11px] text-slate-500 mb-0.5">Study Year</span>
+                    <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                      <GraduationCap className="w-4 h-4 text-slate-600" /> Year {selectedMember.study_year}
                     </span>
                   </div>
-                  <div className="p-3 rounded-xl bg-dominant border border-subtle">
-                    <span className="block text-xs text-muted mb-0.5">Specialization</span>
-                    <span className="font-bold text-primary text-sm">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200">
+                    <span className="block text-[11px] text-slate-500 mb-0.5">Specialization</span>
+                    <span className="font-bold text-slate-900 text-xs">
                       {selectedMember.specialization || 'N/A (1st/2nd Year)'}
                     </span>
                   </div>
@@ -2654,66 +2670,66 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
               {/* Departments */}
               <div>
-                <h4 className="text-xs font-bold text-muted uppercase tracking-wider mb-2.5">Selected Department(s)</h4>
-                <div className="flex flex-wrap gap-2">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Selected Department(s)</h4>
+                <div className="flex flex-wrap gap-1.5">
                   {Array.isArray(selectedMember.departments) && selectedMember.departments.length > 0 ? (
                     selectedMember.departments.map((d: string) => (
-                      <span key={d} className="px-3 py-1 rounded-xl bg-accent/10 border border-accent/20 text-accent font-bold text-xs">
+                      <span key={d} className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 font-bold text-xs">
                         {d}
                       </span>
                     ))
                   ) : typeof selectedMember.departments === 'string' && selectedMember.departments ? (
-                    <span className="px-3 py-1 rounded-xl bg-accent/10 border border-accent/20 text-accent font-bold text-xs">
+                    <span className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 font-bold text-xs">
                       {selectedMember.departments}
                     </span>
                   ) : (
-                    <span className="text-xs text-muted italic">No department selected</span>
+                    <span className="text-xs text-slate-400 italic">No department selected</span>
                   )}
                 </div>
               </div>
 
               {/* Registration Date */}
               {selectedMember.registered_at && (
-                <div className="text-xs text-muted pt-2 border-t border-subtle flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5 text-muted" />
-                  <span>Registered on: {formatDate(selectedMember.registered_at)}</span>
+                <div className="text-xs text-slate-500 pt-2 border-t border-slate-200 flex items-center gap-2 font-mono">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Registered: {formatDate(selectedMember.registered_at)}</span>
                 </div>
               )}
             </div>
 
             {/* Modal Footer Controls */}
-            <div className="p-4 sm:p-5 border-t border-subtle bg-dominant/50 space-y-3">
+            <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <button
                   onClick={() => copyAllMemberInfo(selectedMember)}
-                  className="px-3.5 py-2 rounded-xl bg-surface border border-subtle hover:border-accent text-xs font-bold text-primary flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-800 flex items-center gap-1.5 transition-colors"
                 >
-                  {copiedField === 'all' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                  {copiedField === 'all' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedField === 'all' ? 'Info Copied!' : 'Copy All Info'}</span>
                 </button>
 
                 <button
                   onClick={() => handleDeleteMember(selectedMember.id, selectedMember.full_name)}
-                  className="px-3.5 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" /> Delete Member
+                  <Trash2 className="w-3.5 h-3.5" /> Delete Member
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-subtle/50">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
                 <button
                   onClick={() => handleMemberStatusChange(selectedMember.id, 'approved')}
                   disabled={statusUpdatingId === selectedMember.id || selectedMember.status === 'approved'}
-                  className={`py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm ${
+                  className={`py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
                     selectedMember.status === 'approved'
-                      ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 opacity-70 cursor-default'
-                      : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 opacity-70 cursor-default'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600'
                   }`}
                 >
                   {statusUpdatingId === selectedMember.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <CheckCircle className="w-4 h-4" />
+                    <CheckCircle className="w-3.5 h-3.5" />
                   )}
                   {selectedMember.status === 'approved' ? 'Approved' : 'Accept / Approve'}
                 </button>
@@ -2721,23 +2737,23 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 <button
                   onClick={() => handleMemberStatusChange(selectedMember.id, 'rejected')}
                   disabled={statusUpdatingId === selectedMember.id || selectedMember.status === 'rejected'}
-                  className={`py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm ${
+                  className={`py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
                     selectedMember.status === 'rejected'
-                      ? 'bg-red-500/20 text-red-400 border border-red-500/30 opacity-70 cursor-default'
-                      : 'bg-red-500 text-white hover:bg-red-600 shadow-red-500/20'
+                      ? 'bg-rose-50 text-rose-700 border-rose-300 opacity-70 cursor-default'
+                      : 'bg-rose-600 text-white hover:bg-rose-700 border-rose-600'
                   }`}
                 >
                   {statusUpdatingId === selectedMember.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <XCircle className="w-4 h-4" />
+                    <XCircle className="w-3.5 h-3.5" />
                   )}
                   {selectedMember.status === 'rejected' ? 'Rejected' : 'Reject'}
                 </button>
               </div>
 
               {/* Recruitment Email Automation Actions */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-subtle/50">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
                 <button
                   onClick={() => {
                     setEmailType('meeting');
@@ -2747,9 +2763,9 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     setEmailErrorMsg(null);
                     setEmailModalOpen(true);
                   }}
-                  className="py-2.5 px-3 rounded-xl bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border border-sky-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                  className="py-2 px-2.5 bg-white text-slate-800 hover:bg-slate-100 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
                 >
-                  <Calendar className="w-4 h-4 text-sky-400" />
+                  <Calendar className="w-3.5 h-3.5 text-slate-600" />
                   <span>Send Meeting Email</span>
                 </button>
 
@@ -2767,9 +2783,9 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     setEmailErrorMsg(null);
                     setEmailModalOpen(true);
                   }}
-                  className="py-2.5 px-3 rounded-xl bg-teal-500/15 text-teal-400 hover:bg-teal-500/25 border border-teal-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                  className="py-2 px-2.5 bg-white text-slate-800 hover:bg-slate-100 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
                 >
-                  <Mail className="w-4 h-4 text-teal-400" />
+                  <Mail className="w-3.5 h-3.5 text-slate-600" />
                   <span>Send Acceptance Email</span>
                 </button>
               </div>
@@ -2780,18 +2796,18 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
       {/* Email Dialog Modal */}
       {emailModalOpen && (selectedMember || targetEmail) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-200">
-          <div className="bg-surface border border-subtle rounded-2xl w-full max-w-md overflow-hidden shadow-2xl space-y-4 p-6">
-            <div className="flex items-center justify-between border-b border-subtle pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-300 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl space-y-4 p-5 sm:p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div className="flex items-center gap-2">
                 {emailType === 'meeting' ? (
-                  <Calendar className="w-5 h-5 text-sky-400" />
+                  <Calendar className="w-5 h-5 text-slate-700" />
                 ) : emailType === 'event_invitation' ? (
-                  <Mail className="w-5 h-5 text-purple-400" />
+                  <Mail className="w-5 h-5 text-slate-700" />
                 ) : (
-                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
                 )}
-                <h3 className="text-base font-bold text-primary">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900">
                   {emailType === 'meeting' ? 'Schedule Interview Email' :
                    emailType === 'acceptance' ? 'Send Recruitment Acceptance' :
                    emailType === 'event_invitation' ? 'Send Event Invitation' :
@@ -2800,26 +2816,26 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               </div>
               <button 
                 onClick={() => setEmailModalOpen(false)} 
-                className="text-secondary hover:text-primary p-1 rounded-lg transition-colors"
+                className="text-slate-500 hover:text-slate-900 p-1 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="text-xs text-secondary space-y-1">
-              <p>Recipient: <strong className="text-primary">{targetRecipientName || selectedMember?.full_name}</strong> ({targetEmail || selectedMember?.email})</p>
+            <div className="text-xs text-slate-600 space-y-1">
+              <p>Recipient: <strong className="text-slate-900">{targetRecipientName || selectedMember?.full_name}</strong> ({targetEmail || selectedMember?.email})</p>
             </div>
 
             {emailSuccessMsg && (
-              <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 shrink-0" />
+              <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />
                 <span>{emailSuccessMsg}</span>
               </div>
             )}
 
             {emailErrorMsg && (
-              <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold flex items-center gap-2">
-                <XCircle className="w-4 h-4 shrink-0" />
+              <div className="p-3 bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold flex items-center gap-2">
+                <XCircle className="w-4 h-4 shrink-0 text-rose-600" />
                 <span>{emailErrorMsg}</span>
               </div>
             )}
@@ -2827,7 +2843,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             {!emailSuccessMsg && (
               <div className="space-y-3 pt-1">
                 <div>
-                  <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     Recipient Name (Greeting Name)
                   </label>
                   <input
@@ -2835,12 +2851,12 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={targetRecipientName}
                     onChange={(e) => setTargetRecipientName(e.target.value)}
                     placeholder="Candidate Name or Team Name"
-                    className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary font-bold"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-bold text-slate-900"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     Recipient Email Address
                   </label>
                   <input
@@ -2848,13 +2864,13 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     value={targetEmail}
                     onChange={(e) => setTargetEmail(e.target.value)}
                     placeholder="candidate@example.com"
-                    className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary font-medium"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-medium text-slate-900"
                   />
                 </div>
 
                 {(emailType === 'event_invitation' || emailType === 'event_acceptance') && (
                   <div>
-                    <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                       Event Title
                     </label>
                     <input
@@ -2862,7 +2878,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       value={eventTitle}
                       onChange={(e) => setEventTitle(e.target.value)}
                       placeholder="Event Title"
-                      className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary font-bold"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-bold text-slate-900"
                     />
                   </div>
                 )}
@@ -2870,7 +2886,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 {emailType !== 'acceptance' && (
                   <>
                     <div>
-                      <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                         Date & Time
                       </label>
                       <input
@@ -2878,19 +2894,19 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                         value={meetingDateTime}
                         onChange={(e) => setMeetingDateTime(e.target.value)}
                         placeholder="e.g. Tuesday, Aug 5 at 14:00"
-                        className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                         Location / Venue
                       </label>
                       <input
                         type="text"
                         value={meetingLocation}
                         onChange={(e) => setMeetingLocation(e.target.value)}
-                        placeholder="e.g. Auditorium — HNSRE Batna"
-                        className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                        placeholder="e.g. Batna Campus"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
                       />
                     </div>
                   </>
@@ -2898,7 +2914,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
                 {(emailType === 'event_invitation' || emailType === 'event_acceptance') && (
                   <div>
-                    <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                       Important Note / Instructions (Optional)
                     </label>
                     <textarea
@@ -2906,14 +2922,14 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       value={eventNotes}
                       onChange={(e) => setEventNotes(e.target.value)}
                       placeholder="e.g. Please bring your laptop and student ID card."
-                      className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
                     />
                   </div>
                 )}
 
                 {emailType === 'acceptance' && (
                   <div>
-                    <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                       Assigned Department(s)
                     </label>
                     <input
@@ -2921,7 +2937,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       value={acceptanceDepts}
                       onChange={(e) => setAcceptanceDepts(e.target.value)}
                       placeholder="e.g. Organization, Media, Projects"
-                      className="w-full px-3.5 py-2 rounded-xl bg-dominant border border-subtle focus:border-accent text-sm text-primary"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
                     />
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {['Projects', 'Organization', 'Media'].map((dept) => {
@@ -2938,10 +2954,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                                 setAcceptanceDepts([...deptsArr, dept].join(', '));
                               }
                             }}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                            className={`px-2.5 py-1 text-xs font-bold transition-all border ${
                               isIncluded
-                                ? 'bg-accent text-white border-accent'
-                                : 'bg-dominant text-secondary border-subtle hover:border-accent'
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                             }`}
                           >
                             + {dept}
@@ -2949,19 +2965,19 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
-                      💡 Organization members will automatically receive a required onboarding note & link to the E.R.I.S.E. To-Do App.
+                    <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                      Organization members will automatically receive a required onboarding note & link to the E.R.I.S.E. portal.
                     </p>
                   </div>
                 )}
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-subtle">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => setEmailModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-secondary hover:bg-subtle/50 transition-colors"
+                className="px-3.5 py-1.5 border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 {emailSuccessMsg ? 'Close' : 'Cancel'}
               </button>
@@ -2971,22 +2987,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   type="button"
                   onClick={handleSendEmailSubmit}
                   disabled={emailSendingLoading}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2 transition-all shadow-md ${
-                    emailType === 'meeting'
-                      ? 'bg-sky-600 hover:bg-sky-500 shadow-sky-600/20'
-                      : emailType === 'event_invitation'
-                      ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'
-                      : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
-                  }`}
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all flex items-center gap-2 disabled:opacity-50"
                 >
                   {emailSendingLoading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       <span>Sending Email...</span>
                     </>
                   ) : (
                     <>
-                      <Mail className="w-4 h-4" />
+                      <Mail className="w-3.5 h-3.5" />
                       <span>Send Email</span>
                     </>
                   )}

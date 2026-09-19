@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Calendar, Clock, MapPin, ArrowLeft, ArrowRight, CheckCircle, AlertCircle, Loader2, 
-  Users, User, ShieldCheck, Plus, Trash2, Car, Sparkles, Building2, UserCheck
+  Calendar, Clock, MapPin, ArrowLeft, ArrowRight, CheckCircle2, AlertCircle, Loader2, 
+  Users, User, Plus, Trash2, ShieldCheck, Check
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ALGERIAN_INSTITUTIONS } from '../data/algerianInstitutions';
 import { sanitizeString, isValidEmail, isValidPhone } from '../lib/security';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { slugify } from '../lib/slugs';
 
 interface MemberInput {
   full_name: string;
@@ -20,6 +22,8 @@ export function EventRegister() {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
   const { language, t, getLocalized } = useLanguage();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   const isRtl = language === 'ar';
 
@@ -88,35 +92,51 @@ export function EventRegister() {
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
   const [isExpired, setIsExpired] = useState(false);
 
-  // Fetch Event Details
+  // Fetch Event Details (Support numeric ID OR slugified event title)
   useEffect(() => {
     async function fetchEvent() {
       if (!eventId) return;
       try {
         setLoadingEvent(true);
-        const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .eq('id', eventId)
-          .single();
+        setEventError(null);
 
-        if (error || !data) {
-          setEventError(language === 'ar' ? 'لم يتم العثور على الفعالية.' : 'Event not found.');
-        } else {
-          setEvent(data);
-          // Initialize members count for team mode based on min_team_size
-          if (data.registration_type === 'team') {
-            const minSize = data.min_team_size || 2;
-            const initialMembers: MemberInput[] = Array.from({ length: Math.max(1, minSize) }, () => ({
-              full_name: '',
-              email: '',
-              phone: ''
-            }));
-            setMembers(initialMembers);
+        const isNumeric = /^\d+$/.test(eventId);
+
+        if (isNumeric) {
+          const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .eq('id', Number(eventId))
+            .single();
+
+          if (error || !data) {
+            throw new Error(language === 'ar' ? 'الفعالية غير موجودة' : 'Event not found');
           }
+          setEvent(data);
+        } else {
+          const { data: allEvents, error } = await supabase
+            .from('events')
+            .select('*');
+
+          if (error || !allEvents) {
+            throw new Error(language === 'ar' ? 'الفعالية غير موجودة' : 'Event not found');
+          }
+
+          const matchedEvent = allEvents.find((e: any) => {
+            const slug = slugify(e.title);
+            const slugAr = e.title_ar ? slugify(e.title_ar) : '';
+            return slug === eventId || slugAr === eventId;
+          });
+
+          if (!matchedEvent) {
+            throw new Error(language === 'ar' ? 'الفعالية غير موجودة' : 'Event not found');
+          }
+
+          setEvent(matchedEvent);
         }
       } catch (err: any) {
-        setEventError(language === 'ar' ? 'فشل تحميل بيانات الفعالية.' : 'Failed to load event details.');
+        console.error('Error fetching event details:', err);
+        setEventError(err.message || (language === 'ar' ? 'حدث خطأ أثناء تحميل الفعالية' : 'Error loading event'));
       } finally {
         setLoadingEvent(false);
       }
@@ -125,35 +145,49 @@ export function EventRegister() {
     fetchEvent();
   }, [eventId, language]);
 
-  // Countdown timer effect
+  // Calculate remaining deadline countdown
   useEffect(() => {
     if (!event || !event.registration_deadline) return;
 
-    function updateTimer() {
-      const deadline = new Date(event.registration_deadline).getTime();
+    const targetDate = new Date(event.registration_deadline).getTime();
+
+    const interval = setInterval(() => {
       const now = new Date().getTime();
-      const difference = deadline - now;
+      const difference = targetDate - now;
 
       if (difference <= 0) {
         setIsExpired(true);
         setTimeLeft(null);
+        clearInterval(interval);
       } else {
-        setIsExpired(false);
         const days = Math.floor(difference / (1000 * 60 * 60 * 24));
         const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((difference % (1000 * 60)) / 1000);
         setTimeLeft({ days, hours, minutes, seconds });
       }
-    }
+    }, 1000);
 
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [event]);
 
+  // Adjust team members array size based on min_team_size
+  useEffect(() => {
+    if (event && event.registration_type === 'team') {
+      const minSize = event.min_team_size || 2;
+      if (members.length < minSize) {
+        const additional = Array.from({ length: minSize - members.length }, () => ({
+          full_name: '',
+          email: '',
+          phone: ''
+        }));
+        setMembers(prev => [...prev, ...additional]);
+      }
+    }
+  }, [event]);
+
   const handleMemberChange = (index: number, field: keyof MemberInput, value: string) => {
-    setMembers((prev) => {
+    setMembers(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
       return updated;
@@ -161,16 +195,18 @@ export function EventRegister() {
   };
 
   const addMember = () => {
-    const maxMembers = event?.max_team_size || 5;
-    if (members.length < maxMembers) {
-      setMembers((prev) => [...prev, { full_name: '', email: '', phone: '' }]);
+    if (!event) return;
+    const maxSize = event.max_team_size || 5;
+    if (members.length < maxSize) {
+      setMembers(prev => [...prev, { full_name: '', email: '', phone: '' }]);
     }
   };
 
   const removeMember = (index: number) => {
-    const minMembers = event?.min_team_size || 2;
-    if (members.length > minMembers) {
-      setMembers((prev) => prev.filter((_, i) => i !== index));
+    if (!event) return;
+    const minSize = event.min_team_size || 2;
+    if (members.length > minSize && index >= minSize) {
+      setMembers(prev => prev.filter((_, idx) => idx !== index));
     }
   };
 
@@ -178,45 +214,52 @@ export function EventRegister() {
     e.preventDefault();
     setError('');
 
-    // 1. Anti-bot honeypot check
+    // Anti-bot honeypot check
     if (honeypot.trim() !== '') {
-      setSuccess(true);
       return;
     }
 
-    // 2. Client-side rate limiting
+    // Rate limiting: 5 seconds between submits
     const now = Date.now();
-    if (now - lastSubmitTime < 8000) {
-      setError(language === 'ar' ? 'يرجى الانتظار بضع ثوانٍ قبل المحاولة مجدداً.' : 'Please wait a few seconds before submitting again.');
+    if (now - lastSubmitTime < 5000) {
+      setError(language === 'ar' ? 'يرجى الانتظار قليلاً قبل إعادة المحاولة.' : 'Please wait a moment before submitting again.');
+      return;
+    }
+
+    if (!event) return;
+
+    if (!event.registration_enabled) {
+      setError(language === 'ar' ? 'التسجيل في هذه الفعالية مغلق حالياً.' : 'Registration for this event is currently closed.');
       return;
     }
 
     if (isExpired) {
-      setError(t.eventRegisterPage.deadlineExpired);
+      setError(language === 'ar' ? 'انتهت فترة التسجيل المحددة لهذه الفعالية.' : 'The registration period for this event has expired.');
       return;
     }
 
-    const isTeam = event?.registration_type === 'team';
-    const rawInst = institution === 'Other Institution / University' || institution === 'تحديد مؤسسة أخرى' ? customInstitution : institution;
-    const selectedInst = sanitizeString(rawInst);
+    const isTeam = event.registration_type === 'team';
+    const cleanTeamName = sanitizeString(teamName);
+
+    if (isTeam && !cleanTeamName) {
+      setError(language === 'ar' ? 'يرجى إدخال اسم الفريق.' : 'Please enter team name.');
+      return;
+    }
+
+    const selectedInst = institution === 'Other Institution / University' || institution === 'تحديد مؤسسة أخرى'
+      ? sanitizeString(customInstitution)
+      : sanitizeString(institution);
 
     if (!selectedInst) {
-      setError(language === 'ar' ? 'يرجى اختيار مؤسستك الجامعية أو تحديدها.' : 'Please select or specify your school or university.');
+      setError(language === 'ar' ? 'يرجى اختيار أو كتابة اسم المؤسسة / الجامعة.' : 'Please select or specify your institution/university.');
       return;
     }
 
     if (!studyYear) {
-      setError(language === 'ar' ? 'يرجى اختيار مستواك الدراسي.' : 'Please select your study year.');
+      setError(language === 'ar' ? 'يرجى اختيار المستوى الدراسي.' : 'Please select your study year.');
       return;
     }
 
-    const cleanTeamName = sanitizeString(teamName);
-    if (isTeam && !cleanTeamName) {
-      setError(language === 'ar' ? 'يرجى كتابة اسم الفريق.' : 'Please enter a team name.');
-      return;
-    }
-
-    // Validate & sanitize member details
     const sanitizedMembers: MemberInput[] = [];
     for (let i = 0; i < members.length; i++) {
       const m = members[i];
@@ -246,11 +289,10 @@ export function EventRegister() {
       });
     }
 
-    // Validate companion if checked
     const cleanCompanionName = sanitizeString(companionName);
     const cleanCompanionRole = sanitizeString(companionRole);
     if (hasCompanion && !cleanCompanionName) {
-      setError(language === 'ar' ? 'يرجى كتابة اسم المرافق كاملاً.' : 'Please enter the name of your chaperone/driver/companion.');
+      setError(language === 'ar' ? 'يرجى كتابة اسم المرافق كاملاً.' : 'Please enter companion full name.');
       return;
     }
 
@@ -259,7 +301,7 @@ export function EventRegister() {
 
     try {
       const regPayload = {
-        event_id: Number(eventId),
+        event_id: Number(event.id),
         registration_type: event.registration_type || 'individual',
         team_name: isTeam ? cleanTeamName : null,
         institution: selectedInst,
@@ -279,7 +321,7 @@ export function EventRegister() {
 
       let submitted = false;
 
-      // 1. Primary: Secure serverless API (bypasses RLS with service role)
+      // 1. Primary: Serverless API proxy
       try {
         const res = await fetch('/api/submit-event-registration', {
           method: 'POST',
@@ -290,33 +332,48 @@ export function EventRegister() {
           const json = await res.json();
           if (json.success) submitted = true;
         }
-      } catch (apiErr) {
-        console.warn('API event registration fallback to direct:', apiErr);
+      } catch (e) {
+        // Fallback to client Supabase insert
       }
 
-      // 2. Direct client fallback
+      // 2. Direct Supabase Fallback
       if (!submitted) {
         const { data: regData, error: regError } = await supabase
           .from('event_registrations')
           .insert([regPayload])
-          .select('id')
+          .select()
           .single();
 
         if (regError) throw regError;
 
-        const registrationId = regData.id;
-        const finalMembers = memberPayloads.map(m => ({ ...m, registration_id: registrationId }));
+        const membersWithRegId = memberPayloads.map(m => ({
+          ...m,
+          registration_id: regData.id
+        }));
+
         const { error: membersError } = await supabase
           .from('event_registration_members')
-          .insert(finalMembers);
+          .insert(membersWithRegId);
 
         if (membersError) throw membersError;
       }
 
+      // Send confirmation email asynchronously
+      fetch('/api/send-registration-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: sanitizedMembers[0].email,
+          fullName: sanitizedMembers[0].full_name,
+          eventTitle: getLocalized(event, 'title') || event.title,
+          isEvent: true
+        })
+      }).catch(e => console.warn('Event email trigger warning:', e));
+
       setSuccess(true);
     } catch (err: any) {
       console.error('Registration submission error:', err);
-      setError(err.message || (language === 'ar' ? 'فشل إرسال التسجيل، يرجى المحاولة مرة أخرى.' : 'Failed to submit registration. Please try again.'));
+      setError(err.message || (language === 'ar' ? 'فشل إرسال التسجيل. يرجى المحاولة لاحقاً.' : 'Failed to submit registration. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -324,431 +381,436 @@ export function EventRegister() {
 
   if (loadingEvent) {
     return (
-      <div className="min-h-screen bg-dominant flex items-center justify-center p-4">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      <div className={`min-h-[85vh] flex items-center justify-center p-4 ${isDark ? 'bg-[#0a1628]' : 'bg-[#f8fcfd]'}`}>
+        <Loader2 className={`w-8 h-8 animate-spin ${isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'}`} />
       </div>
     );
   }
 
   if (eventError || !event) {
     return (
-      <div className="min-h-[80vh] bg-dominant flex items-center justify-center p-6 text-center rtl:text-right">
-        <div className="max-w-md bg-surface border border-subtle rounded-3xl p-8 shadow-xl">
-          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-primary mb-2">{language === 'ar' ? 'الفعالية غير موجودة' : 'Event Not Found'}</h2>
-          <p className="text-secondary text-sm mb-6">{language === 'ar' ? 'تعذر العثور على الفعالية المطلوبة أو أنها لم تعد متاحة.' : 'The requested event could not be found or has been removed.'}</p>
-          <Link to="/events" className="px-6 py-2.5 bg-accent text-white rounded-xl font-bold text-sm hover:bg-accent-muted transition-colors cursor-pointer">
-            {t.eventRegisterPage.backToEvents}
+      <div className={`min-h-[85vh] flex items-center justify-center p-6 text-center rtl:text-right ${isDark ? 'bg-[#0a1628] text-slate-100' : 'bg-[#f8fcfd] text-slate-900'}`}>
+        <div className={`max-w-md w-full border p-8 shadow-xs ${isDark ? 'bg-[#0f2537] border-slate-800' : 'bg-white border-slate-200'}`}>
+          <div className="w-12 h-12 bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 border border-red-200">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h1 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>{eventError || 'Event Not Found'}</h1>
+          <p className={`text-sm leading-relaxed mb-6 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            {language === 'ar' ? 'الفعالية المطلوبة غير متاحة أو تم إغلاق التسجيل.' : 'The requested event is not available or registration has closed.'}
+          </p>
+          <Link
+            to="/events"
+            className={`inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold border transition-colors ${
+              isDark ? 'bg-slate-800 text-white hover:bg-slate-700 border-slate-700' : 'bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-300'
+            }`}
+          >
+            {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+            <span>{language === 'ar' ? 'العودة للفعاليات' : 'Back to Events'}</span>
           </Link>
         </div>
       </div>
     );
   }
 
-  const isRegistrationClosed = !event.registration_enabled || event.no_registration || isExpired;
   const isTeam = event.registration_type === 'team';
-
   const eventTitle = getLocalized(event, 'title') || event.title;
-  const eventLoc = getLocalized(event, 'location') || event.location;
+  const eventDesc = getLocalized(event, 'description') || event.description;
+  const eventLocation = getLocalized(event, 'location') || event.location;
   const eventTime = getLocalized(event, 'time') || event.time;
 
   return (
-    <div className="min-h-screen bg-dominant py-12 md:py-20 px-4 sm:px-6 lg:px-8 text-left rtl:text-right">
+    <div className={`min-h-screen py-10 md:py-16 px-4 sm:px-6 lg:px-8 text-left rtl:text-right transition-colors duration-200 ${
+      isDark ? 'bg-[#0a1628] text-slate-100' : 'bg-[#f8fcfd] text-slate-900'
+    }`}>
       <div className="max-w-3xl mx-auto">
-
-        {/* Top Header Navigation */}
-        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
-          <Link to="/events" className="inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-accent transition-colors">
+        {/* Navigation */}
+        <div className="mb-6 flex items-center justify-between">
+          <Link
+            to="/events"
+            className={`inline-flex items-center gap-2 text-sm font-semibold transition-colors ${
+              isDark ? 'text-slate-400 hover:text-[#00e5ff]' : 'text-slate-600 hover:text-[#0d5c63]'
+            }`}
+          >
             {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-            <span>{t.eventRegisterPage.backToEvents}</span>
+            <span>{language === 'ar' ? 'العودة إلى الفعاليات' : 'Back to Events'}</span>
           </Link>
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{t.eventRegisterPage.registrationFor}</span>
-          </div>
+          <span className={`text-xs font-mono font-medium px-2.5 py-1 border ${
+            isDark ? 'bg-slate-800 border-slate-700 text-[#00e5ff]' : 'bg-teal-50 border-teal-200 text-[#0d5c63]'
+          }`}>
+            {isTeam ? (language === 'ar' ? 'تسجيل فرق' : 'Team Registration') : (language === 'ar' ? 'تسجيل فردي' : 'Individual Registration')}
+          </span>
         </div>
 
-        {/* Event Context Banner */}
-        <div className="bg-surface border border-subtle rounded-3xl p-6 mb-8 shadow-xl relative overflow-hidden">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-bold uppercase">
-                {event.status || 'UPCOMING'}
-              </span>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-primary">{eventTitle}</h1>
-              <div className="flex flex-wrap gap-4 text-xs text-muted font-medium pt-1">
-                {event.start_date && (
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="w-4 h-4 text-accent shrink-0" />
-                    <span>{event.start_date} {event.end_date ? `– ${event.end_date}` : ''}</span>
-                  </div>
-                )}
-                {eventTime && (
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-accent shrink-0" />
-                    <span>{eventTime}</span>
-                  </div>
-                )}
-                {eventLoc && (
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-accent shrink-0" />
-                    <span>{eventLoc}</span>
-                  </div>
-                )}
-              </div>
+        {/* Main Card */}
+        <div className={`border p-6 sm:p-10 shadow-xs transition-colors duration-200 ${
+          isDark ? 'bg-[#0f2537] border-slate-800' : 'bg-white border-slate-200'
+        }`}>
+          {/* Header */}
+          <div className={`border-b pb-6 mb-8 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-3 ${
+              isDark ? 'text-white' : 'text-slate-900'
+            }`}>
+              {eventTitle}
+            </h1>
+            {eventDesc && (
+              <p className={`text-sm leading-relaxed mb-4 ${
+                isDark ? 'text-slate-400' : 'text-slate-600'
+              }`}>
+                {eventDesc}
+              </p>
+            )}
+
+            {/* Event Meta Badges */}
+            <div className={`flex flex-wrap gap-3 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              {event.date && (
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 border ${
+                  isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                }`}>
+                  <Calendar className={`w-3.5 h-3.5 ${isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'}`} />
+                  <span>{event.date}</span>
+                </div>
+              )}
+              {eventTime && (
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 border ${
+                  isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                }`}>
+                  <Clock className={`w-3.5 h-3.5 ${isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'}`} />
+                  <span>{eventTime}</span>
+                </div>
+              )}
+              {eventLocation && (
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 border ${
+                  isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                }`}>
+                  <MapPin className={`w-3.5 h-3.5 ${isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'}`} />
+                  <span>{eventLocation}</span>
+                </div>
+              )}
             </div>
 
-            {/* Countdown Badge */}
-            {event.registration_deadline && !isExpired && timeLeft && (
-              <div className="bg-accent/10 border border-accent/30 p-4 rounded-2xl shrink-0 text-center md:text-right rtl:md:text-left">
-                <span className="text-[10px] text-accent font-bold uppercase tracking-wider block mb-1">
-                  {t.eventRegisterPage.deadlineTitle}
+            {/* Registration Deadline Warning */}
+            {event.registration_deadline && (
+              <div className={`mt-4 pt-3 border-t flex items-center justify-between text-xs ${
+                isDark ? 'border-slate-800 text-slate-400' : 'border-slate-200 text-slate-500'
+              }`}>
+                <span>
+                  {language === 'ar' ? 'الموعد النهائي للتسجيل:' : 'Registration Deadline:'}
                 </span>
-                <div className="flex items-center justify-center md:justify-end rtl:md:justify-start gap-2 text-primary font-bold font-mono text-lg dir-ltr">
-                  {timeLeft.days > 0 && <span>{timeLeft.days}d</span>}
-                  <span>{String(timeLeft.hours).padStart(2, '0')}h</span>
-                  <span>{String(timeLeft.minutes).padStart(2, '0')}m</span>
-                  <span>{String(timeLeft.seconds).padStart(2, '0')}s</span>
-                </div>
+                {isExpired ? (
+                  <span className="text-red-600 font-semibold">{language === 'ar' ? 'انتهت فترة التسجيل' : 'Registration Closed'}</span>
+                ) : timeLeft ? (
+                  <span className={`font-mono font-bold ${isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'}`}>
+                    {timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m {timeLeft.seconds}s
+                  </span>
+                ) : null}
               </div>
             )}
           </div>
-        </div>
 
-        {/* Main Form Container */}
-        <div className="bg-surface border border-subtle rounded-3xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-accent via-[#00e5ff] to-accent" />
-
-          {isRegistrationClosed ? (
-            <div className="py-12 text-center">
-              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6">
-                <AlertCircle className="w-8 h-8" />
-              </div>
-              <h2 className="text-2xl font-bold text-primary mb-3">{t.eventsBanner.regClosed}</h2>
-              <p className="text-secondary text-sm max-w-md mx-auto leading-relaxed mb-8">
-                {isExpired ? t.eventRegisterPage.deadlineExpired : t.eventsBanner.regClosed}
-              </p>
-              <Link
-                to="/events"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-white font-bold text-sm hover:bg-accent-muted transition-colors cursor-pointer"
+          <AnimatePresence mode="wait">
+            {success ? (
+              <motion.div
+                key="success"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="py-10 text-center"
               >
-                {t.eventRegisterPage.backToEvents}
-              </Link>
-            </div>
-          ) : success ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="py-12 text-center"
-            >
-              <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mx-auto mb-6">
-                <CheckCircle className="w-10 h-10" />
-              </div>
-              <h2 className="text-3xl font-bold text-primary mb-3">{t.eventRegisterPage.successTitle} 🎉</h2>
-              <p className="text-secondary max-w-md mx-auto leading-relaxed mb-8 text-sm">
-                {t.eventRegisterPage.successDesc}
-              </p>
-              <div className="flex justify-center gap-4 flex-wrap">
-                <Link
-                  to="/events"
-                  className="px-6 py-3 rounded-xl bg-accent text-white font-bold text-sm hover:bg-accent-muted transition-colors shadow-lg shadow-accent/20 cursor-pointer"
-                >
-                  {t.eventRegisterPage.backToEvents}
-                </Link>
-              </div>
-            </motion.div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-8">
-              {/* Anti-bot honeypot field */}
-              <input
-                type="text"
-                name="user_website_url_check"
-                value={honeypot}
-                onChange={(e) => setHoneypot(e.target.value)}
-                style={{ display: 'none' }}
-                tabIndex={-1}
-                autoComplete="off"
-              />
-
-              {/* Form Title */}
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isTeam ? 'bg-purple-500/15 text-purple-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
-                    {isTeam ? `${t.eventRegisterPage.teamBadge} (${event.min_team_size || 2}-${event.max_team_size || 5} ${t.eventsPage.members})` : t.eventRegisterPage.individualBadge}
-                  </span>
+                <div className="w-14 h-14 bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 className="w-7 h-7" />
                 </div>
-                <h2 className="text-2xl font-bold text-primary">{t.eventRegisterPage.generalInfoTitle}</h2>
-              </div>
-
-              {/* Error Display */}
-              {error && (
-                <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
-                  <AlertCircle className="w-5 h-5 shrink-0" />
-                  <span>{error}</span>
+                <h2 className={`text-2xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  {language === 'ar' ? 'تم تسجيلك بنجاح' : 'Registration Successful'}
+                </h2>
+                <p className={`text-sm max-w-md mx-auto mb-6 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  {language === 'ar' 
+                    ? 'شكراً لتسجيلك في الفعالية. لقد تم إرسال تفاصيل التأكيد إلى بريدك الإلكتروني.'
+                    : 'Thank you for registering. A confirmation summary has been sent to your email.'}
+                </p>
+                <div className="flex justify-center gap-3">
+                  <Link
+                    to="/events"
+                    className={`px-6 py-2.5 text-sm font-semibold border transition-colors ${
+                      isDark ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700' : 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200'
+                    }`}
+                  >
+                    {language === 'ar' ? 'العودة للفعاليات' : 'Back to Events'}
+                  </Link>
                 </div>
-              )}
+              </motion.div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Honeypot hidden field */}
+                <input
+                  type="text"
+                  name="user_note"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                  tabIndex={-1}
+                  autoComplete="off"
+                  className="hidden"
+                />
 
-              {/* Section 1: Academic / School Info */}
-              <div className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-sm font-medium text-secondary mb-1.5">
-                      {t.eventRegisterPage.institution} <span className="text-red-400">*</span>
-                    </label>
-                    <select
-                      required
-                      value={institution}
-                      onChange={(e) => setInstitution(e.target.value)}
-                      className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary focus:border-accent focus:outline-none transition-colors cursor-pointer text-sm"
-                    >
-                      <option value="">{t.eventRegisterPage.selectInstitution}</option>
-                      {ALGERIAN_INSTITUTIONS.map((inst) => (
-                        <option key={inst} value={inst}>{inst}</option>
-                      ))}
-                      <option value="Other Institution / University">{t.eventRegisterPage.otherInstitution}</option>
-                    </select>
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                    <span>{error}</span>
                   </div>
+                )}
 
-                  {(institution === 'Other Institution / University' || institution === 'تحديد مؤسسة أخرى') && (
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-secondary mb-1.5">
-                        {t.eventRegisterPage.otherInstitution} <span className="text-red-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={customInstitution}
-                        onChange={(e) => setCustomInstitution(e.target.value)}
-                        placeholder={t.eventRegisterPage.otherInstitutionPlaceholder}
-                        className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary text-sm focus:border-accent focus:outline-none"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-secondary mb-1.5">
-                      {t.eventRegisterPage.studyYear} <span className="text-red-400">*</span>
-                    </label>
-                    <select
-                      required
-                      value={studyYear}
-                      onChange={(e) => setStudyYear(e.target.value)}
-                      className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary focus:border-accent focus:outline-none transition-colors cursor-pointer text-sm"
-                    >
-                      <option value="">{t.eventRegisterPage.selectStudyYear}</option>
-                      {STUDY_YEARS.map((sy) => (
-                        <option key={sy} value={sy}>{sy}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Team Name (If Team Mode) */}
-              {isTeam && (
-                <div className="space-y-4 pt-4 border-t border-subtle">
-                  <h3 className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-2">
-                    <Users className="w-4 h-4 text-accent" /> {t.eventRegisterPage.teamName}
-                  </h3>
-                  <div>
-                    <label className="block text-sm font-medium text-secondary mb-1.5">
-                      {t.eventRegisterPage.teamName} <span className="text-red-400">*</span>
+                {/* Team Info if applicable */}
+                {isTeam && (
+                  <div className={`p-4 border space-y-2 ${
+                    isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <label className={`block text-xs font-bold uppercase tracking-wider ${
+                      isDark ? 'text-slate-300' : 'text-slate-700'
+                    }`}>
+                      {language === 'ar' ? 'اسم الفريق *' : 'Team Name *'}
                     </label>
                     <input
                       type="text"
-                      required
                       value={teamName}
                       onChange={(e) => setTeamName(e.target.value)}
-                      placeholder={t.eventRegisterPage.teamNamePlaceholder}
-                      className="w-full bg-dominant border border-subtle rounded-xl px-4 py-3 text-primary text-sm focus:border-accent focus:outline-none"
+                      placeholder={language === 'ar' ? 'مثال: Solar Innovators' : 'e.g., Solar Innovators'}
+                      required
+                      className={`w-full px-3.5 py-2 text-sm border transition-colors ${
+                        isDark
+                          ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                          : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                      }`}
                     />
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Section 3: Members Details */}
-              <div className="space-y-6 pt-4 border-t border-subtle">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <h3 className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-2">
-                    <User className="w-4 h-4 text-accent" /> {isTeam ? t.eventRegisterPage.membersInfoTitle : t.eventRegisterPage.leaderInfoTitle}
-                  </h3>
-                  {isTeam && (
-                    <span className="text-xs text-muted">
-                      {members.length} / {event.max_team_size || 5} {t.eventsPage.members} (Min: {event.min_team_size || 2})
-                    </span>
-                  )}
+                {/* Academic Institution & Study Year */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${
+                      isDark ? 'text-slate-300' : 'text-slate-700'
+                    }`}>
+                      {language === 'ar' ? 'الجامعة أو المؤسسة *' : 'Institution / University *'}
+                    </label>
+                    <select
+                      value={institution}
+                      onChange={(e) => setInstitution(e.target.value)}
+                      required
+                      className={`w-full px-3.5 py-2 text-sm border transition-colors ${
+                        isDark
+                          ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                          : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none'
+                      }`}
+                    >
+                      <option value="">{language === 'ar' ? '-- اختر مؤسستك --' : '-- Select Institution --'}</option>
+                      {ALGERIAN_INSTITUTIONS.map((inst, idx) => (
+                        <option key={idx} value={inst}>
+                          {inst}
+                        </option>
+                      ))}
+                    </select>
+
+                    {(institution === 'Other Institution / University' || institution === 'تحديد مؤسسة أخرى') && (
+                      <input
+                        type="text"
+                        value={customInstitution}
+                        onChange={(e) => setCustomInstitution(e.target.value)}
+                        placeholder={language === 'ar' ? 'اكتب اسم المؤسسة...' : 'Specify institution name...'}
+                        required
+                        className={`mt-2 w-full px-3.5 py-2 text-sm border transition-colors ${
+                          isDark
+                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none'
+                        }`}
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${
+                      isDark ? 'text-slate-300' : 'text-slate-700'
+                    }`}>
+                      {language === 'ar' ? 'المستوى الدراسي *' : 'Study Year *'}
+                    </label>
+                    <select
+                      value={studyYear}
+                      onChange={(e) => setStudyYear(e.target.value)}
+                      required
+                      className={`w-full px-3.5 py-2 text-sm border transition-colors ${
+                        isDark
+                          ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                          : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none'
+                      }`}
+                    >
+                      <option value="">{language === 'ar' ? '-- اختر المستوى --' : '-- Select Year --'}</option>
+                      {STUDY_YEARS.map((yr, idx) => (
+                        <option key={idx} value={yr}>
+                          {yr}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div className="space-y-6">
-                  {members.map((member, index) => {
-                    const isLeader = isTeam && index === 0;
-                    return (
-                      <div
-                        key={index}
-                        className={`p-5 rounded-2xl border transition-all ${
-                          isLeader
-                            ? 'bg-accent/5 border-accent/40 shadow-sm'
-                            : 'bg-dominant/40 border-subtle'
+                {/* Member Details */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className={`text-xs font-bold uppercase tracking-wider ${
+                      isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'
+                    }`}>
+                      {isTeam ? (language === 'ar' ? 'أعضاء الفريق' : 'Team Members') : (language === 'ar' ? 'معلومات المشارك' : 'Participant Details')}
+                    </h3>
+                    {isTeam && members.length < (event.max_team_size || 5) && (
+                      <button
+                        type="button"
+                        onClick={addMember}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border transition-colors cursor-pointer ${
+                          isDark
+                            ? 'bg-slate-800 hover:bg-slate-700 text-[#00e5ff] border-slate-700'
+                            : 'bg-slate-100 hover:bg-slate-200 text-[#0d5c63] border-slate-300'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isLeader ? 'bg-accent text-white' : 'bg-subtle text-muted'}`}>
-                              {index + 1}
-                            </span>
-                            <span className="font-bold text-primary text-sm">
-                              {isTeam ? (isLeader ? `${t.eventRegisterPage.leader} ⭐` : `${t.eventRegisterPage.member} ${index + 1}`) : t.eventRegisterPage.leader}
-                            </span>
-                          </div>
-
-                          {isTeam && !isLeader && members.length > (event.min_team_size || 2) && (
-                            <button
-                              type="button"
-                              onClick={() => removeMember(index)}
-                              className="text-red-400 hover:text-red-300 text-xs font-medium flex items-center gap-1 p-1 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" /> {t.eventRegisterPage.removeMember}
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-secondary mb-1">
-                              {t.eventRegisterPage.fullName} <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={member.full_name}
-                              onChange={(e) => handleMemberChange(index, 'full_name', e.target.value)}
-                              placeholder={t.registerPage.fullNamePlaceholder}
-                              className="w-full bg-surface border border-subtle rounded-xl px-3.5 py-2.5 text-primary text-sm focus:border-accent focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-secondary mb-1">
-                              {t.eventRegisterPage.email} <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                              type="email"
-                              required
-                              value={member.email}
-                              onChange={(e) => handleMemberChange(index, 'email', e.target.value)}
-                              placeholder={t.registerPage.emailPlaceholder}
-                              className="w-full bg-surface border border-subtle rounded-xl px-3.5 py-2.5 text-primary text-sm focus:border-accent focus:outline-none dir-ltr"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-secondary mb-1">
-                              {t.eventRegisterPage.phone} <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                              type="tel"
-                              required
-                              value={member.phone}
-                              onChange={(e) => handleMemberChange(index, 'phone', e.target.value)}
-                              placeholder={t.registerPage.phonePlaceholder}
-                              className="w-full bg-surface border border-subtle rounded-xl px-3.5 py-2.5 text-primary text-sm focus:border-accent focus:outline-none dir-ltr"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {isTeam && members.length < (event.max_team_size || 5) && (
-                  <button
-                    type="button"
-                    onClick={addMember}
-                    className="w-full py-3 border-2 border-dashed border-subtle hover:border-accent text-accent rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-colors bg-dominant/20 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" /> {t.eventRegisterPage.addMember} ({members.length + 1})
-                  </button>
-                )}
-              </div>
-
-              {/* Section 4: Optional Companion / Driver / Professor / Ambassador */}
-              <div className="space-y-4 pt-4 border-t border-subtle">
-                <h3 className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-2">
-                  <Car className="w-4 h-4 text-accent" /> {t.eventRegisterPage.companionTitle}
-                </h3>
-
-                <label className="flex items-center gap-3 p-4 rounded-2xl border border-subtle bg-dominant/50 hover:border-accent/40 cursor-pointer transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={hasCompanion}
-                    onChange={(e) => setHasCompanion(e.target.checked)}
-                    className="w-4 h-4 accent-accent rounded cursor-pointer"
-                  />
-                  <div>
-                    <span className="block text-sm font-bold text-primary">{t.eventRegisterPage.companionCheckbox}</span>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'إضافة عضو' : 'Add Member'}</span>
+                      </button>
+                    )}
                   </div>
-                </label>
 
-                {hasCompanion && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="p-5 rounded-2xl border border-subtle bg-dominant/30 space-y-4"
-                  >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">
-                          {t.eventRegisterPage.companionName} <span className="text-red-400">*</span>
-                        </label>
+                  {members.map((member, index) => (
+                    <div
+                      key={index}
+                      className={`p-3.5 border space-y-2.5 relative ${
+                        isDark ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          {isTeam ? (index === 0 ? (language === 'ar' ? 'قائد الفريق' : 'Team Leader') : `${language === 'ar' ? 'العضو' : 'Member'} ${index + 1}`) : (language === 'ar' ? 'البيانات الشخصية' : 'Personal Details')}
+                        </span>
+                        {isTeam && index >= (event.min_team_size || 2) && (
+                          <button
+                            type="button"
+                            onClick={() => removeMember(index)}
+                            className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                            title={language === 'ar' ? 'حذف العضو' : 'Remove Member'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <input
                           type="text"
-                          required={hasCompanion}
-                          value={companionName}
-                          onChange={(e) => setCompanionName(e.target.value)}
-                          placeholder="Full Name"
-                          className="w-full bg-surface border border-subtle rounded-xl px-3.5 py-2.5 text-primary text-sm focus:border-accent focus:outline-none"
+                          value={member.full_name}
+                          onChange={(e) => handleMemberChange(index, 'full_name', e.target.value)}
+                          placeholder={language === 'ar' ? 'الاسم الكامل *' : 'Full Name *'}
+                          required
+                          className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
+                            isDark
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                              : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                          }`}
+                        />
+                        <input
+                          type="email"
+                          value={member.email}
+                          onChange={(e) => handleMemberChange(index, 'email', e.target.value)}
+                          placeholder={language === 'ar' ? 'البريد الإلكتروني *' : 'Email Address *'}
+                          required
+                          className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
+                            isDark
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                              : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                          }`}
+                        />
+                        <input
+                          type="tel"
+                          value={member.phone}
+                          onChange={(e) => handleMemberChange(index, 'phone', e.target.value)}
+                          placeholder={language === 'ar' ? 'رقم الهاتف *' : 'Phone Number *'}
+                          required
+                          className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
+                            isDark
+                              ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                              : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                          }`}
                         />
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-secondary mb-1">
-                          {t.eventRegisterPage.companionRole} <span className="text-red-400">*</span>
-                        </label>
-                        <select
-                          value={companionRole}
-                          onChange={(e) => setCompanionRole(e.target.value)}
-                          className="w-full bg-surface border border-subtle rounded-xl px-3.5 py-2.5 text-primary text-sm focus:border-accent focus:outline-none cursor-pointer"
-                        >
-                          {COMPANION_ROLES.map((r) => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
-                        </select>
-                      </div>
                     </div>
-                  </motion.div>
-                )}
-              </div>
+                  ))}
+                </div>
 
-              {/* Submit Button */}
-              <div className="pt-6 border-t border-subtle flex justify-end">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full sm:w-auto px-10 py-3.5 rounded-xl font-bold bg-accent text-white hover:bg-accent-muted transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-accent/25 text-base cursor-pointer"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" /> {t.eventRegisterPage.submitting}
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="w-5 h-5" /> {t.eventRegisterPage.submitReg}
-                    </>
+                {/* Optional Companion / Driver / Chaperone */}
+                <div className={`pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                  <label className={`flex items-center gap-2 cursor-pointer text-xs font-semibold ${
+                    isDark ? 'text-slate-300' : 'text-slate-700'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={hasCompanion}
+                      onChange={(e) => setHasCompanion(e.target.checked)}
+                      className="border-slate-300"
+                    />
+                    <span>{language === 'ar' ? 'هل يرافقكم سائق أو مؤطر / مرافق؟ (اختياري)' : 'Do you have an accompanying driver or chaperone? (Optional)'}</span>
+                  </label>
+
+                  {hasCompanion && (
+                    <div className={`mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 border ${
+                      isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <input
+                        type="text"
+                        value={companionName}
+                        onChange={(e) => setCompanionName(e.target.value)}
+                        placeholder={language === 'ar' ? 'اسم المرافق *' : 'Companion Full Name *'}
+                        className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
+                          isDark
+                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                            : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                        }`}
+                      />
+                      <select
+                        value={companionRole}
+                        onChange={(e) => setCompanionRole(e.target.value)}
+                        className={`w-full px-3 py-1.5 text-xs sm:text-sm border transition-colors ${
+                          isDark
+                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
+                            : 'bg-white border-slate-300 text-slate-900 focus:border-[#0d5c63] focus:outline-none'
+                        }`}
+                      >
+                        {COMPANION_ROLES.map((role, idx) => (
+                          <option key={idx} value={role}>{role}</option>
+                        ))}
+                      </select>
+                    </div>
                   )}
-                </button>
-              </div>
-            </form>
-          )}
+                </div>
+
+                {/* Submit button */}
+                <div className={`pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                  <button
+                    type="submit"
+                    disabled={submitting || isExpired}
+                    className={`w-full py-2.5 px-6 font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-colors disabled:opacity-50 cursor-pointer shadow-xs ${
+                      isDark
+                        ? 'bg-[#00e5ff] hover:bg-[#5ef0ff] text-[#0a1628]'
+                        : 'bg-[#0d5c63] hover:bg-[#0a4a50] text-white'
+                    }`}
+                  >
+                    {submitting ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Check className="w-5 h-5" />
+                    )}
+                    <span>
+                      {submitting
+                        ? (language === 'ar' ? 'جارٍ الإرسال...' : 'Submitting...')
+                        : (language === 'ar' ? 'تأكيد التسجيل في الفعالية' : 'Confirm Registration')}
+                    </span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>

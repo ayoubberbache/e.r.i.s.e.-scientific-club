@@ -1,0 +1,276 @@
+events
+id
+int4
+events id actions
+title
+text
+events title actions
+description
+text
+events description actions
+date
+text
+events date actions
+time
+text
+events time actions
+location
+text
+events location actions
+image
+text
+events image actions
+images
+_text
+events images actions
+status
+text
+events status actions
+no_registration
+bool
+events no_registration actions
+created_at
+timestamptz
+events created_at actions
+start_date
+date
+events start_date actions
+end_date
+date
+events end_date actions
+registration_enabled
+bool
+events registration_enabled actions
+registration_type
+text
+events registration_type actions
+registration_deadline
+timestamptz
+events registration_deadline actions
+min_team_size
+int4
+events min_team_size actions
+max_team_size
+int4
+events max_team_size actions
+title_ar
+text
+events title_ar actions
+description_ar
+text
+events description_ar actions
+location_ar
+text
+events location_ar actions
+time_ar
+text
+events time_ar actions
+assigned_member_ids
+jsonb
+events assigned_member_ids actions
+member_custom_roles
+jsonb
+events member_custom_roles actions
+star_members
+id
+int8
+star_members id actions
+name
+text
+star_members name actions
+organization
+text
+star_members organization actions
+image
+text
+star_members image actions
+created_at
+timestamptz
+star_members created_at actions
+name_ar
+text
+star_members name_ar actions
+organization_ar
+text
+star_members organization_ar actions
+registrations
+id
+int8
+registrations id actions
+full_name
+text
+registrations full_name actions
+email
+text
+registrations email actions
+phone
+text
+registrations phone actions
+study_year
+int4
+registrations study_year actions
+specialization
+text
+registrations specialization actions
+departments
+_text
+registrations departments actions
+registered_at
+timestamptz
+registrations registered_at actions
+status
+text
+registrations status actions
+site_settings
+key
+text
+site_settings key actions
+value
+text
+site_settings value actions
+updated_at
+timestamptz
+site_settings updated_at actions
+erise_media_assets
+id
+uuid
+erise_media_assets id actions
+title
+text
+erise_media_assets title actions
+category
+text
+erise_media_assets category actions
+folder_id
+text
+erise_media_assets folder_id actions
+file_url
+text
+erise_media_assets file_url actions
+drive_file_id
+text
+erise_media_assets drive_file_id actions
+thumbnail_url
+text
+erise_media_assets thumbnail_url actions
+file_type
+text
+erise_media_assets file_type actions
+file_size
+text
+erise_media_assets file_size actions
+uploaded_by_email
+text
+erise_media_assets uploaded_by_email actions
+tags
+_text
+erise_media_assets tags actions
+description
+text
+erise_media_assets description actions
+created_at
+timestamptz
+erise_media_assets created_at actions
+erise_custom_folders
+id
+uuid
+erise_custom_folders id actions
+name
+text
+erise_custom_folders name actions
+slug
+text
+erise_custom_folders slug actions
+icon
+text
+erise_custom_folders icon actions
+description
+text
+erise_custom_folders description actions
+created_by
+text
+erise_custom_folders created_by actions
+created_at
+timestamptz
+erise_custom_folders created_at actions
+event_registrations
+id
+int8
+event_registrations id actions
+event_id
+int8
+event_registrations event_id actions
+registration_type
+text
+event_registrations registration_type actions
+team_name
+text
+event_registrations team_name actions
+institution
+text
+event_registrations institution actions
+study_year
+text
+event_registrations study_year actions
+has_companion
+bool
+event_registrations has_companion actions
+companion_name
+text
+event_registrations companion_name actions
+companion_role
+text
+event_registrations companion_role actions
+status
+text
+event_registrations status actions
+registered_at
+timestamptz
+event_registrations registered_at actions
+event_registration_members
+id
+int8
+event_registration_members id actions
+registration_id
+int8
+event_registration_members registration_id actions
+is_leader
+bool
+event_registration_members is_leader actions
+full_name
+text
+event_registration_members full_name actions
+email
+text
+event_registration_members email actions
+phone
+text
+event_registration_members phone actions
+created_at
+timestamptz
+event_registration_members created_at actions
+attendance_logs
+id
+int4
+attendance_logs id actions
+member_id
+int4
+attendance_logs member_id actions
+event_id
+int4
+attendance_logs event_id actions
+event_title
+text
+attendance_logs event_title actions
+session_date
+date
+attendance_logs session_date actions
+status
+text
+attendance_logs status actions
+absence_reason
+text
+attendance_logs absence_reason actions
+created_at
+timestamptz
+attendance_logs created_at actions

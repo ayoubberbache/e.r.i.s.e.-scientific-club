@@ -1,30 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 import { 
   fetchDepartmentMembers, 
   addDepartmentMember, 
-  deleteDepartmentMember, 
-  grantDepartmentMemberRole,
-  fetchStoredProjects,
-  getStoredProjects,
-  addOrUpdateProject,
+  fetchStoredProjects, 
+  addOrUpdateProject, 
   deleteProject,
-  toggleMemberProjectAffiliation,
-  batchAffiliateMembersToProject,
-  assignMemberToProject,
-  removeMemberFromProject
+  fetchWorkshopAttendance,
+  saveAttendanceCheck
 } from '../../lib/departmentStorage';
 import { DEPARTMENT_HEADS } from '../../data/departmentHeads';
-import { DepartmentMember, ClubProject } from '../../types/portals';
-import { PortalMemberEvaluationModal } from './PortalMemberEvaluationModal';
-import { PortalMemberCardGrid } from './PortalMemberCardGrid';
+import { DepartmentMember, ClubProject, AttendanceRecord } from '../../types/portals';
 import { 
-  Cpu, Wrench, UserPlus, Trash2, ShieldCheck, 
-  Search, Plus, CheckCircle, ExternalLink, 
-  Phone, Mail, GraduationCap, Download, 
-  Loader2, Save, X, Edit, Check, Copy, 
-  Sparkles, Layers, ListChecks, ArrowRight,
-  TrendingUp, Users, Target, Calendar, CheckSquare, Square, UserCheck,
-  FolderKanban, Award
+  FolderGit2, Users, CheckSquare, Plus, 
+  Search, Trash2, Edit3, Check, X, Loader2, 
+  Mail, Phone, UserPlus, UserCheck
 } from 'lucide-react';
 
 interface ProjectsPortalProps {
@@ -35,8 +25,7 @@ interface ProjectsPortalProps {
 export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalProps) {
   const headConfig = DEPARTMENT_HEADS.Projects;
 
-  // Active View: default to project_affiliation as primary!
-  const [activeTab, setActiveTab] = useState<'project_affiliation' | 'projects' | 'members'>('project_affiliation');
+  const [activeTab, setActiveTab] = useState<'projects' | 'attendance' | 'members'>('projects');
 
   // Projects State
   const [projects, setProjects] = useState<ClubProject[]>([]);
@@ -47,22 +36,31 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   const [members, setMembers] = useState<DepartmentMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [affiliationFilter, setAffiliationFilter] = useState<'all' | 'affiliated' | 'unaffiliated'>('all');
-  const [evaluatingMember, setEvaluatingMember] = useState<DepartmentMember | null>(null);
 
-  // Selected Members for batch action
-  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  // Attendance State (Bootcamps & Workshops)
+  const [events, setEvents] = useState<any[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>([]);
+  const [savingAttendanceId, setSavingAttendanceId] = useState<number | null>(null);
 
-  // Project Modal (Add / Edit)
+  // Project Modal State (Create / Edit)
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectModalMode, setProjectModalMode] = useState<'add' | 'edit'>('add');
-  const [projectFormData, setProjectFormData] = useState<any>({
+  const [projectForm, setProjectForm] = useState({
     title: '',
+    category: 'Engineering & Innovation',
     status: 'Active',
     description: '',
   });
 
-  // Add Member Modal
+  // Team Group Assignment Modal State
+  const [teamModalOpen, setTeamModalOpen] = useState(false);
+  const [targetProject, setTargetProject] = useState<ClubProject | null>(null);
+  const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<(string | number)[]>([]);
+  const [memberRolesMap, setMemberRolesMap] = useState<Record<string, string>>({});
+
+  // Add Member Modal State
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [newMemberData, setNewMemberData] = useState({
     full_name: '',
@@ -74,20 +72,17 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   });
   const [addingMember, setAddingMember] = useState(false);
 
-  // Role Modal
-  const [roleModalOpen, setRoleModalOpen] = useState(false);
-  const [selectedMemberForRole, setSelectedMemberForRole] = useState<DepartmentMember | null>(null);
-  const [newRoleValue, setNewRoleValue] = useState('');
-
-  // Custom Role Edit for Project Assignment
-  const [editingAssignment, setEditingAssignment] = useState<{ memberId: number; name: string; currentRole: string } | null>(null);
-  const [customRoleInput, setCustomRoleInput] = useState('');
-  const [copiedRoster, setCopiedRoster] = useState(false);
-
   useEffect(() => {
     loadProjects();
     loadMembers();
+    loadEvents();
   }, []);
+
+  useEffect(() => {
+    if (selectedEventId) {
+      loadAttendance(selectedEventId);
+    }
+  }, [selectedEventId]);
 
   const loadProjects = async () => {
     setProjectsLoading(true);
@@ -99,11 +94,6 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
       }
     } catch (err) {
       console.error('Error loading projects:', err);
-      const fallback = getStoredProjects();
-      setProjects(fallback);
-      if (fallback.length > 0 && selectedProjectId === null) {
-        setSelectedProjectId(fallback[0].id);
-      }
     } finally {
       setProjectsLoading(false);
     }
@@ -121,124 +111,165 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
     }
   };
 
-  const currentProject = projects.find((p) => String(p.id) === String(selectedProjectId)) || projects[0];
-  const currentTeamMembers = currentProject?.team_members || [];
-  const affiliatedMemberIds = new Set(currentTeamMembers.map((m) => String(m.member_id)));
+  const loadEvents = async () => {
+    setEventsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('id', { ascending: false });
 
-  // 1-Click Instant Toggle Project Affiliation
-  const handleToggleAffiliation = async (member: DepartmentMember, defaultRole?: string) => {
-    if (!currentProject) return;
-    await toggleMemberProjectAffiliation(currentProject.id, member, defaultRole || 'Project Engineer & Developer');
-    await loadProjects();
-  };
-
-  // 1-Click Quick Technical Role Assignment
-  const handleSetMemberRole = async (memberId: number, roleName: string) => {
-    if (!currentProject) return;
-    const memberObj = members.find((m) => m.id === memberId);
-    await assignMemberToProject(currentProject.id, {
-      member_id: memberId,
-      member_name: memberObj?.full_name || 'Engineer',
-      role_in_project: roleName,
-      assigned_at: new Date().toISOString(),
-    });
-    await loadProjects();
-    setEditingAssignment(null);
-  };
-
-  // Batch Affiliation
-  const handleBatchAffiliate = async (roleName?: string) => {
-    if (!currentProject || selectedMemberIds.length === 0) return;
-    const toAssign = members.filter((m) => selectedMemberIds.includes(m.id));
-    await batchAffiliateMembersToProject(currentProject.id, toAssign, roleName || 'Project Engineer & Developer');
-    await loadProjects();
-    setSelectedMemberIds([]);
-  };
-
-  const toggleSelectMember = (id: number) => {
-    setSelectedMemberIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const selectAllFiltered = (filteredList: DepartmentMember[]) => {
-    if (selectedMemberIds.length === filteredList.length) {
-      setSelectedMemberIds([]);
-    } else {
-      setSelectedMemberIds(filteredList.map((m) => m.id));
+      if (!error && Array.isArray(data)) {
+        setEvents(data);
+        if (data.length > 0 && selectedEventId === null) {
+          setSelectedEventId(data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading events for attendance:', err);
+    } finally {
+      setEventsLoading(false);
     }
   };
 
-  // Copy Project Engineering Team Roster for WhatsApp
-  const copyTeamRoster = () => {
-    if (!currentProject) return;
-    const lines = [
-      `⚙️ *E.R.I.S.E. Projects Team Roster*`,
-      `🚀 *Project:* ${currentProject.title}`,
-      `🏷️ *Status:* ${currentProject.status || 'Active'}`,
-      `👥 *Engineering Team Size:* ${currentTeamMembers.length}`,
-      `──────────────────────────`,
-      ...currentTeamMembers.map((m, idx) => {
-        const fullMember = members.find(x => String(x.id) === String(m.member_id));
-        const phoneTxt = fullMember?.phone ? ` | 📞 ${String(fullMember.phone)}` : '';
-        return `${idx + 1}. *${m.member_name || 'Engineer'}* → ⚡ _${m.role_in_project || 'Lead Developer'}_${phoneTxt}`;
-      }),
-      `──────────────────────────`,
-      `Supervisor: ${headConfig.name} (Head of Projects)`
-    ];
-    navigator.clipboard.writeText(lines.join('\n'));
-    setCopiedRoster(true);
-    setTimeout(() => setCopiedRoster(false), 2500);
+  const loadAttendance = async (eventId: number) => {
+    try {
+      const records = await fetchWorkshopAttendance(eventId);
+      setAttendanceLogs(records);
+    } catch (err) {
+      console.error('Error loading attendance logs:', err);
+    }
   };
 
-  const filteredMembers = members.filter((m) => {
-    const nameStr = String(m.full_name || '');
-    const roleStr = String(m.role || '');
-    const specStr = String(m.specialization || '');
-    const query = (searchQuery || '').toLowerCase();
+  // Toggle Attendance Checkbox
+  const handleToggleAttendance = async (member: DepartmentMember, currentStatus: 'Present' | 'Absent') => {
+    if (!selectedEventId) return;
+    const currentEvent = events.find((e) => e.id === selectedEventId);
+    const eventTitle = currentEvent?.title || 'Workshop';
+    const nextStatus: 'Present' | 'Absent' = currentStatus === 'Present' ? 'Absent' : 'Present';
 
-    const matchesSearch =
-      !query ||
-      nameStr.toLowerCase().includes(query) ||
-      roleStr.toLowerCase().includes(query) ||
-      specStr.toLowerCase().includes(query);
+    const numMemberId = Number(String(member.id).replace(/[^\d]/g, '')) || 0;
+    setSavingAttendanceId(numMemberId);
 
-    const isAffiliated = affiliatedMemberIds.has(String(m.id));
-    if (affiliationFilter === 'affiliated') return matchesSearch && isAffiliated;
-    if (affiliationFilter === 'unaffiliated') return matchesSearch && !isAffiliated;
-    return matchesSearch;
-  });
+    try {
+      const saved = await saveAttendanceCheck(
+        selectedEventId,
+        eventTitle,
+        numMemberId,
+        member.full_name,
+        nextStatus
+      );
 
+      setAttendanceLogs((prev) => {
+        const filtered = prev.filter((r) => Number(r.member_id) !== numMemberId);
+        return [saved, ...filtered];
+      });
+    } catch (err) {
+      console.error('Failed to toggle attendance:', err);
+    } finally {
+      setSavingAttendanceId(null);
+    }
+  };
+
+  // Save New or Edited Project
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!projectFormData.title?.trim()) return;
+    if (!projectForm.title.trim()) return;
+
     try {
-      await addOrUpdateProject(projectFormData);
-      await loadProjects();
+      if (projectModalMode === 'add') {
+        const created = await addOrUpdateProject({
+          title: projectForm.title.trim(),
+          category: projectForm.category,
+          status: projectForm.status,
+          description: projectForm.description,
+          team_members: [],
+        });
+        setProjects((prev) => [created, ...prev]);
+        setSelectedProjectId(created.id);
+      } else if (targetProject) {
+        const updated = await addOrUpdateProject({
+          ...targetProject,
+          title: projectForm.title.trim(),
+          category: projectForm.category,
+          status: projectForm.status,
+          description: projectForm.description,
+        });
+        setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      }
       setProjectModalOpen(false);
-      setProjectFormData({ title: '', status: 'Active', description: '' });
     } catch (err) {
       console.error('Error saving project:', err);
     }
   };
 
-  const handleDeleteProject = async (id: string | number, title: string) => {
-    if (!window.confirm(`Are you sure you want to delete the project "${title}"?`)) return;
+  // Open Team Assignment Modal for a Project
+  const openTeamModal = (proj: ClubProject) => {
+    setTargetProject(proj);
+    const currentIds = (proj.team_members || []).map((m) => m.member_id);
+    setSelectedTeamMemberIds(currentIds);
+
+    const roles: Record<string, string> = {};
+    (proj.team_members || []).forEach((m) => {
+      roles[String(m.member_id)] = m.role_in_project || 'Project Engineer & Developer';
+    });
+    setMemberRolesMap(roles);
+    setTeamModalOpen(true);
+  };
+
+  // Save Team Group Assignment
+  const handleSaveTeamAssignment = async () => {
+    if (!targetProject) return;
+
+    const newTeamMembers = selectedTeamMemberIds.map((mId) => {
+      const memberObj = members.find((m) => String(m.id) === String(mId));
+      return {
+        member_id: mId,
+        member_name: memberObj?.full_name || `Member #${mId}`,
+        email: memberObj?.email || '',
+        phone: memberObj?.phone || '',
+        role_in_project: memberRolesMap[String(mId)] || memberObj?.role || 'Project Engineer & Developer',
+        assigned_at: new Date().toISOString(),
+      };
+    });
+
     try {
-      await deleteProject(id);
-      await loadProjects();
+      const updated = await addOrUpdateProject({
+        ...targetProject,
+        team_members: newTeamMembers,
+      });
+
+      setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setTeamModalOpen(false);
     } catch (err) {
-      console.error('Error deleting project:', err);
+      console.error('Failed to update project team:', err);
     }
   };
 
-  const handleAddMember = async (e: React.FormEvent) => {
+  const handleDeleteProject = async (id: string | number) => {
+    if (!confirm('Are you sure you want to delete this project?')) return;
+    await deleteProject(id);
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    if (selectedProjectId === id) {
+      setSelectedProjectId(projects[0]?.id || null);
+    }
+  };
+
+  const handleAddMemberSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMemberData.full_name) return;
     setAddingMember(true);
     try {
-      await addDepartmentMember('Projects', newMemberData);
-      await loadMembers();
+      const newMember = await addDepartmentMember('Projects', {
+        full_name: newMemberData.full_name,
+        email: newMemberData.email,
+        phone: newMemberData.phone,
+        study_year: newMemberData.study_year,
+        specialization: newMemberData.specialization,
+        departments: ['Projects'],
+        role: newMemberData.role,
+        status: 'approved',
+      });
+      setMembers((prev) => [newMember, ...prev]);
       setAddMemberOpen(false);
       setNewMemberData({
         full_name: '',
@@ -249,221 +280,151 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
         role: 'Hardware & IoT Engineer',
       });
     } catch (err) {
-      console.error('Failed to add projects member:', err);
+      console.error('Error adding member:', err);
     } finally {
       setAddingMember(false);
     }
   };
 
-  const handleDeleteMember = async (id: number, name: string) => {
-    if (!window.confirm(`Are you sure you want to remove ${name} from Projects?`)) return;
-    await deleteDepartmentMember('Projects', id);
-    await loadMembers();
-    await loadProjects();
-  };
+  const filteredMembers = members.filter((m) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      m.full_name?.toLowerCase().includes(q) ||
+      m.email?.toLowerCase().includes(q) ||
+      m.phone?.includes(q) ||
+      m.role?.toLowerCase().includes(q)
+    );
+  });
 
-  const handleGrantRole = () => {
-    if (!selectedMemberForRole || !newRoleValue) return;
-    grantDepartmentMemberRole(selectedMemberForRole.id, newRoleValue);
-    setRoleModalOpen(false);
-    loadMembers();
-  };
-
-  const exportMembersCsv = () => {
-    const headers = ['ID', 'Full Name', 'Email', 'Phone', 'Year', 'Specialization', 'Technical Role'];
-    const rows = members.map((m) => [
-      m.id,
-      `"${m.full_name}"`,
-      m.email || '',
-      m.phone || '',
-      m.study_year || '',
-      m.specialization || '',
-      `"${m.role || ''}"`,
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ERISE_Projects_Engineers_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Active':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-            Active
-          </span>
-        );
-      case 'Finished':
-      case 'Completed':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-            Finished
-          </span>
-        );
-      case 'Discarded':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-500/15 text-rose-400 border border-rose-500/30">
-            Discarded
-          </span>
-        );
-      default:
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-            {status || 'Active'}
-          </span>
-        );
-    }
-  };
+  const activeProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+  const activeEvent = events.find((e) => e.id === selectedEventId) || events[0];
 
   return (
-    <div className="space-y-6">
-      {/* ── TOP DEPARTMENT BANNER ─────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-cyan-950/40 via-surface to-surface border border-cyan-500/20 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-80 h-full bg-cyan-500/5 blur-2xl pointer-events-none" />
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold shadow-lg shadow-cyan-500/10">
-              <Cpu className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-black text-primary tracking-tight">
-                  Projects Department Portal
-                </h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider">
-                  Head Port
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-secondary mt-0.5">
-                Head: <strong className="text-primary font-bold">{headConfig.name}</strong> • Affiliating engineers & developers to technical projects
-              </p>
-            </div>
+    <div className="space-y-5 text-slate-900 max-w-7xl mx-auto pb-10">
+      {/* Top Header Controls - Classic Minimal Light Theme */}
+      <div className="bg-white border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-slate-100 text-slate-800 border border-slate-300 flex items-center justify-center">
+            <FolderGit2 className="w-5 h-5" />
           </div>
-
-          {/* View Switcher */}
-          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-dominant/80 border border-subtle">
-            <button
-              onClick={() => setActiveTab('project_affiliation')}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
-                activeTab === 'project_affiliation'
-                  ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/25'
-                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>⚡ Project Team Affiliation</span>
-              {currentTeamMembers.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">
-                  {currentTeamMembers.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('projects')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
-                activeTab === 'projects'
-                  ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/25'
-                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
-              }`}
-            >
-              <FolderKanban className="w-3.5 h-3.5" />
-              <span>Projects ({projects.length})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('members')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
-                activeTab === 'members'
-                  ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/25'
-                  : 'text-secondary hover:text-primary hover:bg-subtle/40'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Engineers Roster ({members.length})</span>
-            </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 bg-slate-100 px-2 py-0.5 border border-slate-200">
+                Department Admin
+              </span>
+              <span className="text-xs text-slate-400">•</span>
+              <span className="text-xs font-medium text-slate-600">
+                Connected
+              </span>
+            </div>
+            <h1 className="text-lg font-bold text-slate-900 mt-0.5">Projects Administration</h1>
+            <p className="text-xs text-slate-500">Head: {headConfig.name} • Engineering & Hardware Innovation</p>
           </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-1 p-1 bg-slate-100 border border-slate-200 w-full sm:w-auto overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setActiveTab('projects')}
+            className={`shrink-0 px-3 py-1.5 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'projects'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FolderGit2 className="w-3.5 h-3.5" />
+            <span>Projects & Groups</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('attendance')}
+            className={`shrink-0 px-3 py-1.5 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'attendance'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CheckSquare className="w-3.5 h-3.5" />
+            <span>Attendance</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('members')}
+            className={`shrink-0 px-3 py-1.5 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'members'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Members ({members.length})</span>
+          </button>
         </div>
       </div>
 
-      {/* ── VIEW 1: ULTRA-SIMPLE PROJECT AFFILIATION BOARD (MAIN PURPOSE) ───── */}
-      {activeTab === 'project_affiliation' && (
-        <div className="space-y-6">
-          {/* STEP 1: SELECT TARGET PROJECT */}
-          <div className="bg-surface border border-subtle rounded-3xl p-5 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md border border-cyan-500/20">
-                  Step 1: Select Target Project
-                </span>
-                <h2 className="text-base sm:text-lg font-bold text-primary mt-1">
-                  Which project are you staffing engineers for?
-                </h2>
-              </div>
-
-              {currentProject && (
-                <button
-                  onClick={copyTeamRoster}
-                  className="px-3.5 py-2 rounded-xl bg-dominant hover:bg-subtle text-primary border border-subtle text-xs font-bold flex items-center gap-2 transition-colors shadow-sm"
-                  title="Copy engineering team roster to WhatsApp"
-                >
-                  {copiedRoster ? <Check className="w-3.5 h-3.5 text-cyan-400" /> : <Copy className="w-3.5 h-3.5 text-cyan-400" />}
-                  <span>{copiedRoster ? 'Team Roster Copied!' : 'Copy WhatsApp Team Roster'}</span>
-                </button>
-              )}
+      {/* ─── TAB 1: PROJECTS & TEAM GROUPS ─────────────────────────────────── */}
+      {activeTab === 'projects' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Projects List Column */}
+          <div className="lg:col-span-1 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Club Projects ({projects.length})
+              </h3>
+              <button
+                onClick={() => {
+                  setProjectModalMode('add');
+                  setProjectForm({
+                    title: '',
+                    category: 'Engineering & Innovation',
+                    status: 'Active',
+                    description: '',
+                  });
+                  setProjectModalOpen(true);
+                }}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> New Project
+              </button>
             </div>
 
-            {/* Projects Horizontal Slider/Pills */}
             {projectsLoading ? (
-              <div className="py-6 flex justify-center">
-                <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
+              <div className="p-8 text-center bg-white border border-slate-200">
+                <Loader2 className="w-6 h-6 animate-spin text-slate-600 mx-auto" />
               </div>
             ) : projects.length === 0 ? (
-              <div className="p-6 text-center text-muted bg-dominant rounded-2xl border border-dashed border-subtle">
-                No active projects found. Click "Projects" tab to create your first project.
+              <div className="p-8 text-center bg-white border border-slate-200 text-slate-500 text-xs">
+                No projects created yet. Click "New Project" to start.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div className="space-y-2">
                 {projects.map((proj) => {
-                  const isSelected = String(proj.id) === String(currentProject?.id);
-                  const count = proj.team_members?.length || 0;
+                  const isSelected = proj.id === selectedProjectId;
+                  const teamCount = (proj.team_members || []).length;
                   return (
                     <div
                       key={proj.id}
                       onClick={() => setSelectedProjectId(proj.id)}
-                      className={`p-3.5 rounded-2xl cursor-pointer transition-all border text-left flex flex-col justify-between gap-2 relative ${
+                      className={`p-3.5 border cursor-pointer transition-colors ${
                         isSelected
-                          ? 'bg-cyan-500/10 border-cyan-500/40 shadow-md shadow-cyan-500/5 ring-2 ring-cyan-500/20'
-                          : 'bg-dominant border-subtle hover:border-subtle/80 hover:bg-surface'
+                          ? 'bg-slate-50 border-slate-900'
+                          : 'bg-white border-slate-200 hover:border-slate-400'
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center justify-between gap-2">
-                          {getStatusBadge(proj.status)}
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold flex items-center gap-1 ${
-                            count > 0 ? 'bg-cyan-500/20 text-cyan-400' : 'bg-subtle text-muted'
-                          }`}>
-                            <Users className="w-2.5 h-2.5" />
-                            {count} {count === 1 ? 'member' : 'members'}
-                          </span>
-                        </div>
-                        <h3 className="text-sm font-bold text-primary mt-2 line-clamp-1">
-                          {proj.title}
-                        </h3>
-                        <p className="text-[11px] text-secondary line-clamp-2 mt-0.5">
-                          {proj.description || 'Club engineering project.'}
-                        </p>
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <span className="font-bold text-sm text-slate-900 line-clamp-1">{proj.title}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-300">
+                          {proj.status}
+                        </span>
                       </div>
-                      {isSelected && (
-                        <div className="flex items-center gap-1 text-[10px] font-extrabold text-cyan-400 pt-1 border-t border-cyan-500/20">
-                          <CheckCircle className="w-3 h-3" /> Selected Project
-                        </div>
-                      )}
+                      <p className="text-xs text-slate-600 line-clamp-2 mb-2 leading-relaxed">
+                        {proj.description || 'No description provided.'}
+                      </p>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+                        <span className="font-medium text-slate-700">{proj.category || 'General'}</span>
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3 h-3 text-slate-400" /> {teamCount} Assigned
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
@@ -471,615 +432,673 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
             )}
           </div>
 
-          {/* STEP 2: 1-CLICK INSTANT MEMBER AFFILIATION */}
-          {currentProject && (
-            <div className="bg-surface border border-subtle rounded-3xl p-5 shadow-sm space-y-4">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+          {/* Project Details & Team Roster Column */}
+          <div className="lg:col-span-2 space-y-4">
+            {activeProject ? (
+              <div className="bg-white border border-slate-200 p-5 space-y-5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-mono px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-200">
+                        {activeProject.category || 'Engineering'}
+                      </span>
+                      <span className="text-xs font-mono px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200">
+                        Status: {activeProject.status}
+                      </span>
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-900">{activeProject.title}</h2>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openTeamModal(activeProject)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" /> Group / Assign Team
+                    </button>
+                    <button
+                      onClick={() => {
+                        setTargetProject(activeProject);
+                        setProjectModalMode('edit');
+                        setProjectForm({
+                          title: activeProject.title,
+                          category: activeProject.category || 'Engineering & Innovation',
+                          status: activeProject.status || 'Active',
+                          description: activeProject.description || '',
+                        });
+                        setProjectModalOpen(true);
+                      }}
+                      className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer"
+                      title="Edit Project"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProject(activeProject.id)}
+                      className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors cursor-pointer"
+                      title="Delete Project"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Description */}
                 <div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md border border-cyan-500/20">
-                    Step 2: 1-Click Engineer Affiliation
-                  </span>
-                  <h2 className="text-base sm:text-lg font-bold text-primary mt-1">
-                    Staffing for: <span className="text-cyan-400 font-extrabold">"{currentProject.title}"</span>
-                  </h2>
-                  <p className="text-xs text-muted">
-                    Click <strong>[ + Affiliate ]</strong> next to any engineer to assign them to this project's development team.
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Project Scope</h4>
+                  <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 border border-slate-200">
+                    {activeProject.description || 'No description entered for this project.'}
                   </p>
                 </div>
 
-                {/* Filter & Batch Actions */}
-                <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
-                  <div className="flex items-center p-1 rounded-xl bg-dominant border border-subtle text-xs">
-                    <button
-                      onClick={() => setAffiliationFilter('all')}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                        affiliationFilter === 'all' ? 'bg-cyan-500 text-white' : 'text-secondary'
-                      }`}
-                    >
-                      All ({members.length})
-                    </button>
-                    <button
-                      onClick={() => setAffiliationFilter('affiliated')}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                        affiliationFilter === 'affiliated' ? 'bg-cyan-500 text-white' : 'text-secondary'
-                      }`}
-                    >
-                      On Team ({currentTeamMembers.length})
-                    </button>
-                    <button
-                      onClick={() => setAffiliationFilter('unaffiliated')}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                        affiliationFilter === 'unaffiliated' ? 'bg-cyan-500 text-white' : 'text-secondary'
-                      }`}
-                    >
-                      Available ({members.length - currentTeamMembers.length})
-                    </button>
+                {/* Assigned Team Members */}
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Assigned Project Working Group ({(activeProject.team_members || []).length})</span>
+                    </h4>
                   </div>
 
-                  {selectedMemberIds.length > 0 && (
-                    <button
-                      onClick={() => handleBatchAffiliate()}
-                      className="px-3.5 py-1.5 rounded-xl bg-cyan-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-500/20 transition-transform active:scale-95"
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                      <span>Affiliate Selected ({selectedMemberIds.length})</span>
-                    </button>
+                  {(activeProject.team_members || []).length === 0 ? (
+                    <div className="text-center p-6 bg-slate-50 border border-slate-200 text-slate-500 text-xs">
+                      No members assigned to this project yet. Click "Group / Assign Team" to add members.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {(activeProject.team_members || []).map((tm, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 bg-slate-50 border border-slate-200 flex items-start gap-2.5"
+                        >
+                          <div className="w-7 h-7 bg-white text-slate-700 border border-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
+                            {idx + 1}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h5 className="font-semibold text-xs text-slate-900 line-clamp-1">{tm.member_name}</h5>
+                            <p className="text-xs text-slate-600 font-medium line-clamp-1 mt-0.5">{tm.role_in_project}</p>
+                            {tm.email && <p className="text-[11px] text-slate-400 line-clamp-1">{tm.email}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
-
-              {/* Search & Select All Bar */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search engineer by name or skill..."
-                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-dominant border border-subtle text-xs text-primary focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end text-xs text-muted">
-                  <button
-                    onClick={() => selectAllFiltered(filteredMembers)}
-                    className="flex items-center gap-1.5 text-xs font-bold text-secondary hover:text-primary transition-colors"
-                  >
-                    {selectedMemberIds.length === filteredMembers.length && filteredMembers.length > 0 ? (
-                      <CheckSquare className="w-4 h-4 text-cyan-400" />
-                    ) : (
-                      <Square className="w-4 h-4 text-muted" />
-                    )}
-                    <span>Select All Filtered ({filteredMembers.length})</span>
-                  </button>
-                </div>
+            ) : (
+              <div className="bg-white border border-slate-200 p-10 text-center text-slate-500 text-xs">
+                Select a project from the left or create a new one.
               </div>
+            )}
+          </div>
+        </div>
+      )}
 
-              {/* Members Affiliation Cards Grid */}
-              {membersLoading ? (
-                <div className="py-12 flex justify-center">
-                  <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
-                </div>
-              ) : filteredMembers.length === 0 ? (
-                <div className="py-8 text-center text-muted bg-dominant rounded-2xl border border-dashed border-subtle">
-                  No engineers matched your search or filter.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredMembers.map((member) => {
-                    const assignment = currentTeamMembers.find(
-                      (m) => String(m.member_id) === String(member.id)
-                    );
-                    const isAffiliated = !!assignment;
-                    const isSelected = selectedMemberIds.includes(member.id);
+      {/* ─── TAB 2: BOOTCAMPS & WORKSHOPS ATTENDANCE ──────────────────────── */}
+      {activeTab === 'attendance' && (
+        <div className="bg-white border border-slate-200 p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <CheckSquare className="w-4 h-4 text-slate-700" />
+                <span>Bootcamp & Workshop Attendance Checklist</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Tick or untick attendees. Status updates live to the cloud and syncs directly with the HR appraisal portal.
+              </p>
+            </div>
 
-                    return (
-                      <div
-                        key={member.id}
-                        className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
-                          isAffiliated
-                            ? 'bg-cyan-950/20 border-cyan-500/40 shadow-sm'
-                            : 'bg-dominant/80 border-subtle hover:border-subtle/80'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => toggleSelectMember(member.id)}
-                              className="p-1 text-muted hover:text-primary"
-                            >
-                              {isSelected ? (
-                                <CheckSquare className="w-4 h-4 text-cyan-400" />
-                              ) : (
-                                <Square className="w-4 h-4 text-muted" />
-                              )}
-                            </button>
-                            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-black text-sm border border-cyan-500/20 shrink-0">
-                              {(member.full_name || 'Member').charAt(0)}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="text-sm font-bold text-primary leading-tight">
-                                  {member.full_name || 'Member'}
-                                </h4>
-                                {member.study_year && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-subtle text-muted">
-                                    Y{member.study_year} {member.specialization || ''}
-                                  </span>
-                                )}
-                                <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
-                                  {Math.round(member.rating ?? 50)}% Rating
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-muted mt-0.5">
-                                Technical Role: <span className="text-secondary">{member.role || 'Hardware & IoT'}</span>
-                              </p>
-                              {member.phone && (
-                                <a 
-                                  href={`https://wa.me/${String(member.phone).replace(/[^0-9]/g, '')}`}
-                                  target="_blank" 
-                                  rel="noreferrer"
-                                  className="text-[10px] text-cyan-400/90 hover:underline flex items-center gap-1 mt-0.5"
-                                >
-                                  <Phone className="w-2.5 h-2.5" /> {String(member.phone)}
-                                </a>
-                              )}
-                            </div>
-                          </div>
+            {/* Event Selector */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <label className="text-xs font-semibold text-slate-600 shrink-0">Event:</label>
+              <select
+                value={selectedEventId || ''}
+                onChange={(e) => setSelectedEventId(Number(e.target.value))}
+                className="w-full sm:w-64 px-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+              >
+                {events.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.title} {ev.date ? `(${ev.date})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-                          {/* 1-CLICK INSTANT TOGGLE BUTTON */}
-                          <div>
-                            {isAffiliated ? (
-                              <button
-                                onClick={() => handleToggleAffiliation(member)}
-                                className="px-3.5 py-1.5 rounded-xl bg-cyan-500 text-white hover:bg-red-500/90 text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-cyan-500/20 transition-all group"
-                                title="Click to remove from project team"
-                              >
-                                <Check className="w-3.5 h-3.5 group-hover:hidden" />
-                                <X className="w-3.5 h-3.5 hidden group-hover:inline" />
-                                <span className="group-hover:hidden">On Team</span>
-                                <span className="hidden group-hover:inline">Remove</span>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleToggleAffiliation(member)}
-                                className="px-3.5 py-1.5 rounded-xl bg-dominant hover:bg-cyan-500 hover:text-white text-cyan-400 border border-cyan-500/30 text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>+ Affiliate</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
+          {/* Event Context Banner */}
+          {activeEvent && (
+            <div className="p-3.5 bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div>
+                <span className="font-bold text-slate-900 block text-sm">{activeEvent.title}</span>
+                <span className="text-slate-500">{activeEvent.location || 'Campus'} • {activeEvent.date || 'TBD'}</span>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-medium">
+                <span className="text-emerald-700">
+                  Present: {attendanceLogs.filter((r) => r.status === 'Present').length}
+                </span>
+                <span className="text-slate-600">
+                  Total Roster: {members.length}
+                </span>
+              </div>
+            </div>
+          )}
 
-                        {/* IF ASSIGNED: DISPLAY ONLY SPECIFIC TECHNICAL ROLE AND ADD/EDIT SPECIFIC ROLE BUTTON */}
-                        {isAffiliated && assignment && (
-                          <div className="p-3 rounded-2xl bg-surface/90 border border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[11px] font-bold text-muted flex items-center gap-1">
-                                🛠️ Specific Technical Role:
-                              </span>
-                              {assignment.role_in_project && assignment.role_in_project !== 'Project Engineer & Developer' ? (
-                                <span className="px-3 py-1 rounded-xl bg-cyan-500/15 text-cyan-400 font-extrabold text-xs border border-cyan-500/30 shadow-sm">
-                                  {assignment.role_in_project}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-muted italic">No specific role set</span>
-                              )}
-                            </div>
+          {/* Mobile Attendance List */}
+          <div className="sm:hidden space-y-2">
+            {members.map((mem) => {
+              const numId = Number(String(mem.id).replace(/[^\d]/g, '')) || 0;
+              const log = attendanceLogs.find((r) => Number(r.member_id) === numId);
+              const isPresent = log?.status === 'Present';
+              const isSaving = savingAttendanceId === numId;
 
-                            <button
-                              onClick={() => {
-                                setEditingAssignment({
-                                  memberId: member.id,
-                                  name: member.full_name,
-                                  currentRole: assignment.role_in_project === 'Project Engineer & Developer' ? '' : assignment.role_in_project,
-                                });
-                                setCustomRoleInput(assignment.role_in_project === 'Project Engineer & Developer' ? '' : assignment.role_in_project);
-                              }}
-                              className="px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-extrabold flex items-center gap-1.5 transition-colors shadow-sm"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>{assignment.role_in_project && assignment.role_in_project !== 'Project Engineer & Developer' ? 'Edit Specific Role' : 'Add a Specific Role'}</span>
-                            </button>
-                          </div>
+              return (
+                <div
+                  key={mem.id}
+                  onClick={() => !isSaving && handleToggleAttendance(mem, isPresent ? 'Present' : 'Absent')}
+                  className={`p-3 border flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                    isPresent ? 'bg-emerald-50/60 border-emerald-300' : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleAttendance(mem, isPresent ? 'Present' : 'Absent');
+                      }}
+                      className={`w-7 h-7 border flex items-center justify-center shrink-0 transition-colors ${
+                        isPresent
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-white border-slate-300 text-transparent'
+                      }`}
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
+                      ) : isPresent ? (
+                        <Check className="w-4 h-4 stroke-[3]" />
+                      ) : null}
+                    </button>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-xs text-slate-900 truncate">{mem.full_name}</span>
+                        {isPresent && (
+                          <span className="text-[9px] font-mono px-1 py-0.2 bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Present
+                          </span>
                         )}
                       </div>
-                    );
-                  })}
+                      <p className="text-[11px] text-slate-600 truncate">{mem.role}</p>
+                      <p className="text-[10px] text-slate-400">Yr {mem.study_year} {mem.specialization ? `• ${mem.specialization}` : ''}</p>
+                    </div>
+                  </div>
+
+                  {mem.phone && (
+                    <a
+                      href={`tel:${mem.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 shrink-0 text-xs"
+                      title="Call member"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                    </a>
+                  )}
                 </div>
-              )}
+              );
+            })}
+          </div>
+
+          {/* Desktop Attendance Table */}
+          <div className="hidden sm:block overflow-x-auto border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100 text-slate-600 uppercase tracking-wider text-[11px] border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-2.5 text-center w-16">Attendance</th>
+                  <th className="px-4 py-2.5">Member Name</th>
+                  <th className="px-4 py-2.5">Year / Specialization</th>
+                  <th className="px-4 py-2.5">Phone</th>
+                  <th className="px-4 py-2.5">Project Role</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {members.map((mem) => {
+                  const numId = Number(String(mem.id).replace(/[^\d]/g, '')) || 0;
+                  const log = attendanceLogs.find((r) => Number(r.member_id) === numId);
+                  const isPresent = log?.status === 'Present';
+                  const isSaving = savingAttendanceId === numId;
+
+                  return (
+                    <tr
+                      key={mem.id}
+                      className={`hover:bg-slate-50 transition-colors ${
+                        isPresent ? 'bg-emerald-50/50' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-2.5 text-center">
+                        <button
+                          onClick={() => handleToggleAttendance(mem, isPresent ? 'Present' : 'Absent')}
+                          disabled={isSaving}
+                          className={`w-5 h-5 border flex items-center justify-center mx-auto transition-colors cursor-pointer ${
+                            isPresent
+                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'bg-white border-slate-300 text-transparent hover:border-slate-500'
+                          }`}
+                        >
+                          {isSaving ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-slate-600" />
+                          ) : isPresent ? (
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          ) : null}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5 font-semibold text-slate-900">
+                        {mem.full_name}
+                        {isPresent && (
+                          <span className="ml-2 text-[10px] font-mono px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Present
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-600">
+                        Yr {mem.study_year} {mem.specialization ? `• ${mem.specialization}` : ''}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-600 font-mono">
+                        {mem.phone ? (
+                          <a href={`tel:${mem.phone}`} className="hover:underline">{mem.phone}</a>
+                        ) : 'N/A'}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-800 font-medium">{mem.role}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── TAB 3: PROJECTS MEMBERS DIRECTORY ────────────────────────────── */}
+      {activeTab === 'members' && (
+        <div className="bg-white border border-slate-200 p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Projects Department Members ({filteredMembers.length})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Live recruitment database synchronization.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search members..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+                />
+              </div>
+
+              <button
+                onClick={() => setAddMemberOpen(true)}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 transition-colors shrink-0 cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Add Member
+              </button>
+            </div>
+          </div>
+
+          {membersLoading ? (
+            <div className="p-12 text-center">
+              <Loader2 className="w-6 h-6 animate-spin text-slate-600 mx-auto" />
+            </div>
+          ) : filteredMembers.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-xs">
+              No members found matching your search.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredMembers.map((mem) => {
+                const assignedProjects = projects.filter((p) =>
+                  (p.team_members || []).some((tm) => String(tm.member_id) === String(mem.id))
+                );
+
+                return (
+                  <div
+                    key={mem.id}
+                    className="p-3.5 bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-2.5"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h4 className="font-bold text-xs text-slate-900">{mem.full_name}</h4>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-white text-slate-700 border border-slate-200">
+                          Yr {mem.study_year}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-700 font-medium">{mem.role}</p>
+                      {mem.specialization && (
+                        <p className="text-[11px] text-slate-500 mt-0.5">{mem.specialization}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1 text-xs text-slate-600 pt-2 border-t border-slate-200">
+                      {mem.email && (
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Mail className="w-3 h-3 text-slate-400" />
+                          <span className="truncate">{mem.email}</span>
+                        </div>
+                      )}
+                      {mem.phone && (
+                        <div className="flex items-center gap-1.5 font-mono">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          <span>{mem.phone}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200">
+                      <span className="text-[10px] text-slate-500 block mb-1">Active Projects:</span>
+                      {assignedProjects.length === 0 ? (
+                        <span className="text-[10px] text-slate-400 italic">None</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {assignedProjects.map((p) => (
+                            <span
+                              key={p.id}
+                              className="text-[10px] px-1.5 py-0.5 bg-white text-slate-700 border border-slate-200 truncate max-w-[180px]"
+                            >
+                              {p.title}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      {/* ── VIEW 2: PROJECTS DIRECTORY & GOALS (MATCHING HR HUB, NO PROGRESS BAR) */}
-      {activeTab === 'projects' && (
-        <div className="bg-surface border border-subtle rounded-3xl p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-primary">Projects Directory</h2>
-              <p className="text-xs text-muted">Technical engineering projects and software innovations registered in database.</p>
+      {/* ─── MODAL: ADD / EDIT PROJECT ────────────────────────────────────── */}
+      {projectModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-300 p-4 sm:p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm">
+                {projectModalMode === 'add' ? 'Create New Project' : 'Edit Project'}
+              </h3>
+              <button
+                onClick={() => setProjectModalOpen(false)}
+                className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setProjectModalMode('add');
-                setProjectFormData({ title: '', status: 'Active', description: '' });
-                setProjectModalOpen(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" /> <span>Create New Project</span>
-            </button>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((proj) => (
-              <div key={proj.id} className="bg-dominant border border-subtle rounded-2xl p-5 flex flex-col justify-between gap-4 shadow-sm hover:border-cyan-500/30 transition-all">
-                <div className="space-y-2.5">
-                  <div className="flex justify-between items-center">
-                    {getStatusBadge(proj.status)}
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          setProjectModalMode('edit');
-                          setProjectFormData(proj);
-                          setProjectModalOpen(true);
-                        }}
-                        className="p-1.5 text-secondary hover:text-cyan-400 rounded-lg hover:bg-surface border border-transparent hover:border-subtle transition-colors"
-                        title="Edit Project"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProject(proj.id, proj.title)}
-                        className="p-1.5 text-secondary hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors"
-                        title="Delete Project"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+            <form onSubmit={handleSaveProject} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Project Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={projectForm.title}
+                  onChange={(e) => setProjectForm({ ...projectForm, title: e.target.value })}
+                  placeholder="e.g. Solar Tracker & Energy Logger"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+                />
+              </div>
 
-                  <h3 className="text-base font-bold text-primary leading-snug">{proj.title}</h3>
-                  {proj.description && (
-                    <p className="text-xs text-secondary line-clamp-3 leading-relaxed">{proj.description}</p>
-                  )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+                  <input
+                    type="text"
+                    value={projectForm.category}
+                    onChange={(e) => setProjectForm({ ...projectForm, category: e.target.value })}
+                    placeholder="e.g. Solar Energy, IoT"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+                  />
                 </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-subtle text-xs">
-                  <span className="text-muted text-[11px] font-medium flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-cyan-400" />
-                    {proj.team_members?.length || 0} Assigned Members
-                  </span>
-                  <button
-                    onClick={() => {
-                      setSelectedProjectId(proj.id);
-                      setActiveTab('project_affiliation');
-                    }}
-                    className="text-cyan-400 hover:underline font-bold text-xs flex items-center gap-1"
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                  <select
+                    value={projectForm.status}
+                    onChange={(e) => setProjectForm({ ...projectForm, status: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
                   >
-                    Manage Team →
-                  </button>
+                    <option value="Planning">Planning</option>
+                    <option value="In Development">In Development</option>
+                    <option value="Active">Active</option>
+                    <option value="Completed">Completed</option>
+                  </select>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* ── VIEW 3: ENGINEERS ROSTER ───────────────────────────────────────── */}
-      {activeTab === 'members' && (
-        <div className="bg-surface border border-subtle rounded-3xl p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-primary">
-                Projects Engineers Roster ({members.length} Members)
-              </h2>
-              <p className="text-xs text-muted">
-                Manage technical engineers, hardware leads, developers, and researchers.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={exportMembersCsv}
-                className="px-3.5 py-2 rounded-xl bg-dominant hover:bg-subtle text-primary border border-subtle text-xs font-bold flex items-center gap-2 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" /> <span>Export CSV</span>
-              </button>
-              <button
-                onClick={() => setAddMemberOpen(true)}
-                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/20 transition-all"
-              >
-                <UserPlus className="w-3.5 h-3.5" /> <span>Add Engineer</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Engineers Expandable Card Grid */}
-          <PortalMemberCardGrid
-            members={members}
-            department="Projects"
-            onOpenRoleModal={(m) => {
-              setSelectedMemberForRole(m);
-              setNewRoleValue(m.role || 'Hardware & IoT Engineer');
-              setRoleModalOpen(true);
-            }}
-            onDeleteMember={(id) => {
-              const target = members.find((x) => String(x.id) === String(id));
-              if (target) handleDeleteMember(Number(id), target.full_name);
-            }}
-            onOpenEvaluation={(m) => setEvaluatingMember(m)}
-          />
-        </div>
-      )}
-
-      {/* ── MODAL: CUSTOM TECHNICAL ROLE EDIT ──────────────────────────────── */}
-      {editingAssignment && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface border border-subtle rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-primary">Technical Role: {editingAssignment.name}</h3>
-              <button onClick={() => setEditingAssignment(null)} className="text-muted hover:text-primary">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                Enter Custom Engineering Role in Project
-              </label>
-              <input
-                type="text"
-                value={customRoleInput}
-                onChange={(e) => setCustomRoleInput(e.target.value)}
-                placeholder="e.g. Embedded C++ Developer"
-                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-cyan-500 focus:outline-none"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setEditingAssignment(null)}
-                className="px-4 py-2 rounded-xl bg-dominant text-secondary hover:bg-subtle text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleSetMemberRole(editingAssignment.memberId, customRoleInput)}
-                className="px-4 py-2 rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 text-xs font-bold"
-              >
-                Save Role
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL: ADD MEMBER ─────────────────────────────────────────────── */}
-      {addMemberOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface border border-subtle rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-primary">Add Projects Engineer</h3>
-              <button onClick={() => setAddMemberOpen(false)} className="text-muted hover:text-primary">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleAddMember} className="space-y-3 text-xs">
               <div>
-                <label className="block text-muted font-bold mb-1">Full Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Description & Goals</label>
+                <textarea
+                  rows={3}
+                  value={projectForm.description}
+                  onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
+                  placeholder="Outline hardware/software specs, deliverables, and club goals..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setProjectModalOpen(false)}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Save Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: GROUP & ASSIGN MEMBERS TO PROJECT ──────────────────────── */}
+      {teamModalOpen && targetProject && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-300 p-4 sm:p-5 max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Assign Members & Roles</h3>
+                <p className="text-xs text-slate-500">Project: {targetProject.title}</p>
+              </div>
+              <button
+                onClick={() => setTeamModalOpen(false)}
+                className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+              <p className="text-xs text-slate-600 mb-2">
+                Select members from the Projects department roster and assign their specific working role in this project:
+              </p>
+
+              {members.map((mem) => {
+                const isSelected = selectedTeamMemberIds.includes(mem.id);
+                return (
+                  <div
+                    key={mem.id}
+                    className={`p-2.5 border transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 ${
+                      isSelected
+                        ? 'bg-slate-50 border-slate-900'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedTeamMemberIds(selectedTeamMemberIds.filter((id) => id !== mem.id));
+                        } else {
+                          setSelectedTeamMemberIds([...selectedTeamMemberIds, mem.id]);
+                          if (!memberRolesMap[String(mem.id)]) {
+                            setMemberRolesMap({
+                              ...memberRolesMap,
+                              [String(mem.id)]: mem.role || 'Project Engineer & Developer',
+                            });
+                          }
+                        }
+                      }}
+                      className="flex items-center gap-2.5 cursor-pointer flex-1"
+                    >
+                      <div
+                        className={`w-4 h-4 border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-slate-900 border-slate-900 text-white' : 'border-slate-300 bg-white'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-xs text-slate-900 block">{mem.full_name}</span>
+                        <span className="text-[11px] text-slate-500">Yr {mem.study_year} • {mem.specialization || 'Projects'}</span>
+                      </div>
+                    </div>
+
+                    {isSelected && (
+                      <div className="w-full sm:w-56">
+                        <input
+                          type="text"
+                          value={memberRolesMap[String(mem.id)] || ''}
+                          onChange={(e) =>
+                            setMemberRolesMap({
+                              ...memberRolesMap,
+                              [String(mem.id)]: e.target.value,
+                            })
+                          }
+                          placeholder="Role (e.g. Embedded, CAD)"
+                          className="w-full px-2 py-1 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+              <span className="text-xs text-slate-600">
+                {selectedTeamMemberIds.length} members selected for group
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTeamModalOpen(false)}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTeamAssignment}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                >
+                  Save Group Assignment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: ADD MEMBER DIRECTLY ────────────────────────────────────── */}
+      {addMemberOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-300 p-4 sm:p-5 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+              <h3 className="font-bold text-slate-900 text-sm">Add Projects Member</h3>
+              <button onClick={() => setAddMemberOpen(false)} className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddMemberSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
                 <input
                   type="text"
                   required
                   value={newMemberData.full_name}
                   onChange={(e) => setNewMemberData({ ...newMemberData, full_name: e.target.value })}
-                  placeholder="e.g. Adnan Djanfi"
-                  className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-primary focus:border-cyan-500 focus:outline-none"
+                  placeholder="e.g., Mohamed Batira"
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
                 />
               </div>
-              <div>
-                <label className="block text-muted font-bold mb-1">Email</label>
-                <input
-                  type="email"
-                  value={newMemberData.email}
-                  onChange={(e) => setNewMemberData({ ...newMemberData, email: e.target.value })}
-                  placeholder="adnan@example.com"
-                  className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-primary focus:border-cyan-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-muted font-bold mb-1">Phone (WhatsApp)</label>
-                <input
-                  type="text"
-                  value={newMemberData.phone}
-                  onChange={(e) => setNewMemberData({ ...newMemberData, phone: e.target.value })}
-                  placeholder="0550 11 22 33"
-                  className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-primary focus:border-cyan-500 focus:outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-muted font-bold mb-1">Study Year</label>
-                  <select
-                    value={newMemberData.study_year}
-                    onChange={(e) => setNewMemberData({ ...newMemberData, study_year: Number(e.target.value) })}
-                    className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-primary focus:border-cyan-500 focus:outline-none"
-                  >
-                    <option value={1}>1st Year (CP1)</option>
-                    <option value={2}>2nd Year (CP2)</option>
-                    <option value={3}>3rd Year (CS1)</option>
-                    <option value={4}>4th Year (CS2)</option>
-                    <option value={5}>5th Year (CS3)</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={newMemberData.email}
+                    onChange={(e) => setNewMemberData({ ...newMemberData, email: e.target.value })}
+                    placeholder="student@example.dz"
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+                  />
                 </div>
                 <div>
-                  <label className="block text-muted font-bold mb-1">Specialization</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Phone *</label>
                   <input
-                    type="text"
-                    value={newMemberData.specialization}
-                    onChange={(e) => setNewMemberData({ ...newMemberData, specialization: e.target.value })}
-                    placeholder="IRIIA / ENR / SE"
-                    className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-primary focus:border-cyan-500 focus:outline-none"
+                    type="tel"
+                    required
+                    value={newMemberData.phone}
+                    onChange={(e) => setNewMemberData({ ...newMemberData, phone: e.target.value })}
+                    placeholder="06xxxxxxxx"
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
                   />
                 </div>
               </div>
+
               <div>
-                <label className="block text-muted font-bold mb-1">Technical Role</label>
-                <input
-                  type="text"
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Role</label>
+                <select
                   value={newMemberData.role}
                   onChange={(e) => setNewMemberData({ ...newMemberData, role: e.target.value })}
-                  placeholder="e.g. Hardware & IoT Engineer"
-                  className="w-full bg-dominant border border-subtle rounded-xl px-3 py-2 text-primary focus:border-cyan-500 focus:outline-none"
-                />
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+                >
+                  {headConfig.defaultMemberRoles.map((r, i) => (
+                    <option key={i} value={r}>{r}</option>
+                  ))}
+                </select>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setAddMemberOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-dominant text-secondary hover:bg-subtle text-xs font-bold"
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addingMember}
-                  className="px-4 py-2 rounded-xl bg-cyan-500 text-white font-bold hover:bg-cyan-600"
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
                 >
-                  {addingMember ? 'Adding...' : 'Add Engineer'}
+                  {addingMember ? 'Adding...' : 'Add Member'}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
-
-      {/* ── MODAL: GRANT ROLE ─────────────────────────────────────────────── */}
-      {roleModalOpen && selectedMemberForRole && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface border border-subtle rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-primary">Grant Role: {selectedMemberForRole.full_name}</h3>
-              <button onClick={() => setRoleModalOpen(false)} className="text-muted hover:text-primary">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1">
-                Select or Enter Technical Role
-              </label>
-              <input
-                type="text"
-                value={newRoleValue}
-                onChange={(e) => setNewRoleValue(e.target.value)}
-                placeholder="e.g. Embedded C++ Developer"
-                className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-cyan-500 focus:outline-none"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setRoleModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-dominant text-secondary hover:bg-subtle text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleGrantRole}
-                className="px-4 py-2 rounded-xl bg-cyan-500 text-white font-bold hover:bg-cyan-600"
-              >
-                Save Role
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL: ADD / EDIT PROJECT (MATCHING HR HUB - NO PROGRESS BAR) ────── */}
-      {projectModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface border border-subtle rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-base font-bold text-primary">
-                {projectModalMode === 'add' ? 'Create New Project' : 'Edit Project'}
-              </h3>
-              <button onClick={() => setProjectModalOpen(false)} className="text-muted hover:text-primary">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveProject} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-muted font-bold mb-1.5 uppercase tracking-wider text-[10px]">
-                  Project Name / Title
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={projectFormData.title || ''}
-                  onChange={(e) => setProjectFormData({ ...projectFormData, title: e.target.value })}
-                  placeholder="e.g. Smart Solar Microgrid Inverter"
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-cyan-500 focus:outline-none font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-muted font-bold mb-1.5 uppercase tracking-wider text-[10px]">
-                  Status
-                </label>
-                <select
-                  value={projectFormData.status || 'Active'}
-                  onChange={(e) => setProjectFormData({ ...projectFormData, status: e.target.value })}
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-cyan-500 focus:outline-none font-medium"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Finished">Finished</option>
-                  <option value="Discarded">Discarded</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-muted font-bold mb-1.5 uppercase tracking-wider text-[10px]">
-                  Description & Scope
-                </label>
-                <textarea
-                  rows={3}
-                  value={projectFormData.description || ''}
-                  onChange={(e) => setProjectFormData({ ...projectFormData, description: e.target.value })}
-                  placeholder="Brief description of the project scope, technical stack, or research objectives..."
-                  className="w-full bg-dominant border border-subtle rounded-xl px-4 py-2.5 text-primary text-sm focus:border-cyan-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setProjectModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-dominant text-secondary hover:bg-subtle text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white font-extrabold text-xs shadow-lg shadow-cyan-500/20"
-                >
-                  {projectModalMode === 'add' ? 'Create Project' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Member Rating Evaluation Modal */}
-      {evaluatingMember && (
-        <PortalMemberEvaluationModal
-          member={evaluatingMember}
-          department="Projects"
-          isOpen={!!evaluatingMember}
-          onClose={() => setEvaluatingMember(null)}
-          onSaved={() => loadMembers()}
-          isSuperAdmin={isSuperAdmin}
-        />
       )}
     </div>
   );

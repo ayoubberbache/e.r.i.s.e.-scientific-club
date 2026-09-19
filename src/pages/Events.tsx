@@ -5,6 +5,7 @@ import { Logo } from '../components/Logo';
 import { supabase } from '../lib/supabase';
 import { ModelViewer } from '../components/ModelViewer';
 import { useLanguage } from '../contexts/LanguageContext';
+import { slugify } from '../lib/slugs';
 
 export function Events() {
   const { language, t, getLocalized } = useLanguage();
@@ -298,8 +299,8 @@ export function Events() {
                               }
                               return (
                                 <Link
-                                  to={`/events/${event.id}/register`}
-                                  className="px-6 py-2.5 bg-accent text-white rounded-xl text-sm font-bold hover:bg-accent-muted transition-all shadow-lg shadow-accent/20 flex items-center gap-2 cursor-pointer"
+                                  to={`/events/${slugify(getLocalized(event, 'title') || event.title)}/register`}
+                                  className="px-6 py-2.5 bg-accent text-white rounded-xl text-sm font-bold hover:bg-accent-muted transition-all shadow-md shadow-accent/10 flex items-center gap-2 cursor-pointer"
                                 >
                                   <span>{t.eventsPage.registerNow}</span>
                                   {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}

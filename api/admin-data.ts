@@ -4,7 +4,7 @@ const CURRENT_SESSION_EPOCH = 'ERISE_REVOKED_2026_09_V2';
 
 function getAdminClient() {
   const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://ygougrhejaesbtifacdk.supabase.co';
-  const serviceKey = process.env.SUPABASE_SECRET_KEY;
+  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) {
     throw new Error('SUPABASE_SECRET_KEY environment variable is not configured');
   }
@@ -87,6 +87,32 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ data: data || [] });
     }
 
+    if (table === 'projects') {
+      let query = supabase.from('projects').select('*').order('id', { ascending: false });
+      if (req.query.department) {
+        query = query.eq('department', req.query.department);
+      }
+      const { data, error } = await query;
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ data: data || [] });
+    }
+
+    if (table === 'events') {
+      const { data, error } = await supabase.from('events').select('*').order('id', { ascending: false });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ data: data || [] });
+    }
+
+    if (table === 'attendance_logs') {
+      let query = supabase.from('attendance_logs').select('*').order('id', { ascending: false });
+      if (eventId && eventId !== 'all') {
+        query = query.eq('event_id', Number(eventId));
+      }
+      const { data, error } = await query;
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ data: data || [] });
+    }
+
     return res.status(400).json({ error: 'Invalid or unsupported table request' });
   }
 
@@ -106,6 +132,84 @@ export default async function handler(req: any, res: any) {
 
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ success: true, id, status });
+    }
+
+    if (action === 'save_project') {
+      const { project } = req.body || {};
+      if (!project) return res.status(400).json({ error: 'Missing project payload' });
+
+      if (project.id && !String(project.id).startsWith('temp-') && !isNaN(Number(project.id))) {
+        const { data, error } = await supabase
+          .from('projects')
+          .update({
+            title: project.title,
+            description: project.description,
+            department: project.department || 'Projects',
+            status: project.status || 'Active',
+            leader_member_id: project.leader_member_id || null,
+            team_member_ids: project.team_member_ids || [],
+            member_custom_roles: project.member_custom_roles || {}
+          })
+          .eq('id', Number(project.id))
+          .select();
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json({ success: true, data: data?.[0] });
+      } else {
+        const { data, error } = await supabase
+          .from('projects')
+          .insert([{
+            title: project.title,
+            description: project.description,
+            department: project.department || 'Projects',
+            status: project.status || 'Active',
+            leader_member_id: project.leader_member_id || null,
+            team_member_ids: project.team_member_ids || [],
+            member_custom_roles: project.member_custom_roles || {}
+          }])
+          .select();
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json({ success: true, data: data?.[0] });
+      }
+    }
+
+    if (action === 'save_attendance') {
+      const { memberId, eventId, eventTitle, sessionDate, status, absenceReason } = req.body || {};
+      if (!memberId || !eventId) return res.status(400).json({ error: 'Missing memberId or eventId' });
+
+      const { data: existing } = await supabase
+        .from('attendance_logs')
+        .select('id')
+        .eq('member_id', memberId)
+        .eq('event_id', eventId)
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .update({
+            status,
+            session_date: sessionDate || new Date().toISOString().split('T')[0],
+            absence_reason: absenceReason || null
+          })
+          .eq('id', existing.id)
+          .select();
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json({ success: true, data: data?.[0] });
+      } else {
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .insert([{
+            member_id: memberId,
+            event_id: eventId,
+            event_title: eventTitle || 'Club Event',
+            session_date: sessionDate || new Date().toISOString().split('T')[0],
+            status: status || 'Present',
+            absence_reason: absenceReason || null
+          }])
+          .select();
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json({ success: true, data: data?.[0] });
+      }
     }
 
     if (action === 'delete') {

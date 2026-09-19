@@ -74,3 +74,33 @@ export interface ClubProject {
   created_at: string;
   updated_at: string;
 }
+
+export interface ClubTask {
+  id: string;
+  title: string;
+  description: string;
+  department: Department;
+  assigned_member_ids: (number | string)[];
+  assigned_members: { id: number | string; name: string }[];
+  priority: 'Low' | 'Medium' | 'High';
+  deadline?: string;
+  status: 'Pending' | 'In Progress' | 'Completed';
+  is_evaluated?: boolean;
+  evaluation_score?: number;
+  evaluation_notes?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface AttendanceRecord {
+  id?: number | string;
+  member_id: number;
+  event_id: number;
+  event_title: string;
+  session_date?: string;
+  status: 'Present' | 'Absent';
+  absence_reason?: string;
+  member_name?: string;
+  created_at?: string;
+}
+

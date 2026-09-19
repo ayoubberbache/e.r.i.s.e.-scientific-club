@@ -44,8 +44,8 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
 
   if (members.length === 0) {
     return (
-      <div className="p-12 text-center rounded-3xl border border-slate-800 bg-[#090d16]/80 text-slate-400">
-        <h3 className="font-bold text-white text-base">No Members Found</h3>
+      <div className="p-12 text-center border border-slate-200 bg-white text-slate-500">
+        <h3 className="font-bold text-slate-900 text-base">No Members Found</h3>
         <p className="text-xs text-slate-500 mt-1">Try broadening your search or filter criteria.</p>
       </div>
     );
@@ -85,10 +85,10 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
           <div
             key={member.id}
             onClick={() => toggleExpand(member.id)}
-            className={`rounded-2xl glass-panel bg-[#090d16]/90 border transition-all duration-300 overflow-hidden cursor-pointer p-4 flex flex-col justify-between ${
+            className={`rounded-none sm:rounded-sm bg-white border transition-all duration-300 overflow-hidden cursor-pointer p-4 flex flex-col justify-between shadow-xs ${
               isExpanded
-                ? 'border-[#00e5ff] shadow-lg ring-2 ring-[#00e5ff]/20 col-span-1 md:col-span-2 lg:col-span-3'
-                : 'border-slate-800 hover:border-[#00e5ff]/40 hover:shadow-md'
+                ? 'border-[#0d5c63] shadow-md ring-1 ring-[#0d5c63]/20 col-span-1 md:col-span-2 lg:col-span-3'
+                : 'border-slate-200 hover:border-[#0d5c63]/40 hover:shadow-sm'
             }`}
           >
             {/* COLLAPSED / HEADER SECTION */}
@@ -99,17 +99,17 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
                   <img
                     src={member.avatar}
                     alt={member.full_name}
-                    className="w-12 h-12 rounded-xl object-cover border border-[#00e5ff] shadow-sm shrink-0"
+                    className="w-12 h-12 rounded-xl object-cover border border-[#0d5c63]/30 shadow-sm shrink-0"
                   />
                 ) : (
-                  <div className="w-12 h-12 rounded-xl bg-[#0d5c63] text-white dark:bg-[#00e5ff] dark:text-slate-950 font-bold text-sm flex items-center justify-center border border-[#00e5ff]/40 shadow-sm shrink-0">
+                  <div className="w-12 h-12 rounded-xl bg-[#0d5c63] text-white font-bold text-sm flex items-center justify-center border border-[#0d5c63]/40 shadow-sm shrink-0">
                     {member.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                   </div>
                 )}
 
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="mb-0.5 flex items-center justify-between gap-2">
-                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#00e5ff]/15 text-[#00e5ff] border border-[#00e5ff]/30">
+                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-[#0d5c63] border border-teal-200">
                       {member.role || 'Member'}
                     </span>
 
@@ -122,12 +122,12 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
                         }}
                         className={`px-3 py-1 rounded-xl font-black text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer border ${
                           isAffiliated
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 hover:bg-emerald-400'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-[#00e5ff] hover:text-white'
+                            ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:border-[#0d5c63] hover:text-[#0d5c63]'
                         }`}
                       >
-                        {isAffiliated ? <CheckCircle size={14} className="text-slate-950" /> : <Plus size={14} />}
-                        <span>{isAffiliated ? '✓ Affiliated' : '+ Affiliate'}</span>
+                        {isAffiliated ? <CheckCircle size={14} className="text-white" /> : <Plus size={14} />}
+                        <span>{isAffiliated ? 'Affiliated' : 'Affiliate'}</span>
                       </button>
                     ) : (
                       <button
@@ -136,21 +136,21 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
                           e.stopPropagation();
                           onOpenEvaluation(member);
                         }}
-                        className="text-xs font-black text-[#00e5ff] bg-[#00e5ff]/10 hover:bg-[#00e5ff]/20 px-2 py-0.5 rounded-lg border border-[#00e5ff]/30 shrink-0 flex items-center gap-1 cursor-pointer transition-colors"
+                        className="text-xs font-black text-[#0d5c63] bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200 shrink-0 flex items-center gap-1 cursor-pointer transition-colors"
                         title="Click to evaluate member rating"
                       >
-                        <Award size={13} className="text-amber-400" />
+                        <Award size={13} className="text-amber-500" />
                         <span>{currentGeneralRating}% Rating</span>
                       </button>
                     )}
                   </div>
 
-                  <h3 className="font-extrabold text-white text-base leading-snug truncate">
+                  <h3 className="font-extrabold text-slate-900 text-base leading-snug truncate">
                     {member.full_name}
                   </h3>
 
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1 text-xs font-semibold text-[#00e5ff]">
+                    <div className="flex items-center gap-1 text-xs font-semibold text-[#0d5c63]">
                       <GraduationCap size={13} className="shrink-0" />
                       <span>{member.specialization || 'ENR'} Branch</span>
                     </div>
@@ -162,9 +162,9 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
                           e.stopPropagation();
                           onOpenEvaluation(member);
                         }}
-                        className="text-xs font-black text-[#00e5ff] bg-[#00e5ff]/10 hover:bg-[#00e5ff]/20 px-2 py-0.5 rounded-lg border border-[#00e5ff]/30 shrink-0 flex items-center gap-1 cursor-pointer transition-colors"
+                        className="text-xs font-black text-[#0d5c63] bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200 shrink-0 flex items-center gap-1 cursor-pointer transition-colors"
                       >
-                        <Award size={12} className="text-amber-400" />
+                        <Award size={12} className="text-amber-500" />
                         <span>{currentGeneralRating}%</span>
                       </button>
                     )}
@@ -174,10 +174,10 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
 
               {/* Specific Event Duty Badge (if affiliated) */}
               {isAffiliated && currentAssignment && (
-                <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2 text-xs">
+                <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">Duty:</span>
-                    <span className="font-bold text-[#00e5ff] truncate">{currentAssignment.assigned_role || 'Event Staff'}</span>
+                    <span className="font-bold text-[#0d5c63] truncate">{currentAssignment.assigned_role || 'Event Staff'}</span>
                   </div>
                   {onEditDuty && (
                     <button
@@ -186,7 +186,7 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
                         e.stopPropagation();
                         onEditDuty(currentAssignment.id, currentAssignment.assigned_role || '');
                       }}
-                      className="text-[11px] font-bold text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors shrink-0 flex items-center gap-1"
+                      className="text-[11px] font-bold text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 transition-colors shrink-0 flex items-center gap-1"
                     >
                       <Edit size={11} /> Edit Duty
                     </button>
@@ -211,12 +211,12 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
             </div>
 
             {/* Click to Expand / Collapse Footer Bar */}
-            <div className="pt-3 mt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <div className="pt-3 mt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
               <span className="font-medium flex items-center gap-1">
-                <Sparkles size={12} className="text-[#00e5ff]" />
+                <Sparkles size={12} className="text-[#0d5c63]" />
                 {isExpanded ? 'Click to collapse record' : 'Click to view full record'}
               </span>
-              <div className="p-0.5 rounded-full bg-slate-800 text-slate-400">
+              <div className="p-0.5 rounded-full bg-slate-100 text-slate-600">
                 {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </div>
             </div>
@@ -224,45 +224,45 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
             {/* ── EXPANDED FULL RECORD SECTION ───────────────────────────────────── */}
             {isExpanded && (
               <div 
-                className="pt-4 mt-3 border-t border-slate-800 space-y-4 animate-fade-in text-xs text-slate-300"
+                className="pt-4 mt-3 border-t border-slate-200 space-y-4 animate-fade-in text-xs text-slate-700"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Contact & Personal Info Card */}
-                <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-                  <h4 className="font-extrabold text-xs uppercase tracking-wider text-white flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-[#00e5ff]" />
+                <div className="p-4 rounded-none sm:rounded-sm bg-slate-50 border border-slate-200 space-y-3">
+                  <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-[#0d5c63]" />
                     Member Details
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                    <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                    <div className="p-2.5 rounded-none sm:rounded-sm bg-white border border-slate-200 space-y-0.5">
                       <span className="text-[10px] font-bold text-slate-500 uppercase">Email Address</span>
-                      <div className="font-bold text-white truncate">{member.email}</div>
+                      <div className="font-bold text-slate-900 truncate">{member.email}</div>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                    <div className="p-2.5 rounded-none sm:rounded-sm bg-white border border-slate-200 space-y-0.5">
                       <span className="text-[10px] font-bold text-slate-500 uppercase">Phone Number</span>
-                      <div className="font-bold text-white">{member.phone || 'N/A'}</div>
+                      <div className="font-bold text-slate-900">{member.phone || 'N/A'}</div>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                    <div className="p-2.5 rounded-none sm:rounded-sm bg-white border border-slate-200 space-y-0.5">
                       <span className="text-[10px] font-bold text-slate-500 uppercase">Year of Study</span>
-                      <div className="font-bold text-white">Year {member.study_year}</div>
+                      <div className="font-bold text-slate-900">Year {member.study_year}</div>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                    <div className="p-2.5 rounded-none sm:rounded-sm bg-white border border-slate-200 space-y-0.5">
                       <span className="text-[10px] font-bold text-slate-500 uppercase">Specialization</span>
-                      <div className="font-bold text-white">{member.specialization || 'ENR'}</div>
+                      <div className="font-bold text-slate-900">{member.specialization || 'ENR'}</div>
                     </div>
                   </div>
                 </div>
 
                 {/* Quick Actions Toolbar */}
-                <div className="pt-2 flex flex-wrap items-center justify-end gap-2 border-t border-slate-800">
+                <div className="pt-2 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200">
                   <button
                     type="button"
                     onClick={() => onOpenEvaluation(member)}
-                    className="py-2 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="py-2 px-3.5 rounded-none sm:rounded-sm bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Award size={14} /> Evaluate Rating
                   </button>
@@ -271,7 +271,7 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenRoleModal(member)}
-                      className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                      className="py-2 px-3 rounded-none sm:rounded-sm bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
                     >
                       <ShieldCheck size={13} /> Edit Role
                     </button>
@@ -281,7 +281,7 @@ export const PortalMemberCardGrid: React.FC<PortalMemberCardGridProps> = ({
                     <button
                       type="button"
                       onClick={() => onDeleteMember(member.id)}
-                      className="py-2 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-500/20"
+                      className="py-2 px-3 rounded-none sm:rounded-sm bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200"
                     >
                       <Trash2 size={13} /> Remove
                     </button>

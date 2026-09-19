@@ -1,16 +1,30 @@
 import { supabase } from './supabase';
+import { getValidAuthSession } from './authCrypto';
 import { 
   Department, 
   DepartmentMember, 
   ClubProject, 
   EventStaffAssignment, 
-  ProjectMemberAssignment 
+  ProjectMemberAssignment,
+  ClubTask,
+  AttendanceRecord
 } from '../types/portals';
 
 const ROLES_STORAGE_KEY = 'erise_custom_member_roles';
 const PROJECTS_STORAGE_KEY = 'erise_club_projects_v2';
 const EVENT_ASSIGNMENTS_KEY = 'erise_event_staff_assignments_v2';
 const CUSTOM_MEMBERS_KEY = 'erise_custom_dept_members_v2';
+
+export function getApiAuthHeaders(): Record<string, string> {
+  const session = getValidAuthSession();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (session) {
+    try {
+      headers['Authorization'] = `Bearer ${btoa(unescape(encodeURIComponent(JSON.stringify(session))))}`;
+    } catch {}
+  }
+  return headers;
+}
 
 export function isUpcomingOrActiveEvent(dateStr?: string, status?: string): boolean {
   if (!dateStr && !status) return true;
@@ -71,86 +85,8 @@ export function isUpcomingOrActiveEvent(dateStr?: string, status?: string): bool
   return true;
 }
 
-// ── Initial Seed Projects for Projects Department ───────────────────────────
-const INITIAL_PROJECTS: ClubProject[] = [
-  {
-    id: 'proj-1',
-    title: 'Dual-Axis Solar Tracker & Energy Logger',
-    description: 'An intelligent dual-axis photovoltaic tracking system that optimizes solar irradiance absorption throughout the day with real-time IoT power telemetry.',
-    category: 'Solar Energy',
-    status: 'Active',
-    progress: 75,
-    leader_name: 'Ayoub Berbache',
-    start_date: '2026-01-15',
-    target_date: '2026-05-30',
-    goals: [
-      'Implement light sensor array (LDR) algorithm for sun tracking',
-      'Design high-torque servo mount in 3D CAD',
-      'Build ESP32 telemetry dashboard for voltage and power curve monitoring'
-    ],
-    team_members: [
-      {
-        member_id: 4,
-        member_name: 'Ayoub Berbache',
-        role_in_project: 'Project Supervisor & Lead Hardware Engineer',
-        assigned_at: new Date().toISOString()
-      },
-      {
-        member_id: 37,
-        member_name: 'عدنان جنفي',
-        role_in_project: 'Embedded C++ Developer & Sensor Calibration',
-        assigned_at: new Date().toISOString()
-      }
-    ],
-    created_at: '2026-01-10T10:00:00.000Z',
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: 'proj-2',
-    title: 'Smart Environmental Monitoring Station (IoT)',
-    description: 'Compact wireless weather and air-quality sensing station measuring temperature, humidity, dust PM2.5, UV index, and solar radiation powered by a mini solar panel.',
-    category: 'Robotics & IoT',
-    status: 'In Development',
-    progress: 45,
-    leader_name: 'Cherhabil Islam',
-    start_date: '2026-02-01',
-    target_date: '2026-06-15',
-    goals: [
-      'PCB design for compact low-power sensor integration',
-      'LoRa / Wi-Fi cloud data transmission pipeline',
-      '3D-printed weatherproof enclosure with solar mounting'
-    ],
-    team_members: [
-      {
-        member_id: 38,
-        member_name: 'Cherhabil Islam',
-        role_in_project: 'Hardware Prototyping & Power Management',
-        assigned_at: new Date().toISOString()
-      }
-    ],
-    created_at: '2026-02-01T12:00:00.000Z',
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: 'proj-3',
-    title: 'Green Hydrogen Electrolyzer Cell Simulation',
-    description: 'Mathematical modeling and experimental design of a PEM water electrolysis unit analyzing efficiency vs catalyst surface area in renewable energy systems.',
-    category: 'Green Hydrogen',
-    status: 'Planning',
-    progress: 20,
-    leader_name: 'Selaimia chams eddine',
-    start_date: '2026-03-01',
-    target_date: '2026-07-20',
-    goals: [
-      'Perform MATLAB/Simulink thermodynamic efficiency modeling',
-      'Source titanium electrodes and membrane materials',
-      'Safety and gas containment audit'
-    ],
-    team_members: [],
-    created_at: '2026-03-01T09:00:00.000Z',
-    updated_at: new Date().toISOString()
-  }
-];
+// ── Real Projects Storage (Initialized empty, synced with Supabase) ─────────
+const INITIAL_PROJECTS: ClubProject[] = [];
 
 // ── Custom Roles Helper ─────────────────────────────────────────────────────
 export function getCustomRolesMap(): Record<string, string> {
@@ -218,19 +154,37 @@ export async function fetchDepartmentMembers(dept: Department): Promise<Departme
   }
 
   try {
-    const { data, error } = await supabase
-      .from('registrations')
-      .select('*')
-      .order('registered_at', { ascending: false });
+    let rawMembers: any[] = [];
+    try {
+      const headers = getApiAuthHeaders();
+      const res = await fetch('/api/admin-data?table=registrations', { headers });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.data) && json.data.length > 0) {
+          rawMembers = json.data;
+        }
+      }
+    } catch (apiErr) {}
 
-    if (!error && Array.isArray(data)) {
-      dbMembers = data
+    if (rawMembers.length === 0) {
+      const { data, error } = await supabase
+        .from('registrations')
+        .select('*')
+        .order('registered_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        rawMembers = data;
+      }
+    }
+
+    if (rawMembers.length > 0) {
+      dbMembers = rawMembers
         .filter((item) => {
           if (!item.departments) return false;
           if (Array.isArray(item.departments)) {
-            return item.departments.includes(dept);
+            return item.departments.some((d: string) => d.toLowerCase() === dept.toLowerCase());
           }
-          return typeof item.departments === 'string' && item.departments.includes(dept);
+          return typeof item.departments === 'string' && item.departments.toLowerCase().includes(dept.toLowerCase());
         })
         .map((item) => {
           const depts = Array.isArray(item.departments)
@@ -367,13 +321,30 @@ export function grantDepartmentMemberRole(
 export async function fetchStoredProjects(): Promise<ClubProject[]> {
   const localList = getStoredProjects();
   try {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .order('id', { ascending: false });
+    let projectRows: any[] = [];
+    try {
+      const headers = getApiAuthHeaders();
+      const res = await fetch('/api/admin-data?table=projects&department=Projects', { headers });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.data) && json.data.length > 0) {
+          projectRows = json.data;
+        }
+      }
+    } catch (e) {}
 
-    if (!error && Array.isArray(data) && data.length > 0) {
-      const dbProjects: ClubProject[] = data.map((p) => {
+    if (projectRows.length === 0) {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('id', { ascending: false });
+      if (!error && Array.isArray(data)) {
+        projectRows = data;
+      }
+    }
+
+    if (projectRows.length > 0) {
+      const dbProjects: ClubProject[] = projectRows.map((p) => {
         const teamMemberIds: (string | number)[] = Array.isArray(p.team_member_ids) ? p.team_member_ids : [];
         const customRoles: Record<string, string> = p.member_custom_roles || {};
 
@@ -452,6 +423,7 @@ export async function addOrUpdateProject(
   });
 
   const dbPayload = {
+    id: projectData.id,
     title: projectData.title.trim(),
     description: projectData.description || '',
     department: projectData.department || 'Projects',
@@ -463,25 +435,48 @@ export async function addOrUpdateProject(
 
   let savedId = projectData.id;
 
-  // 1. Save directly to Supabase projects table
+  // 1. Prioritize /api/admin-data proxy (with secret key)
   try {
-    const rawIdStr = String(projectData.id || '').replace(/^prj-|^proj-/, '');
-    const isExistingDbRecord = /^\d+$/.test(rawIdStr) && Number(rawIdStr) < 20000000;
-
-    if (isExistingDbRecord) {
-      const numericId = Number(rawIdStr);
-      await supabase.from('projects').update(dbPayload).eq('id', numericId);
-    } else {
-      const { data, error } = await supabase.from('projects').insert([dbPayload]).select();
-      if (!error && data && data[0]) {
-        savedId = data[0].id;
+    const headers = getApiAuthHeaders();
+    const res = await fetch('/api/admin-data', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        action: 'save_project',
+        project: dbPayload
+      })
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data?.id) {
+        savedId = json.data.id;
       }
     }
-  } catch (err) {
-    console.warn('Could not save project into Supabase directly:', err);
+  } catch (apiErr) {
+    console.warn('API save_project failed, falling back to direct client:', apiErr);
   }
 
-  // 2. Format final project object
+  // 2. Direct client fallback if not saved via API
+  if (!savedId) {
+    try {
+      const rawIdStr = String(projectData.id || '').replace(/^prj-|^proj-/, '');
+      const isExistingDbRecord = /^\d+$/.test(rawIdStr) && Number(rawIdStr) < 20000000;
+
+      if (isExistingDbRecord) {
+        const numericId = Number(rawIdStr);
+        await supabase.from('projects').update(dbPayload).eq('id', numericId);
+      } else {
+        const { data, error } = await supabase.from('projects').insert([dbPayload]).select();
+        if (!error && data && data[0]) {
+          savedId = data[0].id;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not save project into Supabase directly:', err);
+    }
+  }
+
+  // 3. Format final project object
   const finalProject: ClubProject = {
     id: savedId || projectData.id || `proj-${Date.now()}`,
     title: projectData.title.trim(),
@@ -498,24 +493,39 @@ export async function addOrUpdateProject(
     updated_at: now,
   };
 
-  const exists = currentProjects.some((p) => String(p.id) === String(finalProject.id));
-  const updatedList = exists
-    ? currentProjects.map((p) => (String(p.id) === String(finalProject.id) ? finalProject : p))
-    : [finalProject, ...currentProjects];
+  const updatedList = [
+    finalProject,
+    ...currentProjects.filter((p) => String(p.id) !== String(finalProject.id)),
+  ];
 
   saveStoredProjects(updatedList);
   return finalProject;
 }
 
 export async function deleteProject(projectId: string | number): Promise<void> {
-  // 1. Delete from Supabase
-  try {
-    const rawIdStr = String(projectId).replace(/^prj-|^proj-/, '');
-    if (/^\d+$/.test(rawIdStr) && Number(rawIdStr) < 20000000) {
+  const rawIdStr = String(projectId).replace(/^prj-|^proj-/, '');
+
+  // 1. Delete via /api/admin-data proxy
+  if (/^\d+$/.test(rawIdStr) && Number(rawIdStr) < 20000000) {
+    try {
+      const headers = getApiAuthHeaders();
+      await fetch('/api/admin-data', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'delete',
+          table: 'projects',
+          id: Number(rawIdStr)
+        })
+      });
+    } catch (e) {}
+
+    // Fallback to direct client
+    try {
       await supabase.from('projects').delete().eq('id', Number(rawIdStr));
+    } catch (err) {
+      console.warn('Could not delete project from Supabase:', err);
     }
-  } catch (err) {
-    console.warn('Could not delete project from Supabase:', err);
   }
 
   // 2. Remove from local storage
@@ -862,3 +872,291 @@ function removeMemberAssignmentsEverywhere(dept: Department, memberId: string | 
     saveStoredProjects(updatedProjects);
   }
 }
+
+// ── Department Tasks Engine (For Organization & Media) ──────────────────────
+
+const INITIAL_ORG_TASKS: ClubTask[] = [];
+const INITIAL_MEDIA_TASKS: ClubTask[] = [];
+
+const isLegacyMockTaskId = (id: string | number) => {
+  const s = String(id);
+  return s === 'task-org-1' || s === 'task-org-2' || s === 'task-med-1' || s === 'task-med-2';
+};
+
+export async function fetchDepartmentTasks(dept: Department): Promise<ClubTask[]> {
+  const storageKey = `erise_tasks_${dept.toLowerCase()}`;
+  let tasks: ClubTask[] = [];
+
+  // 1. Try to fetch from Supabase projects table (holds tasks for Organization & Media)
+  try {
+    const headers = getApiAuthHeaders();
+    const res = await fetch(`/api/admin-data?table=projects&department=${encodeURIComponent(dept)}`, { headers });
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json.data) && json.data.length > 0) {
+        tasks = json.data.map((p: any) => {
+          const customRoles = p.member_custom_roles || {};
+          const assignedIds = Array.isArray(p.team_member_ids) ? p.team_member_ids : [];
+          return {
+            id: String(p.id),
+            title: p.title || 'Task',
+            description: p.description || '',
+            department: dept,
+            assigned_member_ids: assignedIds,
+            assigned_members: assignedIds.map((mId: any) => ({
+              id: mId,
+              name: `Member #${mId}`
+            })),
+            priority: customRoles.priority || 'High',
+            deadline: customRoles.deadline || undefined,
+            status: p.status || 'Pending',
+            is_evaluated: false,
+            created_at: p.created_at || new Date().toISOString(),
+            completed_at: p.status === 'Completed' ? (p.updated_at || new Date().toISOString()) : undefined
+          };
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Could not query department tasks from API:', err);
+  }
+
+  // 2. Fallback / merge with localStorage, purging any old legacy mock items
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      const parsed: ClubTask[] = JSON.parse(raw);
+      const cleaned = parsed.filter(t => !isLegacyMockTaskId(t.id));
+      localStorage.setItem(storageKey, JSON.stringify(cleaned));
+
+      if (tasks.length === 0) {
+        tasks = cleaned;
+      }
+    }
+  } catch (err) {
+    console.warn('Local storage tasks parse error:', err);
+  }
+
+  return tasks.filter(t => !isLegacyMockTaskId(t.id));
+}
+
+export async function createDepartmentTask(
+  dept: Department,
+  taskData: Omit<ClubTask, 'id' | 'created_at' | 'department'>
+): Promise<ClubTask> {
+  const current = await fetchDepartmentTasks(dept);
+  let savedId = `task-${dept.toLowerCase()}-${Date.now()}`;
+
+  // 1. Save to Supabase projects table
+  try {
+    const headers = getApiAuthHeaders();
+    const res = await fetch('/api/admin-data', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        action: 'save_project',
+        project: {
+          title: taskData.title,
+          description: taskData.description || '',
+          department: dept,
+          status: taskData.status || 'Pending',
+          team_member_ids: taskData.assigned_member_ids || [],
+          member_custom_roles: {
+            priority: taskData.priority || 'High',
+            deadline: taskData.deadline || ''
+          }
+        }
+      })
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data?.id) {
+        savedId = String(json.data.id);
+      }
+    }
+  } catch (err) {
+    console.warn('Could not save task to database:', err);
+  }
+
+  const newTask: ClubTask = {
+    ...taskData,
+    id: savedId,
+    department: dept,
+    status: taskData.status || 'Pending',
+    is_evaluated: false,
+    created_at: new Date().toISOString(),
+  };
+
+  const updated = [newTask, ...current.filter(t => t.id !== savedId && !isLegacyMockTaskId(t.id))];
+  localStorage.setItem(`erise_tasks_${dept.toLowerCase()}`, JSON.stringify(updated));
+  return newTask;
+}
+
+export async function markDepartmentTaskDone(
+  dept: Department,
+  taskId: string
+): Promise<ClubTask | null> {
+  const current = await fetchDepartmentTasks(dept);
+  let updatedTask: ClubTask | null = null;
+
+  // 1. Sync to Supabase projects table if numeric ID
+  if (!isNaN(Number(taskId))) {
+    try {
+      const headers = getApiAuthHeaders();
+      await fetch('/api/admin-data', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'update_status',
+          table: 'projects',
+          id: Number(taskId),
+          status: 'Completed'
+        })
+      });
+    } catch (err) {
+      console.warn('Could not update task status in DB:', err);
+    }
+  }
+
+  const updated = current.map((t) => {
+    if (t.id === taskId) {
+      updatedTask = {
+        ...t,
+        status: 'Completed',
+        completed_at: new Date().toISOString(),
+        is_evaluated: false,
+      };
+      return updatedTask;
+    }
+    return t;
+  });
+
+  localStorage.setItem(`erise_tasks_${dept.toLowerCase()}`, JSON.stringify(updated.filter(t => !isLegacyMockTaskId(t.id))));
+  return updatedTask;
+}
+
+export async function deleteDepartmentTask(dept: Department, taskId: string): Promise<void> {
+  if (!isNaN(Number(taskId))) {
+    try {
+      const headers = getApiAuthHeaders();
+      await fetch('/api/admin-data', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'delete',
+          table: 'projects',
+          id: Number(taskId)
+        })
+      });
+    } catch (err) {}
+  }
+
+  const current = await fetchDepartmentTasks(dept);
+  const updated = current.filter((t) => t.id !== taskId && !isLegacyMockTaskId(t.id));
+  localStorage.setItem(`erise_tasks_${dept.toLowerCase()}`, JSON.stringify(updated));
+}
+
+// ── Workshop & Bootcamp Attendance Engine (Projects Portal & Supabase) ──────
+
+export async function fetchWorkshopAttendance(eventId: number): Promise<AttendanceRecord[]> {
+  const localKey = `erise_attendance_logs_${eventId}`;
+  let records: AttendanceRecord[] = [];
+
+  try {
+    const { data, error } = await supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('event_id', eventId);
+
+    if (!error && Array.isArray(data)) {
+      records = data.map((r: any) => ({
+        id: r.id,
+        member_id: Number(r.member_id),
+        event_id: Number(r.event_id),
+        event_title: r.event_title || '',
+        session_date: r.session_date,
+        status: (r.status === 'Present' || r.status === 'Absent') ? r.status : 'Absent',
+        absence_reason: r.absence_reason,
+        created_at: r.created_at
+      }));
+    }
+  } catch (err) {
+    console.warn('Could not query attendance_logs from Supabase:', err);
+  }
+
+  // Fallback / merge with local cache
+  try {
+    const localRaw = localStorage.getItem(localKey);
+    if (localRaw) {
+      const localList: AttendanceRecord[] = JSON.parse(localRaw);
+      const existingMemberIds = new Set(records.map(r => r.member_id));
+      for (const item of localList) {
+        if (!existingMemberIds.has(item.member_id)) {
+          records.push(item);
+        }
+      }
+    }
+  } catch {}
+
+  return records;
+}
+
+export async function saveAttendanceCheck(
+  eventId: number,
+  eventTitle: string,
+  memberId: number,
+  memberName: string,
+  status: 'Present' | 'Absent'
+): Promise<AttendanceRecord> {
+  const record: AttendanceRecord = {
+    member_id: memberId,
+    event_id: eventId,
+    event_title: eventTitle,
+    session_date: new Date().toISOString().slice(0, 10),
+    status,
+    member_name: memberName,
+    created_at: new Date().toISOString(),
+  };
+
+  // 1. Try to save to Supabase attendance_logs
+  try {
+    // Delete existing entry for this member and event
+    await supabase
+      .from('attendance_logs')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('member_id', memberId);
+
+    // Insert updated status
+    const { data, error } = await supabase
+      .from('attendance_logs')
+      .insert([{
+        member_id: memberId,
+        event_id: eventId,
+        event_title: eventTitle,
+        session_date: record.session_date,
+        status,
+      }])
+      .select();
+
+    if (!error && data && data[0]) {
+      record.id = data[0].id;
+    }
+  } catch (err) {
+    console.warn('Could not sync attendance check to Supabase:', err);
+  }
+
+  // 2. Cache in localStorage
+  try {
+    const localKey = `erise_attendance_logs_${eventId}`;
+    const current = await fetchWorkshopAttendance(eventId);
+    const filtered = current.filter(r => r.member_id !== memberId);
+    const updated = [record, ...filtered];
+    localStorage.setItem(localKey, JSON.stringify(updated));
+  } catch (err) {
+    console.error('Failed to cache attendance locally:', err);
+  }
+
+  return record;
+}
+

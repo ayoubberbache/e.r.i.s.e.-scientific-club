@@ -221,59 +221,87 @@ const TASKS_STORAGE_KEY = 'erise_rh_department_tasks_cache';
 export function getStoredTasks(): DepartmentTask[] {
   try {
     const data = localStorage.getItem(TASKS_STORAGE_KEY);
-    if (data) return JSON.parse(data);
-  } catch (e) {}
-
-  // Initial seed tasks matching club operations
-  const initial: DepartmentTask[] = [
-    {
-      id: 'task-org-1',
-      department: 'Organization',
-      title: 'Hall & Logistics Setup for Robotics Workshop',
-      description: 'Prepare projector, audio system, and lab bench seating for 40 participants.',
-      assigned_member_ids: [1, 2],
-      assigned_member_names: ['Ahmed Benali', 'Sarah Khelifi'],
-      status: 'completed',
-      priority: 'high',
-      created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-      completed_at: new Date(Date.now() - 86400000).toISOString(),
-      hr_points_awarded: true,
-    },
-    {
-      id: 'task-media-1',
-      department: 'Media',
-      title: 'Event Teaser Video & Instagram Reel Editing',
-      description: 'Cut 30s teaser with club branding and upcoming AI Bootcamp details.',
-      assigned_member_ids: [3, 4],
-      assigned_member_names: ['Yacine Mansouri', 'Amira Zerrouki'],
-      status: 'completed',
-      priority: 'medium',
-      created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-      completed_at: new Date(Date.now() - 86400000 * 1.5).toISOString(),
-      hr_points_awarded: true,
-    },
-    {
-      id: 'task-proj-1',
-      department: 'Projects',
-      title: 'Solar Tracker Firmware Prototype',
-      description: 'Implement dual-axis light sensor PID tracking algorithm on ESP32.',
-      assigned_member_ids: [5, 6],
-      assigned_member_names: ['Mohamed Cherif', 'Imane Boudiaf'],
-      status: 'in_progress',
-      priority: 'high',
-      created_at: new Date(Date.now() - 86400000).toISOString(),
+    if (data) {
+      const parsed: DepartmentTask[] = JSON.parse(data);
+      // Strip any mock tasks permanently
+      const cleaned = parsed.filter((t) => 
+        !t.id?.startsWith('task-org-') && 
+        !t.id?.startsWith('task-media-') && 
+        !t.id?.startsWith('task-proj-')
+      );
+      if (cleaned.length !== parsed.length) {
+        localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(cleaned));
+      }
+      return cleaned;
     }
-  ];
-
-  try {
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(initial));
   } catch (e) {}
-  return initial;
+  return [];
+}
+
+export async function fetchTasksFromSupabase(): Promise<DepartmentTask[]> {
+  try {
+    const { data: projects, error } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !projects) return getStoredTasks();
+
+    const { data: members } = await supabase
+      .from('registrations')
+      .select('id, full_name, first_name, last_name');
+
+    const memberNameMap = new Map<number, string>();
+    (members || []).forEach((m: any) => {
+      memberNameMap.set(m.id, m.full_name || `${m.first_name || ''} ${m.last_name || ''}`.trim());
+    });
+
+    const tasks: DepartmentTask[] = projects.map((p: any) => {
+      const assignedIds: number[] = Array.isArray(p.team_member_ids) 
+        ? p.team_member_ids 
+        : Array.isArray(p.assigned_member_ids) 
+        ? p.assigned_member_ids 
+        : [];
+
+      const assignedNames = assignedIds.map(id => memberNameMap.get(id) || `Member #${id}`);
+      const customRoles = p.member_custom_roles || {};
+
+      let status: DepartmentTask['status'] = 'pending';
+      const s = (p.status || '').toLowerCase();
+      if (s === 'completed' || s === 'done') status = 'completed';
+      else if (s === 'in_progress' || s === 'in progress') status = 'in_progress';
+
+      return {
+        id: String(p.id),
+        department: (p.department || 'Projects') as DepartmentTask['department'],
+        title: p.title || 'Department Assignment',
+        description: p.description || '',
+        assigned_member_ids: assignedIds,
+        assigned_member_names: assignedNames,
+        status,
+        priority: (customRoles.priority || 'medium').toLowerCase() as any,
+        created_at: p.created_at || new Date().toISOString(),
+        completed_at: status === 'completed' ? (p.updated_at || new Date().toISOString()) : undefined,
+        hr_points_awarded: status === 'completed'
+      };
+    });
+
+    saveStoredTasks(tasks);
+    return tasks;
+  } catch (err) {
+    console.error('Error fetching tasks from Supabase:', err);
+    return getStoredTasks();
+  }
 }
 
 export function saveStoredTasks(tasks: DepartmentTask[]): void {
   try {
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
+    const cleaned = tasks.filter((t) => 
+      !t.id?.startsWith('task-org-') && 
+      !t.id?.startsWith('task-media-') && 
+      !t.id?.startsWith('task-proj-')
+    );
+    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(cleaned));
   } catch (e) {}
 }
 

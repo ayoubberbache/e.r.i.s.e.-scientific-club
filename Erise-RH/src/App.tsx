@@ -13,7 +13,8 @@ import {
   submitAppraisal, 
   updateMemberStatus, 
   getStoredTasks, 
-  saveStoredTasks 
+  saveStoredTasks,
+  fetchTasksFromSupabase
 } from './lib/hrEngine';
 import { playNotificationChime } from './lib/notificationSound';
 import { supabase } from './lib/supabase';
@@ -23,7 +24,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('members');
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState<boolean>(true);
-  const [tasks, setTasks] = useState<DepartmentTask[]>([]);
+  const [tasks, setTasks] = useState<DepartmentTask[]>(getStoredTasks());
   const [activities, setActivities] = useState<RealtimeActivityItem[]>([]);
   const [unreadTickerCount, setUnreadTickerCount] = useState<number>(0);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(false);
@@ -33,10 +34,14 @@ export const App: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoadingMembers(true);
     try {
-      const mems = await fetchMembersWithRatings();
+      const [mems, dbTasks] = await Promise.all([
+        fetchMembersWithRatings(),
+        fetchTasksFromSupabase()
+      ]);
       setMembers(mems);
+      setTasks(dbTasks);
     } catch (e) {
-      console.error('Error loading HR members:', e);
+      console.error('Error loading HR members/tasks:', e);
     } finally {
       setLoadingMembers(false);
     }
@@ -44,7 +49,6 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    setTasks(getStoredTasks());
 
     // Load cached activities from real subscription events (no static mock data)
     const cachedActivities = localStorage.getItem('erise_rh_activities');

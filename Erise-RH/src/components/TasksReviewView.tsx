@@ -96,9 +96,12 @@ export const TasksReviewView: React.FC<TasksReviewViewProps> = ({
       {/* Task List */}
       <div className="flex-1 overflow-y-auto p-5">
         {filtered.length === 0 ? (
-          <div className="h-64 flex flex-col items-center justify-center text-slate-500 text-xs text-center space-y-2">
-            <FolderKanban className="w-8 h-8 text-slate-400" />
-            <p>No department tasks found matching filters.</p>
+          <div className="h-64 border border-dashed border-slate-300 flex flex-col items-center justify-center p-6 text-center">
+            <FolderKanban className="w-8 h-8 text-slate-400 mb-2" />
+            <h3 className="text-sm font-semibold text-slate-800">No Department Tasks Found</h3>
+            <p className="text-xs text-slate-500 max-w-sm mt-1">
+              No tasks have been created in the database. When Department Heads create or assign tasks in Projects, Organization, or Media, they will synchronize here in real time.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">

@@ -262,10 +262,12 @@ export default async function handler(req: any, res: any) {
               const assigned = Array.isArray(project.team_member_ids) ? project.team_member_ids : [];
               for (const uId of assigned) {
                 if (typeof uId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uId)) {
-                  await orgSb.from('task_assignments').insert([{
-                    task_id: createdTask[0].id,
-                    user_id: uId
-                  }]).catch(() => {});
+                  try {
+                    await orgSb.from('task_assignments').insert([{
+                      task_id: createdTask[0].id,
+                      user_id: uId
+                    }]);
+                  } catch (e) {}
                 }
               }
             }

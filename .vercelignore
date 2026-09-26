@@ -1,0 +1,14 @@
+Erise-RH
+node_modules
+.git
+.vercel
+dist
+build
+coverage
+*.blend
+*.blend1
+*.zip
+*.exe
+*.lnk
+*.log
+test-rh-sync.cjs

@@ -14,8 +14,9 @@ import { DepartmentMember, ClubProject, AttendanceRecord } from '../../types/por
 import { 
   FolderGit2, Users, CheckSquare, Plus, 
   Search, Trash2, Edit3, Check, X, Loader2, 
-  Mail, Phone, UserPlus, UserCheck
+  Mail, Phone, UserPlus, UserCheck, Download, Award, Sliders
 } from 'lucide-react';
+import { PortalMemberEvaluationModal } from './PortalMemberEvaluationModal';
 
 interface ProjectsPortalProps {
   onBackToAdmin?: () => void;
@@ -43,6 +44,8 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>([]);
   const [savingAttendanceId, setSavingAttendanceId] = useState<number | null>(null);
+  const [workshopEvalRatio, setWorkshopEvalRatio] = useState<number>(100);
+  const [evaluatingMember, setEvaluatingMember] = useState<DepartmentMember | null>(null);
 
   // Project Modal State (Create / Edit)
   const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -171,6 +174,59 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
     }
   };
 
+  // Export Dedicated Workshop Attendance CSV
+  const handleExportWorkshopAttendanceCSV = () => {
+    if (!activeEvent) return;
+    const cleanTitle = (activeEvent.title || 'Workshop').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const dateStr = activeEvent.date ? String(activeEvent.date).replace(/[^a-zA-Z0-9_-]/g, '_') : new Date().toISOString().split('T')[0];
+
+    const headers = [
+      'Member Name',
+      'Year',
+      'Specialization',
+      'Phone',
+      'Email',
+      'Project Role',
+      'Attendance Status',
+      'Event / Workshop',
+      'Event Date',
+      'Evaluation Ratio (%)'
+    ];
+
+    const rows = members.map((mem) => {
+      const numId = Number(String(mem.id).replace(/[^\d]/g, '')) || 0;
+      const log = attendanceLogs.find((r) => Number(r.member_id) === numId);
+      const isPresent = log?.status === 'Present';
+
+      return [
+        mem.full_name || 'Club Member',
+        `Yr ${mem.study_year}`,
+        mem.specialization || 'Projects',
+        mem.phone || '—',
+        mem.email || '—',
+        mem.role || 'Member',
+        isPresent ? 'Present' : 'Absent',
+        activeEvent.title || 'Workshop',
+        activeEvent.date || 'TBD',
+        `${workshopEvalRatio}%`
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ERISE_Workshop_${cleanTitle}_Attendance_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Save New or Edited Project
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,7 +281,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
       const memberObj = members.find((m) => String(m.id) === String(mId));
       return {
         member_id: mId,
-        member_name: memberObj?.full_name || `Member #${mId}`,
+        member_name: memberObj?.full_name || 'Club Member',
         email: memberObj?.email || '',
         phone: memberObj?.phone || '',
         role_in_project: memberRolesMap[String(mId)] || memberObj?.role || 'Project Engineer & Developer',
@@ -572,13 +628,41 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                 <span className="font-bold text-slate-900 block text-sm">{activeEvent.title}</span>
                 <span className="text-slate-500">{activeEvent.location || 'Campus'} • {activeEvent.date || 'TBD'}</span>
               </div>
-              <div className="flex items-center gap-4 text-xs font-medium">
-                <span className="text-emerald-700">
-                  Present: {attendanceLogs.filter((r) => r.status === 'Present').length}
-                </span>
-                <span className="text-slate-600">
-                  Total Roster: {members.length}
-                </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-white border border-slate-300 px-2 py-1">
+                  <Sliders className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="text-[11px] font-bold text-slate-600">Eval Ratio:</span>
+                  <input
+                    type="number"
+                    min="10"
+                    max="300"
+                    step="5"
+                    value={workshopEvalRatio}
+                    onChange={(e) => setWorkshopEvalRatio(Number(e.target.value) || 100)}
+                    className="w-14 text-center font-mono font-bold text-xs text-slate-900 focus:outline-none"
+                    title="Evaluation ratio / weight for workshop attendance"
+                  />
+                  <span className="text-xs font-mono font-bold text-slate-500">%</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportWorkshopAttendanceCSV}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
+                  title="Export Clean Attendance CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Download Workshop Attendance (CSV)</span>
+                </button>
+
+                <div className="flex items-center gap-3 text-xs font-medium pl-1 border-l border-slate-300">
+                  <span className="text-emerald-700 font-bold">
+                    Present: {attendanceLogs.filter((r) => r.status === 'Present').length}
+                  </span>
+                  <span className="text-slate-600">
+                    Total: {members.length}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -633,16 +717,30 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                     </div>
                   </div>
 
-                  {mem.phone && (
-                    <a
-                      href={`tel:${mem.phone}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 shrink-0 text-xs"
-                      title="Call member"
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEvaluatingMember(mem);
+                      }}
+                      className="p-2 bg-teal-50 hover:bg-teal-100 text-[#0d5c63] border border-teal-200 transition-colors cursor-pointer"
+                      title="Evaluate Member"
                     >
-                      <Phone className="w-3.5 h-3.5" />
-                    </a>
-                  )}
+                      <Award className="w-3.5 h-3.5" />
+                    </button>
+
+                    {mem.phone && (
+                      <a
+                        href={`tel:${mem.phone}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs"
+                        title="Call member"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -658,6 +756,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                   <th className="px-4 py-2.5">Year / Specialization</th>
                   <th className="px-4 py-2.5">Phone</th>
                   <th className="px-4 py-2.5">Project Role</th>
+                  <th className="px-4 py-2.5 text-right w-24">Evaluate</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
@@ -708,6 +807,17 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                         ) : 'N/A'}
                       </td>
                       <td className="px-4 py-2.5 text-slate-800 font-medium">{mem.role}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setEvaluatingMember(mem)}
+                          className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-[#0d5c63] border border-teal-200 text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Evaluate Standing"
+                        >
+                          <Award className="w-3.5 h-3.5" />
+                          <span>Evaluate</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -815,6 +925,18 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                           ))}
                         </div>
                       )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setEvaluatingMember(mem)}
+                        className="w-full py-1.5 bg-teal-50 hover:bg-teal-100 text-[#0d5c63] border border-teal-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        title="Evaluate Standing"
+                      >
+                        <Award className="w-3.5 h-3.5" />
+                        <span>Evaluate Member Standing</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -1100,6 +1222,19 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
           </div>
         </div>
       )}
+
+      {/* ─── MODAL: MEMBER EVALUATION & APPRAISAL ───────────────────────── */}
+      <PortalMemberEvaluationModal
+        member={evaluatingMember}
+        department="Projects"
+        isOpen={!!evaluatingMember}
+        onClose={() => setEvaluatingMember(null)}
+        onSaved={() => {
+          loadMembers();
+          setEvaluatingMember(null);
+        }}
+        isSuperAdmin={isSuperAdmin}
+      />
     </div>
   );
 }

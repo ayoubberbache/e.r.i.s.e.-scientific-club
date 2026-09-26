@@ -72,6 +72,8 @@ export interface AppraisalInput {
   teamwork: number;       // -10 to +10
   initiative: number;     // -10 to +10
   quality_of_work: number;// -10 to +10
+  evaluation_ratio?: number; // Custom evaluation ratio / percentage (default 100% or custom multiplier)
+  custom_adjustment?: number;// Direct editable evaluation delta
   notes: string;
 }
 
@@ -95,6 +97,8 @@ export interface EventRegistrationMember {
   full_name: string;
   email: string;
   phone?: string;
+  is_club_member?: boolean;
+  club_member_id?: number;
 }
 
 export interface EventRegistration {
@@ -111,6 +115,7 @@ export interface EventRegistration {
   status: string;
   registered_at: string;
   members: EventRegistrationMember[];
+  is_club_member?: boolean;
 }
 
 declare global {

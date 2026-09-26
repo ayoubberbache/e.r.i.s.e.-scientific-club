@@ -265,7 +265,8 @@ export const App: React.FC = () => {
   };
 
   // Award HR points for completed task (+5% to assigned members)
-  const handleAwardTaskPoints = async (taskId: string) => {
+  // Award HR points for completed task with editable ratio
+  const handleAwardTaskPoints = async (taskId: string, ratio: number = 5) => {
     const updated = tasks.map((t) => {
       if (t.id === taskId) {
         return { ...t, hr_points_awarded: true };
@@ -276,17 +277,19 @@ export const App: React.FC = () => {
     setTasks(updated);
     saveStoredTasks(updated);
 
-    // Give assigned members +5% manual appraisal points
+    // Give assigned members custom appraisal points
     const task = tasks.find((t) => t.id === taskId);
     if (task && Array.isArray(task.assigned_member_ids)) {
       for (const mId of task.assigned_member_ids) {
         await submitAppraisal({
           member_id: mId,
           punctuality: 0,
-          teamwork: 2,
-          initiative: 2,
-          quality_of_work: 1, // Total +5%
-          notes: `Awarded +5% for completing task "${task.title}" in ${task.department} department.`,
+          teamwork: 0,
+          initiative: 0,
+          quality_of_work: 0,
+          custom_adjustment: ratio,
+          evaluation_ratio: ratio * 20,
+          notes: `Awarded +${ratio}% for completing task "${task.title}" in ${task.department} department.`,
         });
       }
       loadData();

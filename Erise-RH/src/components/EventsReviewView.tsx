@@ -12,26 +12,71 @@ import {
   ShieldCheck,
   UserCheck
 } from 'lucide-react';
-import { EventItem, EventRegistration } from '../types';
-import { fetchEvents, fetchEventRegistrations, exportToCSV } from '../lib/hrEngine';
+import { EventItem, EventRegistration, ClubMember, AppraisalInput } from '../types';
+import { fetchEvents, fetchEventRegistrations, fetchMembersWithRatings, submitAppraisal, exportToCSV } from '../lib/hrEngine';
+import { AppraisalModal } from './AppraisalModal';
+import { UserPlus, Award } from 'lucide-react';
 
 export const EventsReviewView: React.FC = () => {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [registrations, setRegistrations] = useState<EventRegistration[]>([]);
+  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEventId, setSelectedEventId] = useState<number | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [memberTypeFilter, setMemberTypeFilter] = useState<'all' | 'members' | 'non_members'>('all');
+  const [evaluatingMember, setEvaluatingMember] = useState<ClubMember | null>(null);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [allEvents, allRegs] = await Promise.all([
+      const [allEvents, allRegs, allMembers] = await Promise.all([
         fetchEvents(),
-        fetchEventRegistrations(selectedEventId === 'all' ? undefined : selectedEventId)
+        fetchEventRegistrations(selectedEventId === 'all' ? undefined : selectedEventId),
+        fetchMembersWithRatings()
       ]);
       setEvents(allEvents);
-      setRegistrations(allRegs);
+      setClubMembers(allMembers);
+
+      // Build fast lookup sets for approved club members
+      const approvedMembers = allMembers.filter(m => m.status === 'approved');
+      const emailMap = new Map<string, ClubMember>();
+      const phoneMap = new Map<string, ClubMember>();
+      const nameMap = new Map<string, ClubMember>();
+
+      approvedMembers.forEach(m => {
+        if (m.email) emailMap.set(m.email.toLowerCase().trim(), m);
+        if (m.phone) phoneMap.set(m.phone.replace(/[^\d]/g, ''), m);
+        if (m.full_name) nameMap.set(m.full_name.toLowerCase().trim(), m);
+      });
+
+      // Enrich registrations & members with club membership detection
+      const enriched: EventRegistration[] = allRegs.map((reg) => {
+        const enrichedMembers = (reg.members || []).map((m) => {
+          const matched = (m.email && emailMap.get(m.email.toLowerCase().trim())) ||
+            (m.phone && phoneMap.get(m.phone.replace(/[^\d]/g, ''))) ||
+            nameMap.get(m.full_name.toLowerCase().trim());
+
+          return {
+            ...m,
+            is_club_member: !!matched,
+            club_member_id: matched?.id,
+          };
+        });
+
+        const hasClubMember = enrichedMembers.length > 0
+          ? enrichedMembers.some(m => m.is_club_member)
+          : false;
+
+        return {
+          ...reg,
+          is_club_member: hasClubMember,
+          members: enrichedMembers,
+        };
+      });
+
+      setRegistrations(enriched);
     } catch (err) {
       console.error('Error loading event data:', err);
     } finally {
@@ -45,6 +90,11 @@ export const EventsReviewView: React.FC = () => {
 
   const filteredRegistrations = registrations.filter((reg) => {
     const matchesStatus = statusFilter === 'all' || reg.status === statusFilter;
+    const matchesMemberType = 
+      memberTypeFilter === 'all' || 
+      (memberTypeFilter === 'members' && reg.is_club_member) || 
+      (memberTypeFilter === 'non_members' && !reg.is_club_member);
+
     const query = searchQuery.toLowerCase();
     const matchesSearch = 
       !query ||
@@ -58,7 +108,7 @@ export const EventsReviewView: React.FC = () => {
       ) ||
       (reg.companion_name && reg.companion_name.toLowerCase().includes(query));
 
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesMemberType && matchesSearch;
   });
 
   // Export participants list to CSV
@@ -70,6 +120,7 @@ export const EventsReviewView: React.FC = () => {
       'Team Name',
       'Participant Role',
       'Full Name',
+      'Club Standing',
       'Email',
       'Phone',
       'Institution / University',
@@ -93,6 +144,7 @@ export const EventsReviewView: React.FC = () => {
             reg.team_name || 'N/A',
             m.is_leader ? 'Leader' : 'Team Member',
             m.full_name,
+            m.is_club_member ? 'Registered Club Member' : 'Non-Member (Future Invite Candidate)',
             m.email,
             m.phone || '',
             reg.institution,
@@ -112,6 +164,7 @@ export const EventsReviewView: React.FC = () => {
           reg.team_name || 'N/A',
           'Primary Registrant',
           'N/A',
+          'Non-Member (Future Invite Candidate)',
           '',
           '',
           reg.institution,
@@ -133,7 +186,62 @@ export const EventsReviewView: React.FC = () => {
     exportToCSV(filename, headers, rows);
   };
 
+  // Export specifically Non-Members saved for future invitations
+  const handleExportFutureInvitesCSV = () => {
+    const headers = [
+      'Full Name',
+      'Email',
+      'Phone',
+      'Institution / University',
+      'Study Year',
+      'Attended Workshop / Event',
+      'Role in Registration',
+      'Team Name',
+      'Invitation Status',
+      'Registered Date'
+    ];
+
+    const rows: (string | number | boolean | null | undefined)[][] = [];
+    const seenEmails = new Set<string>();
+
+    registrations.forEach((reg) => {
+      (reg.members || []).forEach((m) => {
+        if (!m.is_club_member && m.email) {
+          const emailKey = m.email.toLowerCase().trim();
+          if (!seenEmails.has(emailKey)) {
+            seenEmails.add(emailKey);
+            rows.push([
+              m.full_name,
+              m.email,
+              m.phone || '',
+              reg.institution,
+              reg.study_year,
+              reg.event_title || `Event #${reg.event_id}`,
+              m.is_leader ? 'Leader' : 'Participant',
+              reg.team_name || 'Individual',
+              'Saved for Future Invitations & Recruitment',
+              reg.registered_at ? new Date(reg.registered_at).toLocaleDateString() : ''
+            ]);
+          }
+        }
+      });
+    });
+
+    if (rows.length === 0) {
+      alert('No non-member attendees found to export.');
+      return;
+    }
+
+    const filename = `ERISE_Future_Invites_NonMembers_${new Date().toISOString().slice(0, 10)}.csv`;
+    exportToCSV(filename, headers, rows);
+  };
+
   const totalParticipantsCount = filteredRegistrations.reduce((acc, r) => acc + (r.members.length || 1), 0);
+  const totalNonMembersCount = registrations.reduce((acc, r) => acc + (r.members.filter(m => !m.is_club_member).length || (r.is_club_member ? 0 : 1)), 0);
+
+  const selectedEventTitle = selectedEventId !== 'all'
+    ? events.find(e => e.id === selectedEventId)?.title || 'Selected Event'
+    : 'All Events & Workshops';
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#f8fcfd] text-slate-900">
@@ -143,27 +251,38 @@ export const EventsReviewView: React.FC = () => {
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
               <Calendar className="w-5 h-5 text-[#0d5c63]" />
-              Events & Hackathon Registrations
+              Events & Workshop Participants
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Live registration data from competitions, idea tracks, hackathons, and workshops &bull; Export attendee lists
+              Track workshops, hackathons & bootcamps &bull; Evaluate club members & save prospective non-members for future invitations
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Future Invites Button */}
+            <button
+              onClick={handleExportFutureInvitesCSV}
+              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Download CSV of all non-members who attended to invite them for future workshops/events"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-amber-700" />
+              <span>Future Invites CSV ({totalNonMembersCount})</span>
+            </button>
+
+            {/* Event Specific CSV Export Button */}
             <button
               onClick={handleExportCSV}
               disabled={filteredRegistrations.length === 0}
-              className="px-3 py-1.5 bg-[#0d5c63] hover:bg-[#094247] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40"
-              title="Download CSV containing all participants and team members"
+              className="px-3 py-1.5 bg-[#0d5c63] hover:bg-[#094247] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Download clean CSV of participants for this specific event or workshop"
             >
               <Download className="w-3.5 h-3.5" />
-              Extract Participants File (CSV)
+              <span>Download {selectedEventId === 'all' ? 'All Events' : selectedEventTitle} CSV</span>
             </button>
 
             <button
               onClick={loadData}
-              className="p-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+              className="p-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
               title="Refresh live data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#0d5c63]' : ''}`} />
@@ -188,6 +307,20 @@ export const EventsReviewView: React.FC = () => {
                     {ev.title}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            {/* Member Type Filter */}
+            <div className="flex items-center gap-1 text-xs ml-2">
+              <span className="text-slate-500 font-medium">Type:</span>
+              <select
+                value={memberTypeFilter}
+                onChange={(e: any) => setMemberTypeFilter(e.target.value)}
+                className="px-2 py-1 text-xs bg-slate-50 border border-slate-300 font-medium focus:outline-none focus:border-[#0d5c63]"
+              >
+                <option value="all">All Attendees</option>
+                <option value="members">Club Members Only</option>
+                <option value="non_members">Non-Members / Future Invites</option>
               </select>
             </div>
 
@@ -294,33 +427,72 @@ export const EventsReviewView: React.FC = () => {
                   {reg.members.map((m, idx) => (
                     <div
                       key={m.id || idx}
-                      className={`p-2.5 border text-xs ${
+                      className={`p-3 border text-xs flex flex-col justify-between ${
                         m.is_leader
-                          ? 'border-teal-200 bg-teal-50/40'
+                          ? 'border-teal-300 bg-teal-50/40'
+                          : m.is_club_member
+                          ? 'border-emerald-200 bg-emerald-50/20'
                           : 'border-slate-200 bg-slate-50/50'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-slate-900 truncate">
-                          {m.full_name}
-                        </span>
-                        {m.is_leader && (
-                          <span className="text-[10px] font-bold text-[#0d5c63] uppercase">
-                            Leader
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5 gap-1 flex-wrap">
+                          <span className="font-bold text-slate-900 truncate">
+                            {m.full_name}
                           </span>
-                        )}
+                          <div className="flex items-center gap-1">
+                            {m.is_leader && (
+                              <span className="text-[9px] font-bold text-[#0d5c63] bg-teal-50 px-1 py-0.2 border border-teal-200 uppercase">
+                                Leader
+                              </span>
+                            )}
+                            {m.is_club_member ? (
+                              <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 border border-emerald-300 uppercase flex items-center gap-0.5">
+                                <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>Member</span>
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 border border-amber-300 uppercase flex items-center gap-0.5">
+                                <UserPlus className="w-2.5 h-2.5 text-amber-600" />
+                                <span>Future Invite</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-0.5 text-slate-600 text-[11px]">
+                          <div className="flex items-center gap-1 truncate">
+                            <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{m.email}</span>
+                          </div>
+                          {m.phone && (
+                            <div className="flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="font-mono">{m.phone}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="space-y-0.5 text-slate-600 text-[11px]">
-                        <div className="flex items-center gap-1 truncate">
-                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span className="truncate">{m.email}</span>
-                        </div>
-                        {m.phone && (
-                          <div className="flex items-center gap-1">
-                            <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                            <span>{m.phone}</span>
-                          </div>
+                      {/* Member Actions */}
+                      <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                        {m.is_club_member ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const found = clubMembers.find(cm => cm.id === m.club_member_id || cm.email.toLowerCase() === m.email.toLowerCase());
+                              if (found) setEvaluatingMember(found);
+                            }}
+                            className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Evaluate this member's workshop performance & standing"
+                          >
+                            <Award className="w-3 h-3 text-amber-400" />
+                            <span>Evaluate Standing</span>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 italic">
+                            Saved on non-members invite list
+                          </span>
                         )}
                       </div>
                     </div>
@@ -342,7 +514,7 @@ export const EventsReviewView: React.FC = () => {
                     )}
                   </div>
 
-                  <span className="text-slate-400 text-[11px]">
+                  <span className="text-slate-400 text-[11px] font-mono">
                     Registration #{reg.id}
                   </span>
                 </div>
@@ -351,6 +523,19 @@ export const EventsReviewView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Evaluation Modal for Club Members */}
+      {evaluatingMember && (
+        <AppraisalModal
+          member={evaluatingMember}
+          onClose={() => setEvaluatingMember(null)}
+          onSubmit={async (appraisal) => {
+            await submitAppraisal(appraisal);
+            setEvaluatingMember(null);
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 };

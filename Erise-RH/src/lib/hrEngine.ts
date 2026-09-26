@@ -164,7 +164,12 @@ export async function submitAppraisal(appraisal: AppraisalInput): Promise<boolea
     }
   }
 
-  const totalDelta = appraisal.punctuality + appraisal.teamwork + appraisal.initiative + appraisal.quality_of_work;
+  // Calculate delta: use direct custom adjustment if specified, or criteria sum scaled by evaluation_ratio
+  const criteriaSum = appraisal.punctuality + appraisal.teamwork + appraisal.initiative + appraisal.quality_of_work;
+  const ratioMultiplier = (appraisal.evaluation_ratio !== undefined ? appraisal.evaluation_ratio : 100) / 100;
+  const totalDelta = appraisal.custom_adjustment !== undefined 
+    ? appraisal.custom_adjustment 
+    : Math.round(criteriaSum * ratioMultiplier * 10) / 10;
   const now = new Date().toISOString();
 
   try {
@@ -178,11 +183,13 @@ export async function submitAppraisal(appraisal: AppraisalInput): Promise<boolea
       const updatedHeadRatings = {
         ...(existing.department_head_ratings || {}),
         hr_adjustment: totalDelta,
+        evaluation_ratio: appraisal.evaluation_ratio ?? 100,
         criteria: {
           punctuality: appraisal.punctuality,
           teamwork: appraisal.teamwork,
           initiative: appraisal.initiative,
           quality_of_work: appraisal.quality_of_work,
+          evaluation_ratio: appraisal.evaluation_ratio ?? 100,
         },
       };
 
@@ -202,11 +209,13 @@ export async function submitAppraisal(appraisal: AppraisalInput): Promise<boolea
           overall_rating: BASELINE_RATING + totalDelta,
           department_head_ratings: {
             hr_adjustment: totalDelta,
+            evaluation_ratio: appraisal.evaluation_ratio ?? 100,
             criteria: {
               punctuality: appraisal.punctuality,
               teamwork: appraisal.teamwork,
               initiative: appraisal.initiative,
               quality_of_work: appraisal.quality_of_work,
+              evaluation_ratio: appraisal.evaluation_ratio ?? 100,
             },
           },
           notes: appraisal.notes,
@@ -301,9 +310,12 @@ export async function fetchTasksFromSupabase(): Promise<DepartmentTask[]> {
       .from('registrations')
       .select('id, full_name');
 
-    const memberNameMap = new Map<number, string>();
+    const memberNameMap = new Map<string, string>();
     (members || []).forEach((m: any) => {
-      memberNameMap.set(m.id, m.full_name || `Member #${m.id}`);
+      if (m.full_name) {
+        memberNameMap.set(String(m.id), m.full_name);
+        memberNameMap.set(String(Number(m.id)), m.full_name);
+      }
     });
 
     const tasks: DepartmentTask[] = projects.map((p: any) => {
@@ -313,7 +325,7 @@ export async function fetchTasksFromSupabase(): Promise<DepartmentTask[]> {
         ? p.assigned_member_ids 
         : [];
 
-      const assignedNames = assignedIds.map(id => memberNameMap.get(id) || `Member #${id}`);
+      const assignedNames = assignedIds.map(id => memberNameMap.get(String(id)) || 'Club Member');
       const customRoles = p.member_custom_roles || {};
 
       let status: DepartmentTask['status'] = 'pending';

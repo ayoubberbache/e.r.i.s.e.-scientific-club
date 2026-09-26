@@ -470,7 +470,12 @@ ipcMain.handle('db-fetch-tasks', async () => {
       .select('id, full_name, email');
 
     const memberNameMap = new Map();
-    (members || []).forEach((m) => memberNameMap.set(m.id, m.full_name || `Member #${m.id}`));
+    (members || []).forEach((m) => {
+      if (m.full_name) {
+        memberNameMap.set(String(m.id), m.full_name);
+        memberNameMap.set(Number(m.id), m.full_name);
+      }
+    });
 
     const primaryTasks = (projects || []).map((p) => {
       const assignedIds = Array.isArray(p.team_member_ids)
@@ -479,7 +484,7 @@ ipcMain.handle('db-fetch-tasks', async () => {
         ? p.assigned_member_ids
         : [];
 
-      const assignedNames = assignedIds.map((id) => memberNameMap.get(id) || `Member #${id}`);
+      const assignedNames = assignedIds.map((id) => memberNameMap.get(String(id)) || memberNameMap.get(Number(id)) || 'Club Member');
       const customRoles = p.member_custom_roles || {};
 
       let status = 'pending';
@@ -654,12 +659,17 @@ ipcMain.handle('db-fetch-attendance-logs', async () => {
 
     const { data: regs } = await supabaseAdmin.from('registrations').select('id, full_name');
     const memberMap = new Map();
-    (regs || []).forEach((r) => memberMap.set(r.id, r.full_name || `Member #${r.id}`));
+    (regs || []).forEach((r) => {
+      if (r.full_name) {
+        memberMap.set(String(r.id), r.full_name);
+        memberMap.set(Number(r.id), r.full_name);
+      }
+    });
 
     return data.map((d) => ({
       id: d.id,
       member_id: d.member_id,
-      member_name: memberMap.get(d.member_id) || `Member #${d.member_id}`,
+      member_name: d.member_name || memberMap.get(String(d.member_id)) || memberMap.get(Number(d.member_id)) || 'Club Member',
       event_id: d.event_id,
       event_title: d.event_title || 'Technical Workshop',
       session_date: d.session_date,
@@ -676,7 +686,11 @@ ipcMain.handle('db-fetch-attendance-logs', async () => {
 // 6. Submit appraisal
 ipcMain.handle('db-submit-appraisal', async (_event, appraisal) => {
   try {
-    const totalDelta = appraisal.punctuality + appraisal.teamwork + appraisal.initiative + appraisal.quality_of_work;
+    const criteriaSum = appraisal.punctuality + appraisal.teamwork + appraisal.initiative + appraisal.quality_of_work;
+    const ratioMultiplier = (appraisal.evaluation_ratio !== undefined ? appraisal.evaluation_ratio : 100) / 100;
+    const totalDelta = appraisal.custom_adjustment !== undefined 
+      ? appraisal.custom_adjustment 
+      : Math.round(criteriaSum * ratioMultiplier * 10) / 10;
     const now = new Date().toISOString();
 
     const { data: existing } = await supabaseAdmin
@@ -689,11 +703,13 @@ ipcMain.handle('db-submit-appraisal', async (_event, appraisal) => {
       const updatedHeadRatings = {
         ...(existing.department_head_ratings || {}),
         hr_adjustment: totalDelta,
+        evaluation_ratio: appraisal.evaluation_ratio ?? 100,
         criteria: {
           punctuality: appraisal.punctuality,
           teamwork: appraisal.teamwork,
           initiative: appraisal.initiative,
           quality_of_work: appraisal.quality_of_work,
+          evaluation_ratio: appraisal.evaluation_ratio ?? 100,
         },
       };
 
@@ -711,11 +727,13 @@ ipcMain.handle('db-submit-appraisal', async (_event, appraisal) => {
         overall_rating: 50.0 + totalDelta,
         department_head_ratings: {
           hr_adjustment: totalDelta,
+          evaluation_ratio: appraisal.evaluation_ratio ?? 100,
           criteria: {
             punctuality: appraisal.punctuality,
             teamwork: appraisal.teamwork,
             initiative: appraisal.initiative,
             quality_of_work: appraisal.quality_of_work,
+            evaluation_ratio: appraisal.evaluation_ratio ?? 100,
           },
         },
         notes: appraisal.notes,

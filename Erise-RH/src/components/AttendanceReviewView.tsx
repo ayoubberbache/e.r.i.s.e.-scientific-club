@@ -50,15 +50,18 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
           .from('registrations')
           .select('id, full_name');
 
-        const memberMap = new Map<number, string>();
+        const memberMap = new Map<string, string>();
         (regs || []).forEach((r: any) => {
-          memberMap.set(r.id, r.full_name || `Member #${r.id}`);
+          if (r.full_name) {
+            memberMap.set(String(r.id), r.full_name);
+            memberMap.set(String(Number(r.id)), r.full_name);
+          }
         });
 
         const mapped: AttendanceLog[] = data.map((d: any) => ({
           id: d.id,
           member_id: d.member_id,
-          member_name: memberMap.get(d.member_id) || `Member #${d.member_id}`,
+          member_name: d.member_name || memberMap.get(String(d.member_id)) || 'Club Member',
           event_id: d.event_id,
           event_title: d.event_title || 'Technical Workshop',
           session_date: d.session_date,
@@ -107,7 +110,7 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
     const rows = filtered.map((l) => [
       l.id,
       l.member_id,
-      l.member_name || '',
+      l.member_name || 'Club Member',
       l.event_title,
       l.session_date,
       l.status,
@@ -115,7 +118,11 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
       l.created_at ? new Date(l.created_at).toLocaleString() : ''
     ]);
 
-    exportToCSV(`ERISE_Attendance_${selectedEvent}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    const cleanEventName = selectedEvent !== 'All' 
+      ? selectedEvent.replace(/[^a-zA-Z0-9]/g, '_') 
+      : 'All_Workshops';
+
+    exportToCSV(`ERISE_Attendance_${cleanEventName}_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   };
 
   return (
@@ -128,7 +135,7 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
               Workshop & Bootcamp Attendance Records
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Synchronized with Projects Department attendance check-ins &bull; Present sessions reward +5%, unexcused absence deducts -5%
+              Synchronized with Projects Department attendance check-ins &bull; Present sessions reward points, unexcused absence deducts standing
             </p>
           </div>
 
@@ -136,11 +143,11 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
             <button
               onClick={handleExportCSV}
               disabled={filtered.length === 0}
-              className="px-3 py-1.5 bg-[#0d5c63] hover:bg-[#094247] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40"
+              className="px-3 py-1.5 bg-[#0d5c63] hover:bg-[#094247] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer"
               title="Download CSV containing filtered attendance records"
             >
               <Download className="w-3.5 h-3.5" />
-              Export Attendance File (CSV)
+              <span>Export {selectedEvent === 'All' ? 'Workshop' : selectedEvent} CSV</span>
             </button>
 
             {/* Aggregate Metrics */}
@@ -237,8 +244,11 @@ export const AttendanceReviewView: React.FC<AttendanceReviewViewProps> = ({
                     return (
                       <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                         <td className="py-2.5 px-4 font-bold text-slate-900">
-                          <div>{log.member_name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">ID: #{log.member_id}</div>
+                          <div className="text-xs font-bold text-slate-900">{log.member_name}</div>
+                          <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>Club Member</span>
+                          </div>
                         </td>
                         <td className="py-2.5 px-4 text-slate-700 font-medium">
                           {log.event_title}

@@ -82,7 +82,7 @@ export function MediaPortal({ onBackToAdmin, isSuperAdmin }: MediaPortalProps) {
         const mem = members.find((m) => String(m.id) === String(mId));
         return {
           id: mId,
-          name: mem?.full_name || `Member #${mId}`,
+          name: mem?.full_name || 'Club Member',
         };
       });
 

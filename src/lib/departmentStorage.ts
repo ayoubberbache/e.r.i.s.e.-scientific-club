@@ -317,10 +317,31 @@ export function grantDepartmentMemberRole(
   saveCustomDeptMembers(dept, updated);
 }
 
+let _cachedMemberNames: Record<string, string> | null = null;
+export async function getMemberNamesMap(): Promise<Record<string, string>> {
+  if (_cachedMemberNames) return _cachedMemberNames;
+  const map: Record<string, string> = {};
+  try {
+    const { data } = await supabase.from('registrations').select('id, full_name');
+    if (Array.isArray(data)) {
+      data.forEach((r: any) => {
+        if (r.id && r.full_name) {
+          map[String(r.id)] = r.full_name;
+        }
+      });
+    }
+    _cachedMemberNames = map;
+  } catch (err) {
+    console.warn('Could not load member names map:', err);
+  }
+  return map;
+}
+
 // ── Projects Engine (Projects Department with Supabase DB Integration) ──────
 export async function fetchStoredProjects(): Promise<ClubProject[]> {
   const localList = getStoredProjects();
   try {
+    const nameMap = await getMemberNamesMap();
     let projectRows: any[] = [];
     try {
       const headers = getApiAuthHeaders();
@@ -351,7 +372,7 @@ export async function fetchStoredProjects(): Promise<ClubProject[]> {
         // Hydrate team_members list
         const team_members: ProjectMemberAssignment[] = teamMemberIds.map((mId) => ({
           member_id: mId,
-          member_name: `Member #${mId}`,
+          member_name: nameMap[String(mId)] || 'Club Member',
           role_in_project: customRoles[String(mId)] || 'Project Engineer & Developer',
           assigned_at: p.created_at || new Date().toISOString(),
         }));
@@ -890,6 +911,7 @@ export async function fetchDepartmentTasks(dept: Department): Promise<ClubTask[]
   // 1. Try to fetch from Supabase projects table (holds tasks for Organization & Media)
   try {
     const headers = getApiAuthHeaders();
+    const nameMap = await getMemberNamesMap();
     const res = await fetch(`/api/admin-data?table=projects&department=${encodeURIComponent(dept)}`, { headers });
     if (res.ok) {
       const json = await res.json();
@@ -906,11 +928,11 @@ export async function fetchDepartmentTasks(dept: Department): Promise<ClubTask[]
             assigned_members: Array.isArray(p.assigned_members) && p.assigned_members.length > 0
               ? p.assigned_members.map((m: any) => ({
                   id: m.id,
-                  name: m.name && !String(m.name).startsWith('Member #') ? m.name : `Member #${m.id}`
+                  name: m.name && !String(m.name).startsWith('Member #') ? m.name : (nameMap[String(m.id)] || 'Club Member')
                 }))
               : assignedIds.map((mId: any) => ({
                   id: mId,
-                  name: `Member #${mId}`
+                  name: nameMap[String(mId)] || 'Club Member'
                 })),
             priority: customRoles.priority || 'High',
             deadline: customRoles.deadline || undefined,

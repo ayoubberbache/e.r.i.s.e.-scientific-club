@@ -35,6 +35,7 @@ export const PortalMemberEvaluationModal: React.FC<PortalMemberEvaluationModalPr
 
   // Evaluation states
   const [headRatingDelta, setHeadRatingDelta] = useState<number>(0);
+  const [evaluationRatio, setEvaluationRatio] = useState<number>(100);
   const [behaviorDelta, setBehaviorDelta] = useState<number>(0);
   const [disciplineLevel, setDisciplineLevel] = useState<'Exemplary' | 'Good' | 'Neutral' | 'Warning' | 'Probation'>('Neutral');
   const [disciplineDelta, setDisciplineDelta] = useState<number>(0);
@@ -57,6 +58,9 @@ export const PortalMemberEvaluationModal: React.FC<PortalMemberEvaluationModalPr
           const currentDeptHeadScore = deptRatings[department] ?? data.head_rating_score ?? 0;
           setHeadRatingDelta(currentDeptHeadScore);
           setBehaviorDelta(data.behavior_score ?? 0);
+          if (deptRatings.evaluation_ratio) {
+            setEvaluationRatio(deptRatings.evaluation_ratio);
+          }
 
           const dScore = data.discipline_score ?? 0;
           setDisciplineDelta(dScore);
@@ -88,6 +92,8 @@ export const PortalMemberEvaluationModal: React.FC<PortalMemberEvaluationModalPr
     }
   };
 
+  const effectiveHeadScore = Math.round(headRatingDelta * ((evaluationRatio || 100) / 100) * 10) / 10;
+
   const handleSaveEvaluation = async () => {
     setSaving(true);
     try {
@@ -101,12 +107,17 @@ export const PortalMemberEvaluationModal: React.FC<PortalMemberEvaluationModalPr
       const existingDeptRatings = existing?.department_head_ratings || {};
       const updatedDeptRatings = {
         ...existingDeptRatings,
-        [department]: headRatingDelta,
+        [department]: effectiveHeadScore,
+        evaluation_ratio: evaluationRatio,
       };
 
       // Compute average head rating across all rated departments
-      const deptValues = Object.values(updatedDeptRatings) as number[];
-      const avgHeadDelta = deptValues.length > 0 ? Math.round(deptValues.reduce((a, b) => a + b, 0) / deptValues.length) : headRatingDelta;
+      const deptValues = Object.entries(updatedDeptRatings)
+        .filter(([k]) => k !== 'evaluation_ratio' && k !== 'hr_adjustment' && k !== 'criteria')
+        .map(([, v]) => Number(v))
+        .filter((v) => !isNaN(v));
+
+      const avgHeadDelta = deptValues.length > 0 ? Math.round(deptValues.reduce((a, b) => a + b, 0) / deptValues.length) : effectiveHeadScore;
 
       const presenceDelta = existing?.presence_score ?? 0;
       const overallRating = Math.min(100, Math.max(0, 50 + presenceDelta + avgHeadDelta + behaviorDelta + disciplineDelta));
@@ -185,29 +196,97 @@ export const PortalMemberEvaluationModal: React.FC<PortalMemberEvaluationModalPr
             <Award className="w-7 h-7 text-slate-700" />
           </div>
 
-          {/* 1. Department Head Evaluation Range (-10% to +20%) */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200 space-y-2">
-            <div className="flex items-center justify-between">
+          {/* Editable Evaluation Ratio / Weight */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <label className="font-bold text-xs text-slate-900 block">
+                  Evaluation Ratio & Weight
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Custom evaluation ratio (scales score according to workshop, bootcamp or project depth)
+                </p>
+              </div>
+
+              {/* Editable Ratio Input */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600">Ratio:</span>
+                <div className="relative w-24">
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    step={5}
+                    value={evaluationRatio}
+                    onChange={(e) => setEvaluationRatio(parseFloat(e.target.value) || 100)}
+                    className="w-full px-2 py-1 text-xs font-mono font-bold text-slate-900 bg-white border border-slate-300 text-right pr-6 focus:outline-none focus:border-slate-900"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-mono text-slate-500">%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Ratio Presets */}
+            <div className="flex flex-wrap items-center gap-1 text-[11px]">
+              <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Presets:</span>
+              {[50, 75, 100, 125, 150, 200].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setEvaluationRatio(r)}
+                  className={`px-2 py-0.5 font-mono text-xs font-semibold border transition-colors cursor-pointer ${
+                    evaluationRatio === r
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'
+                  }`}
+                >
+                  {r}%
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 1. Department Head Evaluation Range & Direct Score */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
               <label className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
                 <Crown size={15} className="text-slate-700" />
-                {department} Department Head Rating (-10% to +20%)
+                <span>{department} Department Head Score</span>
               </label>
-              <span className="font-mono font-bold text-slate-900 text-xs">
-                {headRatingDelta >= 0 ? `+${headRatingDelta}%` : `${headRatingDelta}%`}
-              </span>
+
+              {/* Editable Field for Head Rating */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-500 font-mono">Score:</span>
+                <input
+                  type="number"
+                  step={0.5}
+                  min={-50}
+                  max={50}
+                  value={headRatingDelta}
+                  onChange={(e) => setHeadRatingDelta(parseFloat(e.target.value) || 0)}
+                  className="w-20 px-2 py-0.5 font-mono font-bold text-xs bg-white border border-slate-300 text-slate-900 text-right focus:outline-none focus:border-slate-900"
+                />
+                <span className="text-xs font-mono font-bold text-slate-900">%</span>
+                {evaluationRatio !== 100 && (
+                  <span className="text-[10px] font-mono text-slate-500 ml-1">
+                    (Effective: {effectiveHeadScore >= 0 ? `+${effectiveHeadScore}%` : `${effectiveHeadScore}%`})
+                  </span>
+                )}
+              </div>
             </div>
+
             <input
               type="range"
-              min={-10}
-              max={20}
+              min={-20}
+              max={30}
               value={headRatingDelta}
               onChange={(e) => setHeadRatingDelta(parseInt(e.target.value, 10))}
               className="w-full accent-slate-900 cursor-pointer"
             />
             <div className="flex justify-between text-[10px] text-slate-500 font-medium">
-              <span>Penalty (-10%)</span>
+              <span>Penalty (-20%)</span>
               <span>Neutral (0%)</span>
-              <span>Exceptional (+20%)</span>
+              <span>Exceptional (+30%)</span>
             </div>
           </div>
 

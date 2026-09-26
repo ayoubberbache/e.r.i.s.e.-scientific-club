@@ -82,7 +82,7 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
         const mem = members.find((m) => String(m.id) === String(mId));
         return {
           id: mId,
-          name: mem?.full_name || `Member #${mId}`,
+          name: mem?.full_name || 'Club Member',
         };
       });
 
@@ -349,7 +349,7 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
                           <div className="flex flex-wrap gap-1">
                             {task.assigned_members.map((m) => {
                               const foundMember = members.find((mem) => String(mem.id) === String(m.id));
-                              const displayName = foundMember?.full_name || (m.name && !String(m.name).startsWith('Member #') ? m.name : `Member #${m.id}`);
+                              const displayName = foundMember?.full_name || (m.name && !String(m.name).startsWith('Member #') ? m.name : 'Club Member');
                               return (
                                 <span
                                   key={m.id}

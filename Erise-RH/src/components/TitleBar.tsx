@@ -1,5 +1,6 @@
 import React from 'react';
 import { Minus, Square, X, Bell, BellOff, Users } from 'lucide-react';
+import logoIcon from '../assets/logo-icon.png';
 
 interface TitleBarProps {
   isRealtimeConnected: boolean;
@@ -36,11 +37,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     <div className="h-10 bg-white border-b border-slate-200 flex items-center justify-between px-3 select-none z-50 text-xs [app-region:drag]">
       {/* Left: App Identity */}
       <div className="flex items-center gap-2.5 [app-region:no-drag]">
-        <div className="w-5 h-5 bg-[#0d5c63] text-white flex items-center justify-center font-bold text-[11px] rounded-xs">
-          RH
-        </div>
+        <img src={logoIcon} alt="ERISE" className="w-5 h-5 object-contain" />
         <span className="font-bold text-slate-900 text-xs tracking-wide">
-          ERISE HR
+          ERISE HR Portal
         </span>
         <span className="text-[11px] text-slate-400 font-mono">
           v1.0

@@ -7,13 +7,14 @@ import {
   Award, Calendar, Star, Download, CheckCircle, XCircle, Menu, Car, 
   Building2, UserCheck, Clock, Filter, FileText, Check, Copy, Phone, 
   Mail, GraduationCap, Search, ExternalLink, Cpu, Camera, Building,
-  ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound
+  ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound, Sliders
 } from 'lucide-react';
 import { authenticateUser, DEPARTMENT_HEADS, SUPER_ADMIN_CONFIG } from '../data/departmentHeads';
 import { Department, UserRole, DepartmentHeadUser } from '../types/portals';
 import { OrganizationPortal } from '../components/portals/OrganizationPortal';
 import { MediaPortal } from '../components/portals/MediaPortal';
 import { ProjectsPortal } from '../components/portals/ProjectsPortal';
+import { PortalMemberEvaluationModal } from '../components/portals/PortalMemberEvaluationModal';
 import { 
   getValidAuthSession, 
   saveAuthSession, 
@@ -79,6 +80,13 @@ export function AdminDashboard() {
   const [selectedEventId, setSelectedEventId] = useState<string>('all');
   const [eventRegistrations, setEventRegistrations] = useState<any[]>([]);
   const [eventRegsLoading, setEventRegsLoading] = useState(false);
+  const [clubMembers, setClubMembers] = useState<any[]>([]);
+  const [attendeeFilter, setAttendeeFilter] = useState<'all' | 'members' | 'non_members'>('all');
+
+  // Evaluation Modal State from Admin
+  const [evaluatingMember, setEvaluatingMember] = useState<any | null>(null);
+  const [evaluatingDept, setEvaluatingDept] = useState<Department>('Projects');
+  const [memberEvalModalOpen, setMemberEvalModalOpen] = useState(false);
 
   // Expanded registration rows
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -416,11 +424,47 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         if (error) throw error;
         setEventRegistrations(data || []);
       }
+
+      // Also load approved club members for cross-referencing attendees
+      try {
+        const { data: approvedMembers } = await supabase
+          .from('registrations')
+          .select('*')
+          .eq('status', 'approved');
+        if (approvedMembers) setClubMembers(approvedMembers);
+      } catch (e) {}
     } catch (err) {
       console.error('Error fetching event registrations:', err);
     } finally {
       setEventRegsLoading(false);
     }
+  };
+
+  // Cross-reference attendee with registered club members
+  const findMatchingClubMember = (attendeeOrMember: any) => {
+    if (!attendeeOrMember) return null;
+    const email = (attendeeOrMember.email || '').trim().toLowerCase();
+    const phone = (attendeeOrMember.phone || '').replace(/\D/g, '');
+    const name = (attendeeOrMember.full_name || '').trim().toLowerCase();
+
+    return clubMembers.find((cm) => {
+      const cmEmail = (cm.email || '').trim().toLowerCase();
+      const cmPhone = (cm.phone || '').replace(/\D/g, '');
+      const cmName = (cm.full_name || '').trim().toLowerCase();
+
+      if (email && cmEmail && email === cmEmail) return true;
+      if (phone && cmPhone && phone.length >= 8 && phone === cmPhone) return true;
+      if (name && cmName && name === cmName) return true;
+      return false;
+    }) || null;
+  };
+
+  const isAttendeeClubMember = (item: any): boolean => {
+    const members: any[] = item.event_registration_members || [];
+    if (members.length > 0) {
+      return members.some((m) => !!findMatchingClubMember(m));
+    }
+    return !!findMatchingClubMember(item);
   };
 
   const toggleRegistration = async () => {
@@ -932,15 +976,21 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       return;
     }
 
+    const currentEvent = selectedEventId !== 'all' ? eventsList.find((e) => String(e.id) === String(selectedEventId)) : null;
+    const cleanTitle = currentEvent ? (currentEvent.title || 'Event').replace(/[^a-zA-Z0-9_-]/g, '_') : 'All_Events';
+    const dateStr = new Date().toISOString().split('T')[0];
+
     const headers = [
-      'Event', 'Type', 'Student ID', 'Team Name', 'Leader Name', 'Leader Email', 'Leader Phone', 
-      'Institution', 'Study Year', 'Members Count', 'All Members', 
-      'Companion Present', 'Companion Name', 'Companion Role', 'Status', 'Registered At'
+      'Event', 'Registration Type', 'Member Standing', 'Student ID', 'Team Name', 
+      'Leader / Attendee Name', 'Email', 'Phone', 'Institution', 'Study Year', 
+      'Total Attendees', 'All Attendee Details', 'Companion Present', 'Companion Name', 
+      'Companion Role', 'Status', 'Registered At'
     ];
 
     const rows = eventRegistrations.map((item) => {
       const members = item.event_registration_members || [];
       const leader = members.find((m: any) => m.is_leader) || members[0] || {};
+      const isMember = isAttendeeClubMember(item);
       const allMembersStr = members.map((m: any) => `${m.full_name} (${m.phone}, ${m.email})`).join(' | ');
       const studentIdMatch = item.institution?.match(/\[ID:\s*(\d+)\]/) || item.companion_role?.match(/Student ID:\s*(\d+)/) || item.team_name?.match(/Student ID:\s*(\d+)/);
       const studentId = studentIdMatch ? studentIdMatch[1] : '—';
@@ -948,6 +998,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       return [
         item.events?.title || `Event #${item.event_id}`,
         item.registration_type || 'individual',
+        isMember ? 'Club Member' : 'Non-Member (Future Invite)',
         studentId,
         item.team_name || '—',
         leader.full_name || '—',
@@ -955,8 +1006,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         leader.phone || '—',
         item.institution || '—',
         item.study_year || '—',
-        members.length,
-        allMembersStr,
+        members.length || 1,
+        allMembersStr || leader.full_name || '—',
         item.has_companion ? 'Yes' : 'No',
         item.companion_name || '—',
         item.companion_role || '—',
@@ -965,14 +1016,175 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       ];
     });
 
-    const csvContent = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csvContent = '\uFEFF' + [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `erise_event_registrations_${new Date().toISOString().split('T')[0]}.csv`;
+    link.setAttribute('download', `ERISE_${cleanTitle}_Registrations_${dateStr}.csv`);
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // Export Non-Members / Future Invites CSV
+  const exportFutureInvitesCSV = () => {
+    const nonMemberRegs = eventRegistrations.filter((r) => !isAttendeeClubMember(r));
+    if (nonMemberRegs.length === 0) {
+      alert('No non-member attendees found in the current selection. All attendees are active club members!');
+      return;
+    }
+
+    const currentEvent = selectedEventId !== 'all' ? eventsList.find((e) => String(e.id) === String(selectedEventId)) : null;
+    const cleanTitle = currentEvent ? (currentEvent.title || 'Event').replace(/[^a-zA-Z0-9_-]/g, '_') : 'Club';
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    const headers = [
+      'Attendee Name', 'Email', 'Phone', 'Institution', 'Study Year', 
+      'Event / Workshop Attended', 'Registration Type', 'Companion Info', 
+      'Future Outreach Status', 'First Registered At'
+    ];
+
+    const rows: any[][] = [];
+    nonMemberRegs.forEach((item) => {
+      const members: any[] = item.event_registration_members || [];
+      const eventName = item.events?.title || `Event #${item.event_id}`;
+      if (members.length > 0) {
+        members.forEach((m: any) => {
+          if (!findMatchingClubMember(m)) {
+            rows.push([
+              m.full_name || '—',
+              m.email || '—',
+              m.phone || '—',
+              item.institution || '—',
+              item.study_year || '—',
+              eventName,
+              item.registration_type || 'individual',
+              item.has_companion ? `${item.companion_name} (${item.companion_role})` : 'None',
+              'Saved for Next Recruitment / Future Event Invitations',
+              item.registered_at || ''
+            ]);
+          }
+        });
+      } else {
+        rows.push([
+          item.team_name || 'Individual Attendee',
+          item.email || '—',
+          item.phone || '—',
+          item.institution || '—',
+          item.study_year || '—',
+          eventName,
+          item.registration_type || 'individual',
+          item.has_companion ? `${item.companion_name} (${item.companion_role})` : 'None',
+          'Saved for Next Recruitment / Future Event Invitations',
+          item.registered_at || ''
+        ]);
+      }
+    });
+
+    const csvContent = '\uFEFF' + [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ERISE_${cleanTitle}_Future_Invites_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export Single Event CSV from Events list row
+  const handleExportSingleEventCSV = async (eventItem: any) => {
+    try {
+      const authHeaders = getAdminAuthHeaders();
+      let regs: any[] = [];
+      try {
+        const res = await fetch(`/api/admin-data?table=event_registrations&eventId=${eventItem.id}`, {
+          headers: authHeaders
+        });
+        if (res.ok) {
+          const json = await res.json();
+          regs = json.data || [];
+        }
+      } catch (e) {}
+
+      if (regs.length === 0) {
+        const { data, error } = await supabase
+          .from('event_registrations')
+          .select(`
+            *,
+            events ( title ),
+            event_registration_members ( * )
+          `)
+          .eq('event_id', eventItem.id)
+          .order('registered_at', { ascending: false });
+        if (!error && Array.isArray(data)) {
+          regs = data;
+        }
+      }
+
+      if (regs.length === 0) {
+        alert(`No registrations found for event: "${eventItem.title || eventItem.name}"`);
+        return;
+      }
+
+      const cleanTitle = (eventItem.title || eventItem.name || 'Event').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const dateStr = new Date().toISOString().split('T')[0];
+
+      const headers = [
+        'Event', 'Registration Type', 'Member Standing', 'Student ID', 'Team Name', 
+        'Leader / Participant Name', 'Email', 'Phone', 'Institution', 'Study Year', 
+        'Total Attendees', 'All Attendee Details', 'Status', 'Registered At'
+      ];
+
+      const rows = regs.map((item) => {
+        const members = item.event_registration_members || [];
+        const leader = members.find((m: any) => m.is_leader) || members[0] || {};
+        const isMember = isAttendeeClubMember(item);
+        const allMembersStr = members.map((m: any) => `${m.full_name} (${m.phone}, ${m.email})`).join(' | ');
+        const studentIdMatch = item.institution?.match(/\[ID:\s*(\d+)\]/) || item.companion_role?.match(/Student ID:\s*(\d+)/) || item.team_name?.match(/Student ID:\s*(\d+)/);
+        const studentId = studentIdMatch ? studentIdMatch[1] : '—';
+
+        return [
+          eventItem.title || eventItem.name || 'Event',
+          item.registration_type || 'individual',
+          isMember ? 'Club Member' : 'Non-Member (Future Invite)',
+          studentId,
+          item.team_name || '—',
+          leader.full_name || '—',
+          leader.email || '—',
+          leader.phone || '—',
+          item.institution || '—',
+          item.study_year || '—',
+          members.length || 1,
+          allMembersStr || leader.full_name || '—',
+          item.status || 'pending',
+          item.registered_at || ''
+        ];
+      });
+
+      const csvContent = '\uFEFF' + [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `ERISE_${cleanTitle}_Registrations_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export event registrations CSV:', err);
+      alert('Could not generate CSV export for this event.');
+    }
   };
 
   const renderFormFields = () => {
@@ -1680,6 +1892,14 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     const approvedCount = eventRegistrations.filter(r => r.status === 'approved').length;
     const pendingCount = eventRegistrations.filter(r => !r.status || r.status === 'pending').length;
     const rejectedCount = eventRegistrations.filter(r => r.status === 'rejected').length;
+    const clubMembersCount = eventRegistrations.filter(r => isAttendeeClubMember(r)).length;
+    const nonMembersCount = eventRegistrations.filter(r => !isAttendeeClubMember(r)).length;
+
+    const filteredRegistrations = eventRegistrations.filter((r) => {
+      if (attendeeFilter === 'members') return isAttendeeClubMember(r);
+      if (attendeeFilter === 'non_members') return !isAttendeeClubMember(r);
+      return true;
+    });
 
     return (
       <div className="space-y-4">
@@ -1708,15 +1928,61 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               <span className="text-amber-700 font-mono">{pendingCount} Pending</span>
               <span className="text-rose-700 font-mono">{rejectedCount} Rejected</span>
             </div>
-            {totalCount > 0 && (
-              <button
-                onClick={exportEventRegistrationsCSV}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" /> Export CSV
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {totalCount > 0 && (
+                <button
+                  onClick={exportEventRegistrationsCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
+                  title="Export complete attendee list to CSV"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export Event CSV
+                </button>
+              )}
+              {nonMembersCount > 0 && (
+                <button
+                  onClick={exportFutureInvitesCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300 transition-colors cursor-pointer"
+                  title="Export non-members list for future event invitations"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-700" /> Export Future Invites ({nonMembersCount})
+                </button>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Member Classification Filter Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+          <button
+            onClick={() => setAttendeeFilter('all')}
+            className={`px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer border ${
+              attendeeFilter === 'all'
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            All Participants ({totalCount})
+          </button>
+          <button
+            onClick={() => setAttendeeFilter('members')}
+            className={`px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer border ${
+              attendeeFilter === 'members'
+                ? 'bg-emerald-700 text-white border-emerald-700'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Club Members ({clubMembersCount})
+          </button>
+          <button
+            onClick={() => setAttendeeFilter('non_members')}
+            className={`px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer border ${
+              attendeeFilter === 'non_members'
+                ? 'bg-amber-600 text-white border-amber-600'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Non-Members / Future Invites ({nonMembersCount})
+          </button>
         </div>
 
         {/* List of Event Registrations */}
@@ -1724,17 +1990,18 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           <div className="flex justify-center py-12 bg-white border border-slate-200">
             <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
           </div>
-        ) : eventRegistrations.length === 0 ? (
+        ) : filteredRegistrations.length === 0 ? (
           <div className="bg-white border border-slate-200 p-8 text-center text-slate-500 text-xs">
             No event registrations found for this filter.
           </div>
         ) : (
           <div className="space-y-3">
-            {eventRegistrations.map((item) => {
+            {filteredRegistrations.map((item) => {
               const isExpanded = expandedRows.has(item.id);
               const members: any[] = item.event_registration_members || [];
               const leader = members.find((m: any) => m.is_leader) || members[0] || {};
               const isTeam = item.registration_type === 'team';
+              const isMember = isAttendeeClubMember(item);
               const studentIdMatch = item.institution?.match(/\[ID:\s*(\d+)\]/) || item.companion_role?.match(/Student ID:\s*(\d+)/) || item.team_name?.match(/Student ID:\s*(\d+)/);
               const studentId = studentIdMatch ? studentIdMatch[1] : null;
 
@@ -1765,6 +2032,15 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                           }`}>
                             {item.status || 'pending'}
                           </span>
+                          {isMember ? (
+                            <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Club Member
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                              Non-Member (Future Invite)
+                            </span>
+                          )}
                           {studentId && (
                             <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-sky-50 text-sky-800 border border-sky-300">
                               Student ID: {studentId}
@@ -1810,26 +2086,74 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                         </div>
                       )}
 
+                      {/* Non-Member Outreach Banner */}
+                      {!isMember && (
+                        <div className="p-3 bg-amber-50 border border-amber-200 flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2 text-amber-800">
+                            <UserCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>
+                              <strong>Non-member participant:</strong> Saved for upcoming recruitment cycles & future workshop invitations.
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-white border border-amber-300 px-2 py-0.5">
+                            Future Invite Ready
+                          </span>
+                        </div>
+                      )}
+
                       {/* Members Grid */}
                       <div>
                         <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-2">
-                          Registered Member(s) ({members.length})
+                          Registered Participant(s) ({members.length})
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                          {members.map((m: any, idx: number) => (
-                            <div key={m.id || idx} className={`p-3 bg-white border ${m.is_leader ? 'border-slate-800 shadow-xs' : 'border-slate-200'}`}>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <span className="font-bold text-slate-900 text-xs">{m.full_name}</span>
-                                {m.is_leader && (
-                                  <span className="px-1.5 py-0.2 bg-slate-900 text-white text-[9px] font-bold uppercase">Leader</span>
+                          {members.map((m: any, idx: number) => {
+                            const matchingMember = findMatchingClubMember(m);
+                            return (
+                              <div key={m.id || idx} className={`p-3 bg-white border ${m.is_leader ? 'border-slate-800 shadow-xs' : 'border-slate-200'} flex flex-col justify-between`}>
+                                <div>
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="font-bold text-slate-900 text-xs">{m.full_name}</span>
+                                    <div className="flex items-center gap-1">
+                                      {matchingMember ? (
+                                        <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-bold">
+                                          Member
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-bold">
+                                          Non-Member
+                                        </span>
+                                      )}
+                                      {m.is_leader && (
+                                        <span className="px-1.5 py-0.2 bg-slate-900 text-white text-[9px] font-bold uppercase">Leader</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-0.5 text-xs text-slate-600">
+                                    <p><strong className="text-slate-500 font-normal">Email:</strong> <a href={`mailto:${m.email}`} className="text-slate-800 hover:underline">{m.email}</a></p>
+                                    <p><strong className="text-slate-500 font-normal">Phone:</strong> <a href={`tel:${m.phone}`} className="text-slate-800 font-mono hover:underline">{m.phone}</a></p>
+                                  </div>
+                                </div>
+
+                                {matchingMember && (
+                                  <div className="mt-2.5 pt-2 border-t border-slate-100">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEvaluatingMember(matchingMember);
+                                        setEvaluatingDept((matchingMember.department as Department) || 'Projects');
+                                        setMemberEvalModalOpen(true);
+                                      }}
+                                      className="w-full py-1 bg-teal-50 hover:bg-teal-100 text-[#0d5c63] border border-teal-200 text-[11px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                      title="Evaluate Member Standing & Rating"
+                                    >
+                                      <Award className="w-3 h-3" /> Evaluate Member
+                                    </button>
+                                  </div>
                                 )}
                               </div>
-                              <div className="space-y-0.5 text-xs text-slate-600">
-                                <p><strong className="text-slate-500 font-normal">Email:</strong> <a href={`mailto:${m.email}`} className="text-slate-800 hover:underline">{m.email}</a></p>
-                                <p><strong className="text-slate-500 font-normal">Phone:</strong> <a href={`tel:${m.phone}`} className="text-slate-800 font-mono hover:underline">{m.phone}</a></p>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -1858,6 +2182,24 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                               className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 text-xs font-medium transition-colors cursor-pointer"
                             >
                               Reset to Pending
+                            </button>
+                          )}
+
+                          {/* Fast Evaluate Action if main attendee is a member */}
+                          {isMember && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const match = findMatchingClubMember(leader) || findMatchingClubMember(item);
+                                if (match) {
+                                  setEvaluatingMember(match);
+                                  setEvaluatingDept((match.department as Department) || 'Projects');
+                                  setMemberEvalModalOpen(true);
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-[#0d5c63] border border-teal-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <Award className="w-3.5 h-3.5" /> Evaluate Standing
                             </button>
                           )}
                         </div>
@@ -2518,6 +2860,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
+                                {activeTab === 'events' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExportSingleEventCSV(item)}
+                                    className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition-colors cursor-pointer"
+                                    title="Download Event Registrations (CSV)"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button onClick={() => openModal('edit', item)} className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer" title="Edit">
                                   <Edit className="w-3.5 h-3.5" />
                                 </button>
@@ -2559,6 +2911,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
+                          {activeTab === 'events' && (
+                            <button
+                              type="button"
+                              onClick={() => handleExportSingleEventCSV(item)}
+                              className="p-2 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition-colors cursor-pointer"
+                              title="Download Event Registrations (CSV)"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button onClick={() => openModal('edit', item)} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer" title="Edit">
                             <Edit className="w-3.5 h-3.5" />
                           </button>
@@ -2634,7 +2996,9 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       {selectedMember.status || 'pending'}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 font-mono">Member ID: #{selectedMember.id}</p>
+                  <p className="text-xs text-slate-600 font-medium">
+                    Yr {selectedMember.study_year || '—'} • {selectedMember.specialization || selectedMember.department || 'Club Member'}
+                  </p>
                 </div>
               </div>
               <button 
@@ -3055,6 +3419,27 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </div>
         </div>
       )}
+
+      {/* ─── MODAL: MEMBER EVALUATION MODAL FROM ADMIN ──────────────────── */}
+      <PortalMemberEvaluationModal
+        member={evaluatingMember}
+        department={evaluatingDept}
+        isOpen={memberEvalModalOpen && !!evaluatingMember}
+        onClose={() => {
+          setMemberEvalModalOpen(false);
+          setEvaluatingMember(null);
+        }}
+        onSaved={() => {
+          setMemberEvalModalOpen(false);
+          setEvaluatingMember(null);
+          if (activeTab === 'event_registrations') {
+            fetchEventRegistrations(selectedEventId);
+          } else if (activeTab === 'registrations') {
+            fetchData('registrations');
+          }
+        }}
+        isSuperAdmin={true}
+      />
     </div>
   );
 }

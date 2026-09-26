@@ -178,6 +178,14 @@ export async function fetchDepartmentMembers(dept: Department): Promise<Departme
     }
 
     if (rawMembers.length > 0) {
+      if (!_cachedMemberNames) _cachedMemberNames = {};
+      rawMembers.forEach((r: any) => {
+        if (r.id && r.full_name) {
+          _cachedMemberNames![String(r.id)] = r.full_name;
+          _cachedMemberNames![String(Number(r.id))] = r.full_name;
+        }
+      });
+
       dbMembers = rawMembers
         .filter((item) => {
           if (!item.departments) return false;
@@ -319,20 +327,58 @@ export function grantDepartmentMemberRole(
 
 let _cachedMemberNames: Record<string, string> | null = null;
 export async function getMemberNamesMap(): Promise<Record<string, string>> {
-  if (_cachedMemberNames) return _cachedMemberNames;
+  if (_cachedMemberNames && Object.keys(_cachedMemberNames).length > 0) return _cachedMemberNames;
   const map: Record<string, string> = {};
+
+  // 1. Fetch via secure admin-data API (uses service-role key on server, bypassing RLS)
   try {
-    const { data } = await supabase.from('registrations').select('id, full_name');
-    if (Array.isArray(data)) {
-      data.forEach((r: any) => {
-        if (r.id && r.full_name) {
-          map[String(r.id)] = r.full_name;
+    const headers = getApiAuthHeaders();
+    const res = await fetch('/api/admin-data?table=registrations', { headers });
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json.data) && json.data.length > 0) {
+        json.data.forEach((r: any) => {
+          if (r.id && r.full_name) {
+            map[String(r.id)] = r.full_name;
+            map[String(Number(r.id))] = r.full_name;
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('API error in getMemberNamesMap:', err);
+  }
+
+  // 2. Also check local cached department members across departments
+  try {
+    ['Projects', 'Organization', 'Media'].forEach((d) => {
+      const cached = getCustomDeptMembers(d);
+      cached.forEach((m) => {
+        if (m.id && m.full_name) {
+          map[String(m.id)] = m.full_name;
+          map[String(Number(m.id))] = m.full_name;
         }
       });
-    }
+    });
+  } catch (e) {}
+
+  // 3. Direct supabase fallback
+  if (Object.keys(map).length === 0) {
+    try {
+      const { data } = await supabase.from('registrations').select('id, full_name');
+      if (Array.isArray(data)) {
+        data.forEach((r: any) => {
+          if (r.id && r.full_name) {
+            map[String(r.id)] = r.full_name;
+            map[String(Number(r.id))] = r.full_name;
+          }
+        });
+      }
+    } catch (err) {}
+  }
+
+  if (Object.keys(map).length > 0) {
     _cachedMemberNames = map;
-  } catch (err) {
-    console.warn('Could not load member names map:', err);
   }
   return map;
 }
@@ -369,13 +415,31 @@ export async function fetchStoredProjects(): Promise<ClubProject[]> {
         const teamMemberIds: (string | number)[] = Array.isArray(p.team_member_ids) ? p.team_member_ids : [];
         const customRoles: Record<string, string> = p.member_custom_roles || {};
 
-        // Hydrate team_members list
-        const team_members: ProjectMemberAssignment[] = teamMemberIds.map((mId) => ({
-          member_id: mId,
-          member_name: nameMap[String(mId)] || 'Club Member',
-          role_in_project: customRoles[String(mId)] || 'Project Engineer & Developer',
-          assigned_at: p.created_at || new Date().toISOString(),
-        }));
+        // Hydrate team_members list, prioritizing real member names from nameMap
+        const rawTeam = Array.isArray(p.team_members) && p.team_members.length > 0
+          ? p.team_members
+          : teamMemberIds.map((mId) => ({
+              member_id: mId,
+              member_name: nameMap[String(mId)] || `Member #${mId}`,
+              role_in_project: customRoles[String(mId)] || 'Project Engineer & Developer',
+              assigned_at: p.created_at || new Date().toISOString(),
+            }));
+
+        const team_members: ProjectMemberAssignment[] = rawTeam.map((tm: any) => {
+          const mId = tm.member_id ?? tm.id;
+          const resolvedName = (nameMap[String(mId)] && nameMap[String(mId)] !== 'Club Member')
+            ? nameMap[String(mId)]
+            : (tm.member_name && tm.member_name !== 'Club Member' && !tm.member_name.startsWith('Member #') ? tm.member_name : (nameMap[String(mId)] || `Member #${mId}`));
+
+          return {
+            member_id: mId,
+            member_name: resolvedName,
+            role_in_project: tm.role_in_project || customRoles[String(mId)] || 'Project Engineer & Developer',
+            assigned_at: tm.assigned_at || p.created_at || new Date().toISOString(),
+            email: tm.email || '',
+            phone: tm.phone || '',
+          };
+        });
 
         return {
           id: p.id,
@@ -401,7 +465,38 @@ export async function fetchStoredProjects(): Promise<ClubProject[]> {
     console.warn('Could not fetch projects from Supabase database, using local cache:', err);
   }
 
-  return localList;
+  // Enrich localList with nameMap before returning
+  try {
+    const nameMap = await getMemberNamesMap();
+    return localList.map((p) => {
+      const teamMemberIds: (string | number)[] = Array.isArray(p.team_member_ids) ? p.team_member_ids : [];
+      const customRoles: Record<string, string> = p.member_custom_roles || {};
+      const rawTeam = Array.isArray(p.team_members) && p.team_members.length > 0
+        ? p.team_members
+        : teamMemberIds.map((mId) => ({
+            member_id: mId,
+            member_name: nameMap[String(mId)] || `Member #${mId}`,
+            role_in_project: customRoles[String(mId)] || 'Project Engineer & Developer',
+            assigned_at: p.created_at || new Date().toISOString(),
+          }));
+
+      const team = rawTeam.map((tm: any) => {
+        const mId = tm.member_id ?? tm.id;
+        const resolvedName = (nameMap[String(mId)] && nameMap[String(mId)] !== 'Club Member')
+          ? nameMap[String(mId)]
+          : (tm.member_name && tm.member_name !== 'Club Member' ? tm.member_name : (nameMap[String(mId)] || `Member #${mId}`));
+        return {
+          ...tm,
+          member_id: mId,
+          member_name: resolvedName,
+          role_in_project: tm.role_in_project || customRoles[String(mId)] || 'Project Engineer & Developer',
+        };
+      });
+      return { ...p, team_members: team };
+    });
+  } catch {
+    return localList;
+  }
 }
 
 export function getStoredProjects(): ClubProject[] {
@@ -435,8 +530,10 @@ export async function addOrUpdateProject(
 
   // Extract team members, IDs, and custom roles dictionary (HR format)
   const teamMembers = projectData.team_members || [];
-  const memberIds = teamMembers.map((m) => m.member_id);
-  const customRoles: Record<string, string> = {};
+  const memberIds = teamMembers.length > 0
+    ? teamMembers.map((m) => m.member_id)
+    : (Array.isArray(projectData.team_member_ids) ? projectData.team_member_ids : []);
+  const customRoles: Record<string, string> = { ...(projectData.member_custom_roles || {}) };
   teamMembers.forEach((m) => {
     if (m.role_in_project) {
       customRoles[String(m.member_id)] = m.role_in_project;
@@ -450,7 +547,7 @@ export async function addOrUpdateProject(
     department: projectData.department || 'Projects',
     status: projectData.status || 'Active',
     leader_member_id: String(projectData.leader_member_id || memberIds[0] || ''),
-    team_member_ids: memberIds,
+    team_member_ids: memberIds.map((id) => (isNaN(Number(id)) ? id : Number(id))),
     member_custom_roles: customRoles,
   };
 
@@ -928,11 +1025,13 @@ export async function fetchDepartmentTasks(dept: Department): Promise<ClubTask[]
             assigned_members: Array.isArray(p.assigned_members) && p.assigned_members.length > 0
               ? p.assigned_members.map((m: any) => ({
                   id: m.id,
-                  name: m.name && !String(m.name).startsWith('Member #') ? m.name : (nameMap[String(m.id)] || 'Club Member')
+                  name: (nameMap[String(m.id)] && nameMap[String(m.id)] !== 'Club Member')
+                    ? nameMap[String(m.id)]
+                    : (m.name && !String(m.name).startsWith('Member #') && m.name !== 'Club Member' ? m.name : (nameMap[String(m.id)] || `Member #${m.id}`))
                 }))
               : assignedIds.map((mId: any) => ({
                   id: mId,
-                  name: nameMap[String(mId)] || 'Club Member'
+                  name: nameMap[String(mId)] || `Member #${mId}`
                 })),
             priority: customRoles.priority || 'High',
             deadline: customRoles.deadline || undefined,

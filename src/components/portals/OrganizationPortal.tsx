@@ -349,7 +349,7 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
                           <div className="flex flex-wrap gap-1">
                             {task.assigned_members.map((m) => {
                               const foundMember = members.find((mem) => String(mem.id) === String(m.id));
-                              const displayName = foundMember?.full_name || (m.name && !String(m.name).startsWith('Member #') ? m.name : 'Club Member');
+                              const displayName = foundMember?.full_name || (m.name && !String(m.name).startsWith('Member #') && m.name !== 'Club Member' ? m.name : (foundMember?.full_name || `Member #${m.id}`));
                               return (
                                 <span
                                   key={m.id}

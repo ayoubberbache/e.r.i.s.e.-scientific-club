@@ -325,7 +325,7 @@ export async function fetchTasksFromSupabase(): Promise<DepartmentTask[]> {
         ? p.assigned_member_ids 
         : [];
 
-      const assignedNames = assignedIds.map(id => memberNameMap.get(String(id)) || 'Club Member');
+      const assignedNames = assignedIds.map(id => memberNameMap.get(String(id)) || memberNameMap.get(String(Number(id))) || (Number(id) ? `Member #${id}` : 'Club Member'));
       const customRoles = p.member_custom_roles || {};
 
       let status: DepartmentTask['status'] = 'pending';

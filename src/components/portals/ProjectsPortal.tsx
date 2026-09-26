@@ -7,7 +7,8 @@ import {
   addOrUpdateProject, 
   deleteProject,
   fetchWorkshopAttendance,
-  saveAttendanceCheck
+  saveAttendanceCheck,
+  getMemberNamesMap
 } from '../../lib/departmentStorage';
 import { DEPARTMENT_HEADS } from '../../data/departmentHeads';
 import { DepartmentMember, ClubProject, AttendanceRecord } from '../../types/portals';
@@ -35,6 +36,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
 
   // Members State
   const [members, setMembers] = useState<DepartmentMember[]>([]);
+  const [memberNamesMap, setMemberNamesMap] = useState<Record<string, string>>({});
   const [membersLoading, setMembersLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -76,9 +78,57 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   const [addingMember, setAddingMember] = useState(false);
 
   useEffect(() => {
-    loadProjects();
-    loadMembers();
-    loadEvents();
+    async function init() {
+      setMembersLoading(true);
+      setProjectsLoading(true);
+      try {
+        const [mems, projs, nameMap] = await Promise.all([
+          fetchDepartmentMembers('Projects'),
+          fetchStoredProjects(),
+          getMemberNamesMap()
+        ]);
+        setMembers(mems);
+        setMemberNamesMap(nameMap);
+
+        const enriched = projs.map((p) => {
+          const teamIds = Array.isArray(p.team_member_ids) ? p.team_member_ids : [];
+          const existingTeam = Array.isArray(p.team_members) && p.team_members.length > 0
+            ? p.team_members
+            : teamIds.map((id) => ({
+                member_id: id,
+                member_name: nameMap[String(id)] || `Member #${id}`,
+                role_in_project: p.member_custom_roles?.[String(id)] || 'Project Engineer & Developer',
+                assigned_at: p.created_at || new Date().toISOString()
+              }));
+
+          const team = existingTeam.map((tm) => {
+            const mId = tm.member_id ?? tm.id;
+            const found = mems.find((m) => String(m.id) === String(mId));
+            const realName = found?.full_name || (nameMap[String(mId)] && nameMap[String(mId)] !== 'Club Member' ? nameMap[String(mId)] : (tm.member_name && tm.member_name !== 'Club Member' ? tm.member_name : (nameMap[String(mId)] || `Member #${mId}`)));
+            return {
+              ...tm,
+              member_id: mId,
+              member_name: realName,
+              role_in_project: tm.role_in_project || p.member_custom_roles?.[String(mId)] || found?.role || 'Project Engineer & Developer',
+              email: tm.email || found?.email || '',
+              phone: tm.phone || found?.phone || '',
+            };
+          });
+          return { ...p, team_members: team };
+        });
+        setProjects(enriched);
+        if (enriched.length > 0 && selectedProjectId === null) {
+          setSelectedProjectId(enriched[0].id);
+        }
+      } catch (err) {
+        console.error('ProjectsPortal init error:', err);
+      } finally {
+        setMembersLoading(false);
+        setProjectsLoading(false);
+      }
+      loadEvents();
+    }
+    init();
   }, []);
 
   useEffect(() => {
@@ -90,10 +140,41 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   const loadProjects = async () => {
     setProjectsLoading(true);
     try {
-      const list = await fetchStoredProjects();
-      setProjects(list);
-      if (list.length > 0 && selectedProjectId === null) {
-        setSelectedProjectId(list[0].id);
+      const [list, nameMap] = await Promise.all([
+        fetchStoredProjects(),
+        getMemberNamesMap()
+      ]);
+      setMemberNamesMap(nameMap);
+
+      const enriched = list.map((p) => {
+        const teamIds = Array.isArray(p.team_member_ids) ? p.team_member_ids : [];
+        const existingTeam = Array.isArray(p.team_members) && p.team_members.length > 0
+          ? p.team_members
+          : teamIds.map((id) => ({
+              member_id: id,
+              member_name: nameMap[String(id)] || `Member #${id}`,
+              role_in_project: p.member_custom_roles?.[String(id)] || 'Project Engineer & Developer',
+              assigned_at: p.created_at || new Date().toISOString()
+            }));
+
+        const team = existingTeam.map((tm) => {
+          const mId = tm.member_id ?? tm.id;
+          const found = members.find((m) => String(m.id) === String(mId));
+          const realName = found?.full_name || (nameMap[String(mId)] && nameMap[String(mId)] !== 'Club Member' ? nameMap[String(mId)] : (tm.member_name && tm.member_name !== 'Club Member' ? tm.member_name : (nameMap[String(mId)] || `Member #${mId}`)));
+          return {
+            ...tm,
+            member_id: mId,
+            member_name: realName,
+            role_in_project: tm.role_in_project || p.member_custom_roles?.[String(mId)] || found?.role || 'Project Engineer & Developer',
+            email: tm.email || found?.email || '',
+            phone: tm.phone || found?.phone || '',
+          };
+        });
+        return { ...p, team_members: team };
+      });
+      setProjects(enriched);
+      if (enriched.length > 0 && selectedProjectId === null) {
+        setSelectedProjectId(enriched[0].id);
       }
     } catch (err) {
       console.error('Error loading projects:', err);
@@ -107,8 +188,10 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
     try {
       const data = await fetchDepartmentMembers('Projects');
       setMembers(data);
+      return data;
     } catch (err) {
       console.error('Error loading projects members:', err);
+      return [];
     } finally {
       setMembersLoading(false);
     }
@@ -262,12 +345,17 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   // Open Team Assignment Modal for a Project
   const openTeamModal = (proj: ClubProject) => {
     setTargetProject(proj);
-    const currentIds = (proj.team_members || []).map((m) => m.member_id);
-    setSelectedTeamMemberIds(currentIds);
+    const idsFromMembers = (proj.team_members || []).map((m) => m.member_id ?? (m as any).id);
+    const idsFromList = Array.isArray(proj.team_member_ids) ? proj.team_member_ids : [];
+    const allIds = Array.from(new Set([...idsFromMembers, ...idsFromList])).filter(Boolean);
+    setSelectedTeamMemberIds(allIds);
 
-    const roles: Record<string, string> = {};
+    const roles: Record<string, string> = { ...(proj.member_custom_roles || {}) };
     (proj.team_members || []).forEach((m) => {
-      roles[String(m.member_id)] = m.role_in_project || 'Project Engineer & Developer';
+      const id = m.member_id ?? (m as any).id;
+      if (id && m.role_in_project) {
+        roles[String(id)] = m.role_in_project;
+      }
     });
     setMemberRolesMap(roles);
     setTeamModalOpen(true);
@@ -281,7 +369,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
       const memberObj = members.find((m) => String(m.id) === String(mId));
       return {
         member_id: mId,
-        member_name: memberObj?.full_name || 'Club Member',
+        member_name: memberObj?.full_name || memberNamesMap[String(mId)] || `Member #${mId}`,
         email: memberObj?.email || '',
         phone: memberObj?.phone || '',
         role_in_project: memberRolesMap[String(mId)] || memberObj?.role || 'Project Engineer & Developer',
@@ -293,6 +381,8 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
       const updated = await addOrUpdateProject({
         ...targetProject,
         team_members: newTeamMembers,
+        team_member_ids: selectedTeamMemberIds.map((id) => (isNaN(Number(id)) ? id : Number(id))),
+        member_custom_roles: memberRolesMap,
       });
 
       setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
@@ -355,6 +445,40 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
 
   const activeProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
   const activeEvent = events.find((e) => e.id === selectedEventId) || events[0];
+
+  const assignedTeamList = (() => {
+    if (!activeProject) return [];
+
+    const memberIdsFromObj = (activeProject.team_members || []).map((tm) => tm.member_id ?? (tm as any).id);
+    const memberIdsFromArr = Array.isArray(activeProject.team_member_ids) ? activeProject.team_member_ids : [];
+    const allMemberIds = Array.from(new Set([...memberIdsFromObj, ...memberIdsFromArr])).filter(Boolean);
+
+    if (allMemberIds.length === 0 && (!activeProject.team_members || activeProject.team_members.length === 0)) {
+      return [];
+    }
+
+    return allMemberIds.map((mId) => {
+      const tm = (activeProject.team_members || []).find((t) => String(t.member_id ?? (t as any).id) === String(mId));
+      const found = members.find((m) => String(m.id) === String(mId));
+      const realName = found?.full_name || (memberNamesMap[String(mId)] && memberNamesMap[String(mId)] !== 'Club Member' ? memberNamesMap[String(mId)] : (tm?.member_name && tm.member_name !== 'Club Member' && !tm.member_name.startsWith('Member #') ? tm.member_name : (memberNamesMap[String(mId)] || `Member #${mId}`)));
+      const realRole = tm?.role_in_project && tm.role_in_project !== 'General Member'
+        ? tm.role_in_project
+        : (activeProject.member_custom_roles?.[String(mId)] || found?.role || 'Project Engineer & Developer');
+      const email = tm?.email || found?.email || '';
+      const phone = tm?.phone || found?.phone || '';
+      const academic = found?.study_year ? `Yr ${found.study_year} • ${found.specialization || 'Projects'}` : '';
+
+      return {
+        member_id: mId,
+        member_name: realName,
+        role_in_project: realRole,
+        email,
+        phone,
+        academic,
+        foundMember: found,
+      };
+    });
+  })();
 
   return (
     <div className="space-y-5 text-slate-900 max-w-7xl mx-auto pb-10">
@@ -552,19 +676,19 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                   <div className="flex items-center justify-between mb-2.5">
                     <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
                       <Users className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Assigned Project Working Group ({(activeProject.team_members || []).length})</span>
+                      <span>Assigned Project Working Group ({assignedTeamList.length})</span>
                     </h4>
                   </div>
 
-                  {(activeProject.team_members || []).length === 0 ? (
+                  {assignedTeamList.length === 0 ? (
                     <div className="text-center p-6 bg-slate-50 border border-slate-200 text-slate-500 text-xs">
                       No members assigned to this project yet. Click "Group / Assign Team" to add members.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {(activeProject.team_members || []).map((tm, idx) => (
+                      {assignedTeamList.map((tm, idx) => (
                         <div
-                          key={idx}
+                          key={tm.member_id || idx}
                           className="p-3 bg-slate-50 border border-slate-200 flex items-start gap-2.5"
                         >
                           <div className="w-7 h-7 bg-white text-slate-700 border border-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
@@ -573,6 +697,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                           <div className="min-w-0 flex-1">
                             <h5 className="font-semibold text-xs text-slate-900 line-clamp-1">{tm.member_name}</h5>
                             <p className="text-xs text-slate-600 font-medium line-clamp-1 mt-0.5">{tm.role_in_project}</p>
+                            {tm.academic && <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{tm.academic}</p>}
                             {tm.email && <p className="text-[11px] text-slate-400 line-clamp-1">{tm.email}</p>}
                           </div>
                         </div>
@@ -1055,7 +1180,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
               </p>
 
               {members.map((mem) => {
-                const isSelected = selectedTeamMemberIds.includes(mem.id);
+                const isSelected = selectedTeamMemberIds.some((id) => String(id) === String(mem.id));
                 return (
                   <div
                     key={mem.id}
@@ -1068,7 +1193,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                     <div
                       onClick={() => {
                         if (isSelected) {
-                          setSelectedTeamMemberIds(selectedTeamMemberIds.filter((id) => id !== mem.id));
+                          setSelectedTeamMemberIds(selectedTeamMemberIds.filter((id) => String(id) !== String(mem.id)));
                         } else {
                           setSelectedTeamMemberIds([...selectedTeamMemberIds, mem.id]);
                           if (!memberRolesMap[String(mem.id)]) {

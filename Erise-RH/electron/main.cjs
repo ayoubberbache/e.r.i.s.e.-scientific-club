@@ -484,7 +484,7 @@ ipcMain.handle('db-fetch-tasks', async () => {
         ? p.assigned_member_ids
         : [];
 
-      const assignedNames = assignedIds.map((id) => memberNameMap.get(String(id)) || memberNameMap.get(Number(id)) || 'Club Member');
+      const assignedNames = assignedIds.map((id) => memberNameMap.get(String(id)) || memberNameMap.get(Number(id)) || `Member #${id}`);
       const customRoles = p.member_custom_roles || {};
 
       let status = 'pending';
@@ -669,7 +669,7 @@ ipcMain.handle('db-fetch-attendance-logs', async () => {
     return data.map((d) => ({
       id: d.id,
       member_id: d.member_id,
-      member_name: d.member_name || memberMap.get(String(d.member_id)) || memberMap.get(Number(d.member_id)) || 'Club Member',
+      member_name: d.member_name || memberMap.get(String(d.member_id)) || memberMap.get(Number(d.member_id)) || `Member #${d.member_id}`,
       event_id: d.event_id,
       event_title: d.event_title || 'Technical Workshop',
       session_date: d.session_date,

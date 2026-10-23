@@ -1,33 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Camera, CalendarCheck, Lightbulb, AlertCircle, Loader2, UserPlus, XCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  CheckCircle2, 
+  XCircle, 
+  AlertCircle, 
+  Loader2, 
+  ArrowLeft, 
+  ArrowRight,
+  User,
+  CreditCard,
+  Mail,
+  Phone,
+  GraduationCap,
+  Sparkles,
+  Camera,
+  CalendarCheck,
+  Lightbulb
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { sanitizeInput } from '../lib/security';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { STUDY_YEAR_OPTIONS } from '../data/studyYears';
 
 const SPECIALIZATIONS = ['IRIIA', 'µE', 'ENR', 'HV', 'GE'];
 
-// Simple XSS sanitizer for safe display and transmission
-function sanitizeInput(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
-}
-
 export function RegisterPage() {
   const { language, t } = useLanguage();
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
+  const isRtl = language === 'ar';
 
   const [isRegOpen, setIsRegOpen] = useState<boolean | null>(null); // null = checking DB
   const [fullName, setFullName] = useState('');
+  const [studentId, setStudentId] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [studyYear, setStudyYear] = useState<number | ''>('');
+  const [studyYear, setStudyYear] = useState<string>(''); // option id like '1_st', '1_mi'
   const [specialization, setSpecialization] = useState('');
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [honeypot, setHoneypot] = useState(''); // Anti-bot honeypot field
@@ -36,8 +43,8 @@ export function RegisterPage() {
   const [error, setError] = useState('');
   const [lastSubmitTime, setLastSubmitTime] = useState<number>(0);
 
-  const isRtl = language === 'ar';
-  const specRequired = typeof studyYear === 'number' && studyYear >= 3;
+  const selectedYearOption = STUDY_YEAR_OPTIONS.find((o) => o.id === studyYear);
+  const specRequired = !!selectedYearOption && selectedYearOption.yearNumber >= 3;
 
   const DEPARTMENTS = [
     {
@@ -85,10 +92,15 @@ export function RegisterPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof studyYear === 'number' && studyYear <= 2) {
+    if (selectedYearOption && selectedYearOption.yearNumber <= 2) {
       setSpecialization('');
     }
-  }, [studyYear]);
+  }, [selectedYearOption]);
+
+  const handleStudentIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+    setStudentId(val);
+  };
 
   const toggleDepartment = (deptName: string) => {
     setSelectedDepartments((prev) =>
@@ -105,20 +117,26 @@ export function RegisterPage() {
       return;
     }
 
-    // Rate limiting: prevent submissions faster than 5 seconds apart
+    // Rate limiting: prevent submissions faster than 4 seconds apart
     const now = Date.now();
-    if (now - lastSubmitTime < 5000) {
+    if (now - lastSubmitTime < 4000) {
       setError(t.registerPage.rateLimitError);
       return;
     }
 
     // Sanitize and validate inputs
     const cleanName = sanitizeInput(fullName.trim());
+    const cleanStudentId = studentId.replace(/\D/g, '').trim();
     const cleanEmail = sanitizeInput(email.trim().toLowerCase());
     const cleanPhone = sanitizeInput(phone.trim());
 
     if (!cleanName || cleanName.length < 3) {
       setError(t.registerPage.nameTooShort);
+      return;
+    }
+
+    if (cleanStudentId.length !== 12) {
+      setError(t.registerPage.invalidStudentId);
       return;
     }
 
@@ -134,7 +152,7 @@ export function RegisterPage() {
       return;
     }
 
-    if (!studyYear) {
+    if (!selectedYearOption) {
       setError(t.registerPage.selectYear);
       return;
     }
@@ -153,51 +171,46 @@ export function RegisterPage() {
     setLastSubmitTime(now);
 
     try {
-      const payload = {
+      const payload: any = {
         full_name: cleanName,
+        student_id: cleanStudentId,
         email: cleanEmail,
         phone: cleanPhone,
-        study_year: Number(studyYear),
-        specialization: specRequired ? specialization : null,
+        study_year: selectedYearOption.yearNumber,
+        specialization: specRequired ? specialization : (selectedYearOption.branch === 'MI' ? 'MI' : null),
         departments: selectedDepartments,
-        status: 'pending',
       };
 
-      // 1. Primary: Serverless API proxy
-      let submitted = false;
-      try {
-        const res = await fetch('/api/submit-registration', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success) submitted = true;
+      // 1. Direct Supabase insert
+      let { error: insertError } = await supabase.from('registrations').insert([payload]);
+
+      // Graceful fallback if student_id column is pending SQL migration in Supabase
+      if (insertError && (insertError.code === '42703' || insertError.message?.includes('student_id'))) {
+        console.warn('student_id column not yet created in Supabase. Inserting with fallback...');
+        const { student_id: _, ...fallbackPayload } = payload;
+        const retry = await supabase.from('registrations').insert([fallbackPayload]);
+        if (retry.error) throw retry.error;
+      } else if (insertError) {
+        if (insertError.code === '23505' || insertError.message.includes('unique')) {
+          throw new Error(t.registerPage.duplicateError);
         }
-      } catch (e) {
-        // Fallback to client Supabase insert
+        throw insertError;
       }
 
-      // 2. Direct Supabase Fallback
-      if (!submitted) {
-        const { error: insertError } = await supabase.from('registrations').insert([payload]);
-        if (insertError) {
-          if (insertError.code === '23505' || insertError.message.includes('unique')) {
-            throw new Error(t.registerPage.duplicateError);
-          }
-          throw insertError;
-        }
-      }
-
-      // Send confirmation email asynchronously
+      // 2. Send notification email to admin via Resend with complete payload
       fetch('/api/send-registration-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          full_name: cleanName,
+          student_id: cleanStudentId,
           email: cleanEmail,
-          fullName: cleanName,
-          departments: selectedDepartments.join(', '),
+          phone: cleanPhone,
+          study_year: selectedYearOption.yearNumber,
+          study_year_label: language === 'ar' ? selectedYearOption.labelAr : selectedYearOption.labelEn,
+          branch: selectedYearOption.branch,
+          specialization: specRequired ? specialization : (selectedYearOption.branch === 'MI' ? 'MI' : null),
+          departments: selectedDepartments,
         }),
       }).catch((err) => console.warn('Registration email trigger warning:', err));
 
@@ -212,32 +225,35 @@ export function RegisterPage() {
 
   if (isRegOpen === null) {
     return (
-      <div className={`min-h-[85vh] flex items-center justify-center p-4 ${isDark ? 'bg-[#0a1628]' : 'bg-[#f8fcfd]'}`}>
-        <Loader2 className={`w-8 h-8 animate-spin ${isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'}`} />
+      <div className="min-h-[85vh] flex items-center justify-center p-4 bg-dominant">
+        <div className="flex flex-col items-center gap-3 text-accent font-semibold text-sm">
+          <Loader2 className="w-8 h-8 animate-spin" />
+          <span>{t.common.loading}</span>
+        </div>
       </div>
     );
   }
 
   if (isRegOpen === false) {
     return (
-      <div className={`min-h-[85vh] flex items-center justify-center p-6 text-center rtl:text-right ${isDark ? 'bg-[#0a1628] text-slate-100' : 'bg-[#f8fcfd] text-slate-900'}`}>
+      <div className="min-h-[85vh] flex items-center justify-center p-6 text-center rtl:text-right bg-dominant">
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className={`max-w-md w-full border p-8 text-center shadow-sm ${isDark ? 'bg-[#0f2537] border-slate-800' : 'bg-white border-slate-200'}`}
+          className="card panel max-w-md w-full p-8 sm:p-10 text-center"
         >
-          <div className="w-12 h-12 bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 border border-red-200">
-            <XCircle className="w-6 h-6" />
+          <div className="w-14 h-14 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto mb-4 border border-red-500/20">
+            <XCircle className="w-7 h-7" />
           </div>
-          <h1 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>{t.registerPage.closedTitle}</h1>
-          <p className={`text-sm leading-relaxed mb-6 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-primary mb-2">
+            {t.registerPage.closedTitle}
+          </h1>
+          <p className="text-sm text-secondary leading-relaxed mb-6">
             {t.registerPage.closedDesc}
           </p>
           <Link
             to="/"
-            className={`inline-flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold border transition-colors ${
-              isDark ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-            }`}
+            className="btn-secondary px-6 py-2.5 text-xs sm:text-sm font-bold"
           >
             {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
             <span>{t.registerPage.backHome}</span>
@@ -248,42 +264,32 @@ export function RegisterPage() {
   }
 
   return (
-    <div className={`min-h-screen py-10 md:py-16 px-4 sm:px-6 lg:px-8 text-left rtl:text-right transition-colors duration-200 ${
-      isDark ? 'bg-[#0a1628] text-slate-100' : 'bg-[#f8fcfd] text-slate-900'
-    }`}>
+    <div className="min-h-screen py-10 md:py-16 px-4 sm:px-6 lg:px-8 text-left rtl:text-right bg-dominant relative z-10">
       <div className="max-w-3xl mx-auto">
-        {/* Navigation */}
+        {/* Navigation Bar */}
         <div className="mb-6 flex items-center justify-between">
           <Link
             to="/"
-            className={`inline-flex items-center gap-2 text-sm font-semibold transition-colors ${
-              isDark ? 'text-slate-400 hover:text-[#00e5ff]' : 'text-slate-600 hover:text-[#0d5c63]'
-            }`}
+            className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-muted hover:text-accent transition-colors cursor-pointer"
           >
             {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
             <span>{t.registerPage.backHome}</span>
           </Link>
-          <span className={`text-xs font-mono font-medium px-2.5 py-1 border ${
-            isDark ? 'bg-slate-800 border-slate-700 text-[#00e5ff]' : 'bg-teal-50 border-teal-200 text-[#0d5c63]'
-          }`}>
-            {t.registerPage.badge}
+
+          <span className="badge">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{t.registerPage.badge}</span>
           </span>
         </div>
 
-        {/* Card */}
-        <div className={`border p-6 sm:p-10 shadow-xs transition-colors duration-200 ${
-          isDark ? 'bg-[#0f2537] border-slate-800' : 'bg-white border-slate-200'
-        }`}>
+        {/* Form Container Card */}
+        <div className="card panel p-6 sm:p-10 shadow-xl">
           {/* Header */}
-          <div className={`border-b pb-6 mb-8 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight mb-2 ${
-              isDark ? 'text-white' : 'text-slate-900'
-            }`}>
+          <div className="border-b border-subtle pb-6 mb-8">
+            <h1 className="text-2xl sm:text-4xl font-extrabold text-primary tracking-tight mb-2">
               {t.registerPage.title}
             </h1>
-            <p className={`text-sm leading-relaxed ${
-              isDark ? 'text-slate-400' : 'text-slate-600'
-            }`}>
+            <p className="text-xs sm:text-sm text-secondary leading-relaxed">
               {t.registerPage.subtitle}
             </p>
           </div>
@@ -292,31 +298,29 @@ export function RegisterPage() {
             {success ? (
               <motion.div
                 key="success"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="py-10 text-center"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="py-12 text-center"
               >
-                <div className="w-14 h-14 bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="w-7 h-7" />
+                <div className="w-20 h-20 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto mb-6 ring-8 ring-emerald-500/5">
+                  <CheckCircle2 className="w-12 h-12" />
                 </div>
-                <h2 className={`text-2xl font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-primary mb-3">
                   {t.registerPage.successTitle}
                 </h2>
-                <p className={`text-sm max-w-md mx-auto leading-relaxed mb-6 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                <p className="text-sm sm:text-base text-secondary max-w-md mx-auto leading-relaxed mb-8">
                   {t.registerPage.successDesc}
                 </p>
                 <Link
                   to="/"
-                  className={`inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold border transition-colors ${
-                    isDark ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-                  }`}
+                  className="btn-primary px-8 py-3 text-sm font-bold"
                 >
-                  {t.registerPage.backHome}
+                  <span>{t.registerPage.backHome}</span>
                 </Link>
               </motion.div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Honeypot field */}
+              <form onSubmit={handleSubmit} className="space-y-8">
+                {/* Anti-bot Honeypot */}
                 <input
                   type="text"
                   name="website_url_check"
@@ -329,109 +333,151 @@ export function RegisterPage() {
 
                 {/* Error Banner */}
                 {error && (
-                  <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium"
+                  >
+                    <AlertCircle className="w-5 h-5 shrink-0" />
                     <span>{error}</span>
-                  </div>
+                  </motion.div>
                 )}
 
-                {/* Section 1: Personal Details */}
+                {/* Section 1: Personal & Educational Details */}
                 <div className="space-y-4">
-                  <h2 className={`text-xs font-bold uppercase tracking-wider ${
-                    isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'
-                  }`}>
-                    {language === 'ar' ? '1. البيانات الشخصية' : '1. Personal Details'}
-                  </h2>
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <span className="w-6 h-6 rounded-lg bg-accent/15 text-accent font-extrabold text-xs flex items-center justify-center border border-accent/20">1</span>
+                    <h2 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-primary">
+                      {language === 'ar' ? 'البيانات الشخصية ورقم التسجيل' : 'Personal & University Details'}
+                    </h2>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Full Name */}
                     <div className="md:col-span-2">
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <label className="block text-xs font-bold text-secondary mb-1.5">
                         {t.registerPage.fullName} <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={100}
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder={t.registerPage.fullNamePlaceholder}
-                        className={`w-full px-3.5 py-2 text-sm border transition-colors ${
-                          isDark
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none'
-                        }`}
-                      />
+                      <div className="relative">
+                        <User className="w-4 h-4 text-muted absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          required
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          placeholder={t.registerPage.fullNamePlaceholder}
+                          className="input-standard has-icon"
+                        />
+                      </div>
                     </div>
+
+                    {/* Student Educational Number (Matricule Étudiant - 12 Digits) */}
+                    <div className="md:col-span-2">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold text-secondary">
+                          {t.registerPage.studentId} <span className="text-red-500">*</span>
+                        </label>
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-bold transition-colors ${
+                          studentId.length === 12 
+                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                            : 'bg-secondary text-muted'
+                        }`}>
+                          {studentId.length}/12 {studentId.length === 12 ? '✓' : ''}
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <CreditCard className="w-4 h-4 text-muted absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]{12}"
+                          maxLength={12}
+                          required
+                          value={studentId}
+                          onChange={handleStudentIdChange}
+                          placeholder={t.registerPage.studentIdPlaceholder}
+                          className="input-standard has-icon font-mono tracking-wider text-sm"
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted mt-1 leading-normal">
+                        {t.registerPage.studentIdHint}
+                      </p>
+                    </div>
+
+                    {/* Email */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <label className="block text-xs font-bold text-secondary mb-1.5">
                         {t.registerPage.email} <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="email"
-                        required
-                        maxLength={120}
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder={t.registerPage.emailPlaceholder}
-                        className={`w-full px-3.5 py-2 text-sm border transition-colors dir-ltr ${
-                          isDark
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none'
-                        }`}
-                      />
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-muted absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder={t.registerPage.emailPlaceholder}
+                          className="input-standard has-icon"
+                        />
+                      </div>
                     </div>
+
+                    {/* Phone */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <label className="block text-xs font-bold text-secondary mb-1.5">
                         {t.registerPage.phone} <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="tel"
-                        required
-                        maxLength={25}
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder={t.registerPage.phonePlaceholder}
-                        className={`w-full px-3.5 py-2 text-sm border transition-colors dir-ltr ${
-                          isDark
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none'
-                        }`}
-                      />
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-muted absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="tel"
+                          required
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder={t.registerPage.phonePlaceholder}
+                          className="input-standard has-icon"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Section 2: Academic Background */}
-                <div className="space-y-4 pt-2">
-                  <h2 className={`text-xs font-bold uppercase tracking-wider ${
-                    isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'
-                  }`}>
-                    {language === 'ar' ? '2. المستوى الأكاديمي والتخصص' : '2. Academic Background'}
-                  </h2>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <span className="w-6 h-6 rounded-lg bg-accent/15 text-accent font-extrabold text-xs flex items-center justify-center border border-accent/20">2</span>
+                    <h2 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-primary">
+                      {language === 'ar' ? 'المستوى الدراسي والتخصص' : 'Academic Background'}
+                    </h2>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Year */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <label className="block text-xs font-bold text-secondary mb-1.5">
                         {t.registerPage.studyYear} <span className="text-red-500">*</span>
                       </label>
-                      <select
-                        required
-                        value={studyYear}
-                        onChange={(e) => setStudyYear(e.target.value ? Number(e.target.value) : '')}
-                        className={`w-full px-3.5 py-2 text-sm border transition-colors ${
-                          isDark
-                            ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
-                            : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none'
-                        }`}
-                      >
-                        <option value="">{t.registerPage.selectYear}</option>
-                        <option value={1}>{language === 'ar' ? 'السنة الأولى (جذع مشترك)' : '1st Year (Preparatory)'}</option>
-                        <option value={2}>{language === 'ar' ? 'السنة الثانية (جذع مشترك)' : '2nd Year (Preparatory)'}</option>
-                        <option value={3}>{language === 'ar' ? 'السنة الثالثة (تخصص)' : '3rd Year (Specialization)'}</option>
-                        <option value={4}>{language === 'ar' ? 'السنة الرابعة (هندسة / ماستر 1)' : '4th Year (Engineering)'}</option>
-                        <option value={5}>{language === 'ar' ? 'السنة الخامسة (هندسة / ماستر 2)' : '5th Year (Graduation)'}</option>
-                      </select>
+                      <div className="relative">
+                        <GraduationCap className="w-4 h-4 text-muted absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <select
+                          required
+                          value={studyYear}
+                          onChange={(e) => setStudyYear(e.target.value)}
+                          className="input-standard has-icon cursor-pointer appearance-none"
+                        >
+                          <option value="">{t.registerPage.selectYear}</option>
+                          {STUDY_YEAR_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {language === 'ar' ? opt.labelAr : opt.labelEn}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
+
+                    {/* Specialization */}
                     <div>
-                      <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <label className="block text-xs font-bold text-secondary mb-1.5">
                         {t.registerPage.specialization} {specRequired && <span className="text-red-500">*</span>}
                       </label>
                       <select
@@ -439,17 +485,15 @@ export function RegisterPage() {
                         onChange={(e) => setSpecialization(e.target.value)}
                         disabled={!specRequired}
                         required={specRequired}
-                        className={`w-full px-3.5 py-2 text-sm border transition-colors ${
-                          specRequired
-                            ? (isDark
-                                ? 'bg-slate-950 border-slate-800 text-white focus:border-[#00e5ff] focus:outline-none'
-                                : 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:border-[#0d5c63] focus:outline-none')
-                            : (isDark
-                                ? 'bg-slate-900/40 border-slate-800/40 text-slate-500 cursor-not-allowed opacity-60'
-                                : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60')
+                        className={`input-standard cursor-pointer appearance-none ${
+                          !specRequired ? 'opacity-60 cursor-not-allowed bg-secondary/50' : ''
                         }`}
                       >
-                        <option value="">{specRequired ? t.registerPage.selectSpec : (language === 'ar' ? 'متاح لطلبة السنة 3 فما فوق' : 'Available for 3rd year & above')}</option>
+                        <option value="">
+                          {specRequired 
+                            ? t.registerPage.selectSpec 
+                            : (language === 'ar' ? 'متاح لطلبة السنة 3 فما فوق' : 'Available for 3rd year & above')}
+                        </option>
                         {SPECIALIZATIONS.map((s) => (
                           <option key={s} value={s}>{s}</option>
                         ))}
@@ -458,82 +502,74 @@ export function RegisterPage() {
                   </div>
                 </div>
 
-                {/* Section 3: Departments */}
-                <div className="space-y-3 pt-2">
-                  <h2 className={`text-xs font-bold uppercase tracking-wider ${
-                    isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]'
-                  }`}>
-                    {t.registerPage.departmentsTitle} <span className="text-red-500">*</span>
-                  </h2>
-                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t.registerPage.departmentsSubtitle}</p>
-                  <div className="grid grid-cols-1 gap-2.5">
+                {/* Section 3: Department Selection */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <span className="w-6 h-6 rounded-lg bg-accent/15 text-accent font-extrabold text-xs flex items-center justify-center border border-accent/20">3</span>
+                    <div>
+                      <h2 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-primary">
+                        {t.registerPage.departmentsTitle} <span className="text-red-500">*</span>
+                      </h2>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-secondary">
+                    {t.registerPage.departmentsSubtitle}
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-3">
                     {DEPARTMENTS.map((dept) => {
                       const isSelected = selectedDepartments.includes(dept.name);
                       const Icon = dept.icon;
+
                       return (
-                        <div
+                        <button
                           key={dept.id}
+                          type="button"
                           onClick={() => toggleDepartment(dept.name)}
-                          className={`p-3.5 border cursor-pointer transition-colors flex items-start gap-3.5 ${
+                          className={`w-full p-4 rounded-xl border text-left rtl:text-right transition-all flex items-start gap-4 cursor-pointer ${
                             isSelected
-                              ? (isDark
-                                  ? 'border-[#00e5ff] bg-[#00e5ff]/10 text-white'
-                                  : 'border-[#0d5c63] bg-teal-50/70 text-slate-900')
-                              : (isDark
-                                  ? 'border-slate-800 bg-slate-900/40 hover:border-slate-700 text-slate-300'
-                                  : 'border-slate-200 bg-slate-50 hover:border-slate-300 text-slate-800')
+                              ? 'bg-accent/10 border-accent shadow-sm'
+                              : 'bg-dominant border-subtle hover:border-accent/40'
                           }`}
                         >
-                          <div
-                            className={`w-4 h-4 mt-0.5 border flex items-center justify-center shrink-0 transition-colors ${
-                              isSelected
-                                ? (isDark ? 'border-[#00e5ff] bg-[#00e5ff]' : 'border-[#0d5c63] bg-[#0d5c63]')
-                                : (isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white')
-                            }`}
-                          >
-                            {isSelected && (
-                              <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            )}
-                          </div>
-                          <div className={`w-8 h-8 flex items-center justify-center shrink-0 border ${
+                          {/* Checkbox indicator */}
+                          <div className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                             isSelected
-                              ? (isDark ? 'bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]/30' : 'bg-teal-100 text-[#0d5c63] border-teal-200')
-                              : (isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-white text-slate-500 border-slate-200')
+                              ? 'bg-accent border-accent text-white'
+                              : 'bg-surface border-subtle'
+                          }`}>
+                            {isSelected && <span className="text-xs font-bold leading-none">✓</span>}
+                          </div>
+
+                          {/* Department Icon */}
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected ? 'bg-accent text-white' : 'bg-secondary text-accent'
                           }`}>
                             <Icon className="w-4 h-4" />
                           </div>
+
+                          {/* Details */}
                           <div className="flex-1 min-w-0">
-                            <span className={`block text-sm font-bold ${
-                              isSelected
-                                ? (isDark ? 'text-[#00e5ff]' : 'text-[#0d5c63]')
-                                : (isDark ? 'text-white' : 'text-slate-900')
-                            }`}>
+                            <h3 className="text-sm font-bold text-primary mb-0.5">
                               {dept.displayName}
-                            </span>
-                            <span className={`block text-xs mt-0.5 leading-relaxed ${
-                              isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}>
+                            </h3>
+                            <p className="text-xs text-muted leading-relaxed">
                               {dept.description}
-                            </span>
+                            </p>
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* Submit button */}
-                <div className={`pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                {/* Submit Application Button */}
+                <div className="pt-4 border-t border-subtle flex items-center justify-end">
                   <button
                     type="submit"
                     disabled={submitting}
-                    className={`w-full py-2.5 px-6 font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-colors disabled:opacity-50 cursor-pointer shadow-xs ${
-                      isDark
-                        ? 'bg-[#00e5ff] hover:bg-[#5ef0ff] text-[#0a1628]'
-                        : 'bg-[#0d5c63] hover:bg-[#0a4a50] text-white'
-                    }`}
+                    className="btn-primary w-full sm:w-auto px-10 py-3.5 text-sm font-bold"
                   >
                     {submitting ? (
                       <>
@@ -542,8 +578,8 @@ export function RegisterPage() {
                       </>
                     ) : (
                       <>
-                        <UserPlus className="w-4 h-4" />
                         <span>{t.registerPage.submit}</span>
+                        {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                       </>
                     )}
                   </button>

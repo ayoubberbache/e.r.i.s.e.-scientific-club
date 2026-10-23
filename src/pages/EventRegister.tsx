@@ -386,8 +386,10 @@ export function EventRegister() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          full_name: sanitizedMembers[0].full_name,
           email: sanitizedMembers[0].email,
-          fullName: sanitizedMembers[0].full_name,
+          phone: sanitizedMembers[0].phone || '',
+          study_year: studyYear || '',
           eventTitle: getLocalized(event, 'title') || event.title,
           isEvent: true
         })

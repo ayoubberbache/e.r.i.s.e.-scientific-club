@@ -1,6 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar as CalendarIcon, MapPin, Clock, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight, X, Users, UserCheck, GraduationCap, Tag } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Calendar as CalendarIcon, 
+  MapPin, 
+  Clock, 
+  ArrowRight, 
+  ArrowLeft, 
+  ChevronLeft, 
+  ChevronRight, 
+  X, 
+  Users, 
+  UserCheck, 
+  GraduationCap, 
+  Tag,
+  ExternalLink,
+  CalendarDays,
+  Sparkles
+} from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { supabase } from '../lib/supabase';
 import { ModelViewer } from '../components/ModelViewer';
@@ -93,12 +110,32 @@ export function Events() {
     return d.getMonth() === currentMonth.getMonth() && d.getFullYear() === currentMonth.getFullYear();
   });
 
+  const [selectedDay, setSelectedDay] = useState<number | null>(() => today.getDate());
+
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+    setSelectedDay(null);
   };
 
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+    setSelectedDay(null);
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    setSelectedDay(today.getDate());
+  };
+
+  const getGoogleCalendarUrl = (ev: any) => {
+    const rawStart = ev.start_date || ev.date || '';
+    const rawEnd = ev.end_date || rawStart;
+    const cleanStart = rawStart ? rawStart.replace(/-/g, '') : '';
+    const cleanEnd = rawEnd ? rawEnd.replace(/-/g, '') : cleanStart;
+    const text = encodeURIComponent(getLocalized(ev, 'title') || ev.title);
+    const details = encodeURIComponent(getLocalized(ev, 'description') || ev.description || '');
+    const loc = encodeURIComponent(getLocalized(ev, 'location') || ev.location || '');
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${cleanStart}/${cleanEnd}&details=${details}&location=${loc}`;
   };
 
   const monthNames = t.eventsPage.months;
@@ -109,7 +146,7 @@ export function Events() {
   for (let i = 0; i < firstDayOfMonth; i++) days.push(null);
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
 
-  const calendarEvents: Record<number, string[]> = {};
+  const calendarEvents: Record<number, any[]> = {};
   dbEvents.forEach(event => {
     const startD = getEventStartDate(event);
     const endD = event.end_date ? new Date(event.end_date + 'T23:59:59') : startD;
@@ -117,8 +154,6 @@ export function Events() {
     
     const curMonthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const curMonthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-    
-    const eventTitle = getLocalized(event, 'title') || event.title;
 
     if (endD && endD >= curMonthStart && startD <= curMonthEnd) {
       const rangeStart = Math.max(startD.getDate(), startD.getMonth() === currentMonth.getMonth() && startD.getFullYear() === currentMonth.getFullYear() ? startD.getDate() : 1);
@@ -126,14 +161,16 @@ export function Events() {
       
       for (let day = rangeStart; day <= rangeEnd; day++) {
         if (!calendarEvents[day]) calendarEvents[day] = [];
-        calendarEvents[day].push(eventTitle);
+        calendarEvents[day].push(event);
       }
     } else if (startD.getMonth() === currentMonth.getMonth() && startD.getFullYear() === currentMonth.getFullYear()) {
       const day = startD.getDate();
       if (!calendarEvents[day]) calendarEvents[day] = [];
-      calendarEvents[day].push(eventTitle);
+      calendarEvents[day].push(event);
     }
   });
+
+  const selectedDayEvents = selectedDay ? (calendarEvents[selectedDay] || []) : [];
 
   return (
     <div className="min-h-screen bg-dominant py-12">
@@ -341,87 +378,201 @@ export function Events() {
             </div>
           </div>
 
-          {/* Calendar Widget */}
+          {/* Redesigned Interactive Calendar Widget */}
           <div className="lg:col-span-1">
-            <div className="bg-surface rounded-2xl shadow-sm border border-subtle p-6 sticky top-28 text-left rtl:text-right">
-              <h2 className="text-xl font-bold text-primary mb-6 flex items-center justify-between">
-                <span>{t.eventsPage.calendarTitle}</span>
-                <div className="flex gap-2">
-                  <button onClick={isRtl ? nextMonth : prevMonth} aria-label="Previous Month" className="p-1 rounded-full hover:bg-secondary text-muted transition-colors cursor-pointer">
-                    {isRtl ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            <div className="card panel p-5 sm:p-6 sticky top-28 text-left rtl:text-right shadow-xl">
+              {/* Calendar Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-subtle mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                    <CalendarDays className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-primary leading-tight">
+                      {t.eventsPage.calendarTitle}
+                    </h2>
+                    <span className="text-[11px] text-muted font-medium">
+                      {monthlyUpcomingEvents.length} {language === 'ar' ? 'فعاليات هذا الشهر' : 'events this month'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={goToToday}
+                    className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-secondary text-accent hover:bg-accent hover:text-white transition-colors cursor-pointer"
+                    title={language === 'ar' ? 'الانتقال إلى اليوم' : 'Jump to Today'}
+                  >
+                    {language === 'ar' ? 'اليوم' : 'Today'}
                   </button>
-                  <button onClick={isRtl ? prevMonth : nextMonth} aria-label="Next Month" className="p-1 rounded-full hover:bg-secondary text-muted transition-colors cursor-pointer">
-                    {isRtl ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+
+                  <button 
+                    onClick={isRtl ? nextMonth : prevMonth} 
+                    aria-label="Previous Month" 
+                    className="p-1.5 rounded-lg hover:bg-secondary text-muted hover:text-primary transition-colors cursor-pointer"
+                  >
+                    {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                  </button>
+
+                  <button 
+                    onClick={isRtl ? prevMonth : nextMonth} 
+                    aria-label="Next Month" 
+                    className="p-1.5 rounded-lg hover:bg-secondary text-muted hover:text-primary transition-colors cursor-pointer"
+                  >
+                    {isRtl ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   </button>
                 </div>
-              </h2>
-              
-              <div className="text-center font-semibold text-lg text-accent mb-4">
+              </div>
+
+              {/* Month & Year Title */}
+              <div className="text-center font-extrabold text-base text-accent mb-3 tracking-tight">
                 {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
               </div>
 
+              {/* Day Labels */}
               <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                {t.eventsPage.daysOfWeek.map(day => (
-                  <div key={day} className="text-xs font-medium text-muted py-2">{day}</div>
+                {t.eventsPage.daysOfWeek.map((day) => (
+                  <div key={day} className="text-[11px] font-bold text-muted py-1">
+                    {day}
+                  </div>
                 ))}
               </div>
 
+              {/* Days Grid */}
               <div className="grid grid-cols-7 gap-1 text-center">
                 {days.map((day, idx) => {
-                  const isToday = day === today.getDate() && 
-                                 currentMonth.getMonth() === today.getMonth() && 
-                                 currentMonth.getFullYear() === today.getFullYear();
-                  const hasEvent = day && calendarEvents[day];
-                  
+                  if (!day) {
+                    return <div key={`empty-${idx}`} className="aspect-square" />;
+                  }
+
+                  const isToday = 
+                    day === today.getDate() &&
+                    currentMonth.getMonth() === today.getMonth() &&
+                    currentMonth.getFullYear() === today.getFullYear();
+
+                  const isSelected = selectedDay === day;
+                  const dayEvents = calendarEvents[day] || [];
+                  const hasEvents = dayEvents.length > 0;
+
                   return (
-                    <div 
-                      key={idx} 
-                      className={`
-                        aspect-square flex items-center justify-center text-sm rounded-full relative
-                        ${!day ? '' : 'hover:bg-secondary cursor-pointer transition-colors'}
-                        ${isToday ? 'bg-accent/10 text-accent font-bold ring-1 ring-accent/30' : 'text-secondary'}
-                        ${hasEvent ? 'font-bold underline decoration-accent decoration-2 underline-offset-4' : ''}
-                      `}
-                      title={hasEvent ? calendarEvents[day].join(', ') : ''}
+                    <motion.button
+                      key={`day-${day}`}
+                      whileTap={{ scale: 0.92 }}
+                      onClick={() => setSelectedDay(day)}
+                      className={`aspect-square flex flex-col items-center justify-center text-xs rounded-xl relative transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-accent text-white font-extrabold shadow-md shadow-accent/25 ring-2 ring-accent'
+                          : isToday
+                          ? 'bg-accent/10 text-accent font-bold ring-1.5 ring-accent/40 hover:bg-accent/20'
+                          : hasEvents
+                          ? 'bg-secondary/60 text-primary font-bold hover:bg-secondary'
+                          : 'text-secondary hover:bg-secondary/40'
+                      }`}
+                      title={hasEvents ? `${dayEvents.length} event(s)` : undefined}
                     >
-                      {day}
-                      {hasEvent && (
-                        <div className="absolute bottom-1.5 w-1 h-1 bg-accent rounded-full"></div>
+                      <span className="leading-none">{day}</span>
+                      
+                      {/* Event Dot Indicators */}
+                      {hasEvents && (
+                        <div className="flex items-center gap-0.5 mt-1">
+                          {dayEvents.slice(0, 3).map((ev, eIdx) => {
+                            const isHack = ev.registration_type === 'hackathon';
+                            const isWorkshop = ev.registration_type === 'workshop' || ev.registration_type === 'bootcamp';
+                            const dotColor = isSelected 
+                              ? 'bg-white' 
+                              : isHack 
+                              ? 'bg-purple-500' 
+                              : isWorkshop 
+                              ? 'bg-cyan-400' 
+                              : 'bg-emerald-500';
+
+                            return (
+                              <span 
+                                key={eIdx} 
+                                className={`w-1.5 h-1.5 rounded-full ${dotColor}`} 
+                              />
+                            );
+                          })}
+                        </div>
                       )}
-                    </div>
+                    </motion.button>
                   );
                 })}
               </div>
 
-              <div className="mt-8 pt-6 border-t border-subtle">
-                <h3 className="text-sm font-bold text-primary mb-4 uppercase tracking-wider">{t.eventsPage.upcomingThisMonth}</h3>
-                {monthlyUpcomingEvents.length > 0 ? (
+              {/* Selected Day Event Details Flyout Card - Only rendered if an event exists */}
+              {selectedDay && selectedDayEvents.length > 0 && (
+                <div className="mt-5 p-4 rounded-xl bg-secondary/40 border border-subtle">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {language === 'ar' ? `أحداث يوم ${selectedDay} ${monthNames[currentMonth.getMonth()]}` : `Events on ${monthNames[currentMonth.getMonth()]} ${selectedDay}`}
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/10 text-accent">
+                      {selectedDayEvents.length} {language === 'ar' ? 'فعالية' : 'scheduled'}
+                    </span>
+                  </div>
+
                   <div className="space-y-3">
-                    {monthlyUpcomingEvents.map(event => {
-                      const eventDate = getEventStartDate(event) || new Date();
-                      const eventDay = eventDate.getDate();
-                      const eventMonth = monthNames[eventDate.getMonth()].slice(0, 3);
-                      const eventTitle = getLocalized(event, 'title') || event.title;
-                      const eventTime = getLocalized(event, 'time') || event.time;
+                    {selectedDayEvents.map((ev: any) => {
+                      const evTitle = getLocalized(ev, 'title') || ev.title;
+                      const evLoc = getLocalized(ev, 'location') || ev.location;
+                      const evTime = getLocalized(ev, 'time') || ev.time;
 
                       return (
-                        <div key={event.id} className="flex items-start gap-3 text-sm">
-                          <div className="w-10 h-10 rounded-lg bg-secondary text-accent flex flex-col items-center justify-center shrink-0 font-bold">
-                            <span className="text-xs leading-none uppercase">{eventMonth}</span>
-                            <span className="leading-none mt-1">{eventDay}</span>
+                        <div key={ev.id} className="p-3 rounded-lg bg-surface border border-subtle space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="text-xs font-bold text-primary leading-snug line-clamp-2">
+                              {evTitle}
+                            </h4>
+                            <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-accent/10 text-accent shrink-0">
+                              {ev.registration_type || 'Event'}
+                            </span>
                           </div>
-                          <div>
-                            <p className="font-semibold text-primary line-clamp-1">{eventTitle}</p>
-                            <p className="text-muted text-xs mt-0.5">{eventTime}</p>
+
+                          <div className="flex items-center gap-3 text-[11px] text-muted flex-wrap">
+                            {evTime && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-accent" />
+                                <span>{evTime}</span>
+                              </span>
+                            )}
+                            {evLoc && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-accent" />
+                                <span className="truncate max-w-[140px]">{evLoc}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 pt-2 border-t border-subtle/50">
+                            <a
+                              href={getGoogleCalendarUrl(ev)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline cursor-pointer"
+                              title="Add to Google Calendar"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>{language === 'ar' ? 'إضافة إلى تقويم Google' : 'Google Calendar'}</span>
+                            </a>
+
+                            {!ev.no_registration && !ev.noRegistration && (
+                              <Link
+                                to={`/events/${slugify(evTitle)}/register`}
+                                className="ml-auto text-[11px] font-bold px-2.5 py-1 rounded bg-accent text-white hover:bg-accent-muted transition-colors cursor-pointer"
+                              >
+                                {language === 'ar' ? 'تسجيل' : 'Register'}
+                              </Link>
+                            )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                ) : (
-                  <p className="text-sm text-muted italic">{t.eventsPage.noEventsThisMonth}</p>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 

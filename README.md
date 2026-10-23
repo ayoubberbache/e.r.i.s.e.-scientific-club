@@ -3,7 +3,7 @@
 
   <h1>E.R.I.S.E. Scientific Club</h1>
 
-  <p><strong>Engineers for Renewable energy Innovation &amp; Sustainability of the Environment</strong></p>
+  <p><strong>Engineers for Renewable Energy, Innovation &amp; Environmental Sustainability</strong></p>
 
   <p>
     <a href="https://erise-scientific-club.site">🌐 Website</a> ·

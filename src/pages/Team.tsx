@@ -236,8 +236,12 @@ export function Team() {
                 <RegistrationButton />
               </div>
               
-              <div className="hidden lg:block h-64 overflow-hidden rounded-3xl border border-subtle">
-                <img src="/team-assets/our team.jpg" alt="Team" className="w-full h-full object-cover" />
+              <div className="w-full aspect-[1024/800] overflow-hidden rounded-2xl sm:rounded-3xl border border-subtle shadow-lg bg-dominant">
+                <img 
+                  src={`${import.meta.env.BASE_URL}team-assets/our team.jpg?v=2`} 
+                  alt="E.R.I.S.E. Team" 
+                  className="w-full h-full object-cover object-top" 
+                />
               </div>
             </div>
           </div>

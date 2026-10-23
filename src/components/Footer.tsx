@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, MapPin, ArrowUpRight, Globe } from 'lucide-react';
+import { Mail, MapPin, ArrowUpRight, Globe, Instagram, Linkedin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from './Logo';
 import { CONTACT } from '../data/siteData';
@@ -151,7 +151,9 @@ export function Footer() {
                 className="flex items-center justify-between p-2 rounded-lg border border-subtle bg-dominant/50 hover:bg-dominant hover:border-accent text-secondary hover:text-primary transition-colors text-xs font-semibold group"
               >
                 <div className="flex items-center gap-2.5">
-                  <img src={`${import.meta.env.BASE_URL}instagram.png`} alt="Instagram" className="w-4 h-4 object-contain" />
+                  <div className="w-6 h-6 rounded-md bg-accent/10 text-accent flex items-center justify-center shrink-0 group-hover:bg-accent group-hover:text-white transition-colors">
+                    <Instagram className="w-3.5 h-3.5" />
+                  </div>
                   <span>Instagram</span>
                 </div>
                 <ArrowUpRight className="w-3.5 h-3.5 text-muted group-hover:text-accent transition-colors" />
@@ -164,7 +166,9 @@ export function Footer() {
                 className="flex items-center justify-between p-2 rounded-lg border border-subtle bg-dominant/50 hover:bg-dominant hover:border-accent text-secondary hover:text-primary transition-colors text-xs font-semibold group"
               >
                 <div className="flex items-center gap-2.5">
-                  <img src={`${import.meta.env.BASE_URL}linkedin.png`} alt="LinkedIn" className="w-4 h-4 object-contain" />
+                  <div className="w-6 h-6 rounded-md bg-accent/10 text-accent flex items-center justify-center shrink-0 group-hover:bg-accent group-hover:text-white transition-colors">
+                    <Linkedin className="w-3.5 h-3.5" />
+                  </div>
                   <span>LinkedIn</span>
                 </div>
                 <ArrowUpRight className="w-3.5 h-3.5 text-muted group-hover:text-accent transition-colors" />
@@ -175,7 +179,9 @@ export function Footer() {
                 className="flex items-center justify-between p-2 rounded-lg border border-subtle bg-dominant/50 hover:bg-dominant hover:border-accent text-secondary hover:text-primary transition-colors text-xs font-semibold group"
               >
                 <div className="flex items-center gap-2.5">
-                  <img src={`${import.meta.env.BASE_URL}gmail.png`} alt="Gmail" className="w-4 h-4 object-contain" />
+                  <div className="w-6 h-6 rounded-md bg-accent/10 text-accent flex items-center justify-center shrink-0 group-hover:bg-accent group-hover:text-white transition-colors">
+                    <Mail className="w-3.5 h-3.5" />
+                  </div>
                   <span>Direct Mail</span>
                 </div>
                 <ArrowUpRight className="w-3.5 h-3.5 text-muted group-hover:text-accent transition-colors" />

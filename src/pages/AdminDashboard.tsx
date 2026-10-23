@@ -108,6 +108,30 @@ export function AdminDashboard() {
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [memberModalOpen, setMemberModalOpen] = useState<boolean>(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState<string>('');
+  const [isEditingStudentId, setIsEditingStudentId] = useState<boolean>(false);
+  const [editStudentIdVal, setEditStudentIdVal] = useState<string>('');
+  const [savingStudentId, setSavingStudentId] = useState<boolean>(false);
+
+  const handleSaveStudentId = async () => {
+    if (!selectedMember) return;
+    const cleaned = editStudentIdVal.replace(/\D/g, '').slice(0, 12);
+    setSavingStudentId(true);
+    try {
+      const { error } = await supabase
+        .from('registrations')
+        .update({ student_id: cleaned || null })
+        .eq('id', selectedMember.id);
+      if (error) throw error;
+
+      setSelectedMember((prev: any) => prev ? { ...prev, student_id: cleaned } : prev);
+      setData((prev: any[]) => prev.map((item) => item.id === selectedMember.id ? { ...item, student_id: cleaned } : item));
+      setIsEditingStudentId(false);
+    } catch (err: any) {
+      alert('Failed to update student ID: ' + (err.message || 'Error'));
+    } finally {
+      setSavingStudentId(false);
+    }
+  };
   
   // Email Automation State
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -292,12 +316,13 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       return;
     }
 
-    const headers = ['ID', 'Full Name', 'Email', 'Phone', 'Study Year', 'Specialization', 'Departments', 'Status', 'Registered At'];
+    const headers = ['ID', 'Full Name', 'Student Edu ID', 'Email', 'Phone', 'Study Year', 'Specialization', 'Departments', 'Status', 'Registered At'];
     const rows = data.map((item) => {
       const depts = Array.isArray(item.departments) ? item.departments.join(' | ') : (item.departments || '');
       return [
         item.id,
         item.full_name || '',
+        item.student_id || '',
         item.email || '',
         item.phone || '',
         item.study_year || '',
@@ -1825,7 +1850,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               <label className="block text-xs font-bold text-slate-700 mb-2">Departments (English Tags)</label>
               <div className="flex flex-wrap gap-3">
                 {['Projects', 'Organization', 'Media'].map((dept) => {
-                  const currentOrgs = Array.from(
+                  const currentOrgs: string[] = Array.from(
                     new Set((formData.organization || '').split(',').map((s: string) => s.trim()).filter(Boolean))
                   );
                   const isChecked = currentOrgs.includes(dept);
@@ -2408,6 +2433,15 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       </div>
 
                       <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                        {item.student_id ? (
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 bg-cyan-50 border border-cyan-200 text-cyan-800 rounded">
+                            ID: {item.student_id}
+                          </span>
+                        ) : (
+                          <span className="font-mono text-[10px] text-slate-400 italic">
+                            No ID
+                          </span>
+                        )}
                         <span>Yr {item.study_year}</span>
                         {item.specialization && <span>• {item.specialization}</span>}
                         <span>• {item.email}</span>
@@ -3011,6 +3045,81 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
             {/* Modal Body */}
             <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
+              {/* Student Edu Number (Matricule Étudiant - 10 Digits) */}
+              <div className="p-3 bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Student Edu Number (10 Digits)
+                  </span>
+                  {isEditingStudentId ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveStudentId}
+                        disabled={savingStudentId}
+                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                      >
+                        {savingStudentId ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setIsEditingStudentId(false)}
+                        className="text-[11px] text-slate-500 hover:text-slate-800 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setIsEditingStudentId(true);
+                        setEditStudentIdVal(selectedMember.student_id || '');
+                      }}
+                      className="text-[11px] font-bold text-[#0d5c63] hover:underline cursor-pointer"
+                    >
+                      {selectedMember.student_id ? 'Edit Number' : '+ Add 12-Digit ID'}
+                    </button>
+                  )}
+                </div>
+
+                {isEditingStudentId ? (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="text"
+                      maxLength={12}
+                      autoFocus
+                      value={editStudentIdVal}
+                      onChange={(e) => setEditStudentIdVal(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                      placeholder="e.g. 202435012345 (12 digits)"
+                      className="w-full text-xs font-mono px-3 py-1.5 border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:border-[#0d5c63]"
+                    />
+                    <span className="text-[11px] font-mono text-slate-400 shrink-0">
+                      {editStudentIdVal.length}/12
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-mono text-xs font-bold text-slate-900 tracking-wider">
+                      {selectedMember.student_id ? (
+                        <span className="px-2 py-0.5 bg-cyan-50 border border-cyan-200 text-cyan-800 rounded">
+                          {selectedMember.student_id}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic font-sans font-normal">
+                          No student number assigned yet. Click "Add 12-Digit ID" above to set manually.
+                        </span>
+                      )}
+                    </span>
+                    {selectedMember.student_id && (
+                      <button
+                        onClick={() => copyToClipboard(selectedMember.student_id, 'student_id')}
+                        className="text-[11px] text-slate-500 hover:text-slate-800 font-medium ml-2 cursor-pointer"
+                      >
+                        {copiedField === 'student_id' ? 'Copied' : 'Copy ID'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Contact Information */}
               <div>
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Contact Details</h4>

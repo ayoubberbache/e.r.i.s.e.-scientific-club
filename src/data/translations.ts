@@ -134,6 +134,10 @@ export interface TranslationDict {
     backHome: string;
     fullName: string;
     fullNamePlaceholder: string;
+    studentId: string;
+    studentIdPlaceholder: string;
+    studentIdHint: string;
+    invalidStudentId: string;
     email: string;
     emailPlaceholder: string;
     phone: string;
@@ -149,6 +153,13 @@ export interface TranslationDict {
     successTitle: string;
     successDesc: string;
     errorPrefix: string;
+    rateLimitError: string;
+    nameTooShort: string;
+    invalidEmail: string;
+    invalidPhone: string;
+    selectDeptError: string;
+    duplicateError: string;
+    genericError: string;
     deptMediaTitle: string;
     deptMediaDesc: string;
     deptOrgTitle: string;
@@ -222,34 +233,34 @@ export interface TranslationDict {
 
 export const translations: Record<Language, TranslationDict> = {
   en: {
-    clubFullName: "Energy Robotic Innovation Sustainable Engineers",
+    clubFullName: "Engineers for Renewable Energy, Innovation & Environmental Sustainability",
     clubShortName: "E.R.I.S.E.",
-    clubSlogan: "Innovating for Tomorrow's Sustainable Future",
+    clubSlogan: "Engineers for Renewable Energy, Innovation & Environmental Sustainability",
     clubAcronymBreakdown: [
       {
         letter: "E",
-        word: "Energy",
-        desc: "Exploring clean and renewable energy systems, solar, wind, and green power solutions.",
+        word: "Engineers",
+        desc: "Empowering visionary student engineers to pioneer green technologies and lead future ecological transitions.",
       },
       {
         letter: "R",
-        word: "Robotic",
-        desc: "Engineering intelligent robotics, automation, IoT, embedded systems, and smart control.",
+        word: "Renewable Energy",
+        desc: "Advancing clean solar, wind, green hydrogen, and next-generation renewable energy systems.",
       },
       {
         letter: "I",
         word: "Innovation",
-        desc: "Pioneering creative engineering solutions, hackathons, and transformative student projects.",
+        desc: "Pioneering creative engineering solutions, hands-on scientific projects, robotics, and technological breakthroughs.",
       },
       {
         letter: "S",
-        word: "Sustainable",
-        desc: "Committed to eco-friendly practices, circular economy, and long-term environmental protection.",
+        word: "Sustainability",
+        desc: "Committed to circular economy, eco-responsibility, and long-term environmental protection.",
       },
       {
         letter: "E",
-        word: "Engineers",
-        desc: "Empowering visionary student engineers at the National School of Renewable Energies.",
+        word: "Environmental",
+        desc: "Preserving ecosystems, combating environmental challenges, and building a sustainable green tomorrow.",
       },
     ],
     nav: {
@@ -263,14 +274,14 @@ export const translations: Record<Language, TranslationDict> = {
       switchTo: "العربية",
     },
     home: {
-      heroBadge: "Energy • Robotics • Innovation • Sustainability",
-      heroTitle: "Energy Robotic Innovation Sustainable Engineers",
+      heroBadge: "Renewable Energy • Innovation • Environmental Sustainability • Engineering",
+      heroTitle: "Engineers for Renewable Energy, Innovation & Environmental Sustainability",
       heroSubtitle: "Welcome to E.R.I.S.E. Scientific Club — a vibrant hub of student engineers at the Higher National School of Renewable Energies, Environment and Sustainable Development in Batna, Algeria.",
       acronymSectionTitle: "The Core of E.R.I.S.E.",
       acronymSectionSubtitle: "Our identity defines every project, competition, and initiative we build.",
       meetZaitona: "Meet",
       zaitonaRole: "Official Club Mascot",
-      zaitonaDesc: "Meet Zaitona, our official club mascot! Inspired by the strength and resilience of the olive tree, she’s here to guide you through our club, projects, upcoming events, and everything we build together at E.R.I.S.E.",
+      zaitonaDesc: "Symbolizing endurance, growth, and Algerian heritage, Zaitona embodies the spirit of our student engineers. Rooted in the resilience of the olive tree and driven by green innovation, she represents our mission to build a sustainable and technologically empowered future.",
       zaitonaRoots: "Roots",
       zaitonaHeritage: "Algerian Heritage",
       zaitonaGrowth: "Ambition",
@@ -359,12 +370,16 @@ export const translations: Record<Language, TranslationDict> = {
     registerPage: {
       badge: "Club Recruitment Intake",
       title: "Join E.R.I.S.E. Scientific Club",
-      subtitle: "Become part of an energetic community of future engineers passionate about renewable energy, robotics, and hands-on innovation.",
+      subtitle: "Become part of an energetic community of future engineers passionate about renewable energy, innovation, and environmental sustainability.",
       closedTitle: "Registrations Are Currently Closed",
       closedDesc: "Recruitment is not open at the moment. Follow our social media channels to be notified when the next intake round begins!",
       backHome: "Back to Home",
       fullName: "Full Name",
       fullNamePlaceholder: "e.g. John Doe",
+      studentId: "Student Educational Number (12 digits)",
+      studentIdPlaceholder: "e.g. 202435012345",
+      studentIdHint: "Enter your 12-digit university student ID card number (Matricule Étudiant)",
+      invalidStudentId: "Student Educational Number must be exactly 12 numeric digits.",
       email: "Email Address",
       emailPlaceholder: "your.email@example.com",
       phone: "Phone Number",
@@ -380,12 +395,19 @@ export const translations: Record<Language, TranslationDict> = {
       successTitle: "Application Submitted Successfully!",
       successDesc: "Thank you for applying to E.R.I.S.E.! Our team will review your application and contact you soon for the next steps.",
       errorPrefix: "Please correct the following: ",
+      rateLimitError: "Please wait a moment before submitting again.",
+      nameTooShort: "Full name must be at least 3 characters long.",
+      invalidEmail: "Please enter a valid email address.",
+      invalidPhone: "Please enter a valid Algerian phone number (e.g., 0550 12 34 56).",
+      selectDeptError: "Please select at least one department.",
+      duplicateError: "An application with this email, phone, or student ID already exists.",
+      genericError: "An error occurred while submitting your registration. Please try again.",
       deptMediaTitle: "Media & Design",
       deptMediaDesc: "Content creation, visual storytelling, photography, graphic design, and social media.",
       deptOrgTitle: "Organization & Logistics",
       deptOrgDesc: "Event coordination, planning, logistics management, member relations, and scheduling.",
-      deptProjectsTitle: "Technical Projects & Robotics",
-      deptProjectsDesc: "Hands-on engineering, robotics, prototyping, clean energy systems, and research.",
+      deptProjectsTitle: "Technical Projects & Innovation",
+      deptProjectsDesc: "Hands-on engineering, renewable systems prototyping, robotics, and scientific research.",
     },
     eventRegisterPage: {
       backToEvents: "Back to Events",
@@ -426,10 +448,10 @@ export const translations: Record<Language, TranslationDict> = {
       successDesc: "Your registration has been successfully recorded. Check your email for further instructions and updates.",
     },
     toast: {
-      regOpenTitle: "Registrations Are Open!",
-      regOpenDesc: "Join E.R.I.S.E. Scientific Club and become part of our robotic and sustainable innovation community.",
-      registerNow: "Register Now",
-      later: "Later",
+      regOpenTitle: "Recruitment Intake Open",
+      regOpenDesc: "Join E.R.I.S.E. Scientific Club — Engineers for Renewable Energy, Innovation & Environmental Sustainability.",
+      registerNow: "Apply Now",
+      later: "Dismiss",
     },
     common: {
       allRightsReserved: "All rights reserved.",
@@ -445,34 +467,34 @@ export const translations: Record<Language, TranslationDict> = {
     },
   },
   ar: {
-    clubFullName: "مهندسو الطاقة، الروبوتات، الابتكار والاستدامة",
+    clubFullName: "مهندسون من أجل الطاقة المتجددة، الابتكار والاستدامة البيئية",
     clubShortName: "إيريس • E.R.I.S.E.",
-    clubSlogan: "نبتكر اليوم من أجل مستقبل مستدام",
+    clubSlogan: "مهندسون من أجل الطاقة المتجددة، الابتكار والاستدامة البيئية",
     clubAcronymBreakdown: [
       {
         letter: "E",
-        word: "Energy • الطاقة",
-        desc: "استكشاف الطاقات المتجددة والنظيفة، الطاقة الشمسية، وطاقة الرياح وحلول الطاقة الخضراء.",
+        word: "Engineers • مهندسون",
+        desc: "تمكين نخبة من مهندسي المستقبل لقيادة التحول الطاقوي والبيئي المستدام وحل التحديات الهندسية.",
       },
       {
         letter: "R",
-        word: "Robotic • الروبوتات",
-        desc: "هندسة الأنظمة الروبوتية الذكية، الأتمتة، إنترنت الأشياء (IoT)، والأنظمة المدمجة والتحكم.",
+        word: "Renewable Energy • طاقة متجددة",
+        desc: "تطوير أنظمة الطاقة الشمسية وطاقة الرياح والهيدروجين الأخضر والحلول الطاقوية النظيفة.",
       },
       {
         letter: "I",
         word: "Innovation • الابتكار",
-        desc: "تطوير حلول هندسية مبتكرة، والمشاركة في الهاكاثونات والمسابقات والمشاريع الطلابية الرائدة.",
+        desc: "ابتكار حلول هندسية متقدمة، ومشاريع علمية رائدة، ومسابقات وهاكاثونات تقنية تطبيقية.",
       },
       {
         letter: "S",
-        word: "Sustainable • الاستدامة",
-        desc: "الالتزام بالممارسات الصديقة للبيئة والاقتصاد الدائري والحفاظ على البيئة للأجيال القادمة.",
+        word: "Sustainability • الاستدامة",
+        desc: "الالتزام بالاقتصاد الدائري، حماية البيئة، والمسؤولية الإيكولوجية المستدامة للأجيال القادمة.",
       },
       {
         letter: "E",
-        word: "Engineers • المهندسون",
-        desc: "تمكين نخبة من مهندسي المستقبل بالمدرسة الوطنية العليا للطاقات المتجددة بباتنة.",
+        word: "Environmental • الاستدامة البيئية",
+        desc: "صون النظم البيئية، خفض الانبعاثات، وبناء مستقبل أخضر مستدام لكوكب الأرض.",
       },
     ],
     nav: {
@@ -486,14 +508,14 @@ export const translations: Record<Language, TranslationDict> = {
       switchTo: "English",
     },
     home: {
-      heroBadge: "الطاقة • الروبوتات • الابتكار • الاستدامة",
-      heroTitle: "مهندسو الطاقة، الروبوتات، الابتكار والاستدامة",
+      heroBadge: "طاقة متجددة • ابتكار • استدامة بيئية • هندسة",
+      heroTitle: "مهندسون من أجل الطاقة المتجددة، الابتكار والاستدامة البيئية",
       heroSubtitle: "مرحبًا بكم في النادي العلمي E.R.I.S.E. — مجتمع طلابي ريادي يجمع نخبة مهندسي المستقبل بالمدرسة الوطنية العليا للطاقات المتجددة والبيئة والتنمية المستدامة بباتنة، الجزائر.",
       acronymSectionTitle: "جوهر وهوية نادي E.R.I.S.E.",
       acronymSectionSubtitle: "حروف اسم نادينا تمثل ركائزنا الخمسة في كل مشروع وابتكار ومبادرة نقوم بها.",
       meetZaitona: "تعرّف على",
       zaitonaRole: "التميمة الرسمية للنادي",
-      zaitonaDesc: "تعرّفوا على «زيتونة»، التميمة الرسمية لنادي E.R.I.S.E.! مستوحاة من صمود وأصالة شجرة الزيتون، وسترافقكم لاكتشاف مشاريعنا، ورشاتنا، وفعالياتنا وكل ما نبنيه معًا في النادي.",
+      zaitonaDesc: "تجسّد «زيتونة» روح مهندسي المستقبل في نادي E.R.I.S.E.؛ حيث تستلهم أصالتها وصمودها من شجرة الزيتون العريقة، وطموحها من الابتكار التكنولوجي والطاقات النظيفة، لتمثّل شغفنا المشترك نحو بناء غدٍ هندسي مستدام.",
       zaitonaRoots: "الأصالة",
       zaitonaHeritage: "الهوية والتراث",
       zaitonaGrowth: "الطموح",
@@ -582,12 +604,16 @@ export const translations: Record<Language, TranslationDict> = {
     registerPage: {
       badge: "فترة التوظيف والانخراط",
       title: "انضم إلى النادي العلمي E.R.I.S.E.",
-      subtitle: "كن جزءاً من مجتمع هندسي ملهم يجمع الشغف بالطاقات المتجددة، الروبوتات، والمشاريع المبتكرة.",
+      subtitle: "كن جزءاً من مجتمع هندسي ملهم يجمع الشغف بالطاقات المتجددة، الابتكار، والاستدامة البيئية.",
       closedTitle: "التسجيلات مغلقة حالياً",
       closedDesc: "باب الانخراط غير متاح في الوقت الحالي. تابعونا عبر منصات التواصل الاجتماعي لمعرفة موعد إطلاق دفعة التسجيل القادمة!",
       backHome: "العودة للرئيسية",
       fullName: "الاسم واللقب",
       fullNamePlaceholder: "مثال: يونس بن علي",
+      studentId: "رقم التسجيل الجامعي (12 رقماً)",
+      studentIdPlaceholder: "مثال: 202435012345",
+      studentIdHint: "أدخل رقم بطاقة الطالب الجامعية المكون من 12 رقماً (Matricule Étudiant)",
+      invalidStudentId: "يجب أن يتكون رقم التسجيل الجامعي من 12 رقماً فقط.",
       email: "البريد الإلكتروني",
       emailPlaceholder: "your.email@example.com",
       phone: "رقم الهاتف",
@@ -603,12 +629,19 @@ export const translations: Record<Language, TranslationDict> = {
       successTitle: "تم إرسال طلبك بنجاح!",
       successDesc: "شكراً لاهتمامك بالانضمام إلى E.R.I.S.E.! ستقوم لجنة النادي بمراجعة طلبك والتواصل معك قريباً لإعلامك بالخطوات القادمة.",
       errorPrefix: "يرجى تصحيح التالي: ",
+      rateLimitError: "يرجى الانتظار قليلاً قبل إعادة إرسال الاستمارة.",
+      nameTooShort: "الاسم واللقب يجب أن يحتوي على 3 أحرف على الأقل.",
+      invalidEmail: "يرجى إدخال عنوان بريد إلكتروني صحيح.",
+      invalidPhone: "يرجى إدخال رقم هاتف جزائري صالح (مثال: 0550 12 34 56).",
+      selectDeptError: "يرجى اختيار لجنة واحدة على الأقل.",
+      duplicateError: "يوجد تسجيل مسبق بنفس البريد الإلكتروني أو رقم الهاتف أو رقم التسجيل الجامعي.",
+      genericError: "حدث خطأ غير متوقع أثناء إرسال التسجيل. يرجى المحاولة مرة أخرى.",
       deptMediaTitle: "الإعلام والتصميم",
       deptMediaDesc: "صناعة المحتوى المرئي، التصميم الجرافيكي، التصوير، وإدارة منصات التواصل الاجتماعي.",
       deptOrgTitle: "التنظيم واللوجستيات",
       deptOrgDesc: "تنسيق الفعاليات، التخطيط، تسيير الحضور واللوجستيات، والتنظيم الميداني للأنشطة.",
-      deptProjectsTitle: "المشاريع التقنية والروبوتات",
-      deptProjectsDesc: "العمل التطبيقي، برمجة وبناء الروبوتات، مشاريع الطاقات المتجددة، والبحث التطويري.",
+      deptProjectsTitle: "المشاريع التقنية والابتكار",
+      deptProjectsDesc: "التطوير الهندسي التطبيقي، نمذجة حلول الطاقة المتجددة، الروبوتات، والبحث العلمي.",
     },
     eventRegisterPage: {
       backToEvents: "العودة للفعاليات",
@@ -649,10 +682,10 @@ export const translations: Record<Language, TranslationDict> = {
       successDesc: "تم استلام استمارة التسجيل الخاصة بك بنجاح. يرجى متابعة بريدك الإلكتروني لمعرفة التفاصيل والتعليمات اللاحقة.",
     },
     toast: {
-      regOpenTitle: "التسجيلات مفتوحة الآن!",
-      regOpenDesc: "انضم إلى النادي العلمي E.R.I.S.E. وكن جزءاً من مجتمعنا الريادي في الابتكار والروبوتات والاستدامة.",
-      registerNow: "سجّل الآن",
-      later: "لاحقاً",
+      regOpenTitle: "باب الانخراط مفتوح الآن",
+      regOpenDesc: "انضم إلى النادي العلمي E.R.I.S.E. — مهندسون من أجل الطاقة المتجددة، الابتكار والاستدامة البيئية.",
+      registerNow: "قدّم الآن",
+      later: "إغلاق",
     },
     common: {
       allRightsReserved: "جميع الحقوق محفوظة.",

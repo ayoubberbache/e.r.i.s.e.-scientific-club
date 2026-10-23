@@ -55,8 +55,8 @@ export function Navbar() {
               <div className="hidden lg:block border-l border-subtle pl-3 rtl:border-l-0 rtl:border-r rtl:pr-3">
                 <p className="text-[11px] font-medium text-muted leading-tight max-w-[210px]">
                   {language === 'ar' 
-                    ? 'المدرسة الوطنية العليا للطاقات المتجددة والبيئة — باتنة' 
-                    : 'Energy • Robotics • Innovation • Sustainability'}
+                    ? 'مهندسون من أجل الطاقة المتجددة، الابتكار والاستدامة البيئية' 
+                    : 'Engineers for Renewable Energy, Innovation & Environmental Sustainability'}
                 </p>
               </div>
             </Link>

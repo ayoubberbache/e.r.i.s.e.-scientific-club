@@ -351,7 +351,7 @@ export async function getMemberNamesMap(): Promise<Record<string, string>> {
 
   // 2. Also check local cached department members across departments
   try {
-    ['Projects', 'Organization', 'Media'].forEach((d) => {
+    (['Projects', 'Organization', 'Media'] as Department[]).forEach((d) => {
       const cached = getCustomDeptMembers(d);
       cached.forEach((m) => {
         if (m.id && m.full_name) {

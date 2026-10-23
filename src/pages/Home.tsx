@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, ArrowLeft, Target, Users, Zap, Award, BookOpen, Star, Bot, Cpu, Leaf, Compass, Lightbulb } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Target, Users, Zap, Award, BookOpen, Star, Bot, Cpu, Leaf, Compass, Lightbulb, Sparkles, Globe2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { HOME } from '../data/siteData';
 import { Logo } from '../components/Logo';
@@ -42,11 +42,15 @@ export function Home() {
   const formatImageUrl = (path?: string) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
+    if (path.includes('team-assets')) {
+      const clean = path.startsWith('/') ? path.slice(1) : path;
+      return `${import.meta.env.BASE_URL}${clean}?v=2`;
+    }
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
     return supabase.storage.from('public_images').getPublicUrl(cleanPath).data.publicUrl;
   };
 
-  const acronymIcons = [Zap, Bot, Lightbulb, Leaf, Users];
+  const acronymIcons = [Users, Zap, Lightbulb, Leaf, Globe2];
 
   return (
     <div className="bg-dominant">
@@ -67,15 +71,11 @@ export function Home() {
             {/* UPCOMING EVENTS NOTIFICATION BANNER (Appears just below big logo) */}
             <UpcomingEventsNotification />
             
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent-tint text-accent text-sm font-bold mb-6 animate-fade-in mx-auto shadow-sm">
-              <Zap className="w-4 h-4" />
-              <span>{t.home.heroBadge}</span>
-            </div>
-            
-            <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold text-primary tracking-tight leading-[1.15] mb-8 animate-fade-in">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold text-primary tracking-tight leading-[1.2] mb-8 animate-fade-in">
               {language === 'en' ? (
                 <>
-                  Energy <span className="text-accent">•</span> Robotic <span className="text-accent">•</span> Innovation <span className="text-accent">•</span> Sustainable <span className="text-accent">•</span> Engineers
+                  Engineers for Renewable Energy, <br className="hidden sm:inline" />
+                  <span className="text-accent">Innovation &amp; Environmental Sustainability</span>
                 </>
               ) : (
                 t.home.heroTitle
@@ -165,25 +165,6 @@ export function Home() {
                 </React.Suspense>
               </div>
             </div>
-
-            {/* Impact Cards integrated into Hero */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 animate-fade-in text-left rtl:text-right">
-              {[
-                { icon: Award, label: t.home.impactSustainabilityTitle, text: t.home.impactSustainabilityDesc },
-                { icon: Zap, label: t.home.impactRenewableTitle, text: t.home.impactRenewableDesc },
-                { icon: Bot, label: t.home.impactRoboticsTitle, text: t.home.impactRoboticsDesc }
-              ].map((item, i) => (
-                <div key={i} className="p-6 bg-surface rounded-xl border border-subtle hover:border-accent transition-colors flex flex-col gap-4">
-                  <div className="w-10 h-10 shrink-0 rounded-lg bg-accent-tint flex items-center justify-center text-accent">
-                    <item.icon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-primary mb-2 leading-tight">{item.label}</h3>
-                    <p className="text-secondary text-sm leading-relaxed">{item.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </section>
@@ -220,11 +201,11 @@ export function Home() {
 
             {/* Team Preview */}
             <Link to="/team" className="group bg-surface rounded-2xl shadow-sm border border-subtle overflow-hidden hover:shadow-xl transition-all flex flex-col text-left rtl:text-right">
-              <div className="h-48 relative overflow-hidden">
+              <div className="h-56 relative overflow-hidden bg-dominant">
                 <img 
-                  src={formatImageUrl(HOME.teamPreviewImage || 'team-assets/our team.JPG')} 
+                  src={`${import.meta.env.BASE_URL}team-assets/our team.jpg?v=2`} 
                   alt="Team" 
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                  className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" 
                 />
                 <div className="absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors" />
               </div>

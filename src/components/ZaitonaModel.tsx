@@ -1,24 +1,5 @@
 import React, { useEffect, useState } from 'react';
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string;
-        alt?: string;
-        'auto-rotate'?: boolean;
-        'camera-controls'?: boolean;
-        'disable-zoom'?: boolean;
-        'disable-pan'?: boolean;
-        'shadow-intensity'?: string;
-        'environment-image'?: string;
-        exposure?: string;
-        style?: React.CSSProperties;
-      };
-    }
-  }
-}
-
 export function ZaitonaViewer() {
   const [loaded, setLoaded] = useState(false);
 
@@ -39,9 +20,11 @@ export function ZaitonaViewer() {
     );
   }
 
+  const ModelTag = 'model-viewer' as any;
+
   return (
     <div className="absolute inset-0 w-full h-full flex items-center justify-center">
-      <model-viewer
+      <ModelTag
         src="/zaitona.glb"
         alt="Zaitona 3D Model"
         camera-controls

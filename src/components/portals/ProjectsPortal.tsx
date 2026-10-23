@@ -101,7 +101,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                 assigned_at: p.created_at || new Date().toISOString()
               }));
 
-          const team = existingTeam.map((tm) => {
+          const team = existingTeam.map((tm: any) => {
             const mId = tm.member_id ?? tm.id;
             const found = mems.find((m) => String(m.id) === String(mId));
             const realName = found?.full_name || (nameMap[String(mId)] && nameMap[String(mId)] !== 'Club Member' ? nameMap[String(mId)] : (tm.member_name && tm.member_name !== 'Club Member' ? tm.member_name : (nameMap[String(mId)] || `Member #${mId}`)));
@@ -157,7 +157,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
               assigned_at: p.created_at || new Date().toISOString()
             }));
 
-        const team = existingTeam.map((tm) => {
+        const team = existingTeam.map((tm: any) => {
           const mId = tm.member_id ?? tm.id;
           const found = members.find((m) => String(m.id) === String(mId));
           const realName = found?.full_name || (nameMap[String(mId)] && nameMap[String(mId)] !== 'Club Member' ? nameMap[String(mId)] : (tm.member_name && tm.member_name !== 'Club Member' ? tm.member_name : (nameMap[String(mId)] || `Member #${mId}`)));

@@ -11,6 +11,7 @@ import { Achievements } from './pages/Achievements';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { RegisterPage } from './pages/Register';
 import { PosterGenerator } from './pages/PosterGenerator';
+import { AnimatedBackground } from './components/AnimatedBackground';
 import { EventRegister } from './pages/EventRegister';
 import { RegistrationNotification } from './components/RegistrationNotification';
 
@@ -108,23 +109,26 @@ export default function App() {
         <LanguageProvider>
           <Router>
             <div className="flex flex-col min-h-screen font-sans relative">
-              <Navbar />
-              <main className="flex-grow">
-                <Routes>
-                  <Route path="/" element={<Home />} />
-                  <Route path="/events" element={<Events />} />
-                  <Route path="/events/:eventId/register" element={<EventRegister />} />
-                  <Route path="/team" element={<Team />} />
-                  <Route path="/achievements" element={<Achievements />} />
-                  <Route path="/register" element={<RegisterPage />} />
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="/admin/:portalSlug" element={<AdminDashboard />} />
-                  <Route path="/poster" element={<PosterGenerator />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </main>
-              <Footer />
-              <RegistrationNotification />
+              <AnimatedBackground />
+              <div className="relative z-10 flex flex-col min-h-screen">
+                <Navbar />
+                <main className="flex-grow">
+                  <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/events" element={<Events />} />
+                    <Route path="/events/:eventId/register" element={<EventRegister />} />
+                    <Route path="/team" element={<Team />} />
+                    <Route path="/achievements" element={<Achievements />} />
+                    <Route path="/register" element={<RegisterPage />} />
+                    <Route path="/admin" element={<AdminDashboard />} />
+                    <Route path="/admin/:portalSlug" element={<AdminDashboard />} />
+                    <Route path="/poster" element={<PosterGenerator />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </main>
+                <Footer />
+                <RegistrationNotification />
+              </div>
             </div>
           </Router>
         </LanguageProvider>

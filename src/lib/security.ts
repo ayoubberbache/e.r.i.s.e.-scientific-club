@@ -15,6 +15,8 @@ export function sanitizeString(input: string | undefined | null): string {
     .replace(/\//g, '&#x2F;');
 }
 
+export const sanitizeInput = sanitizeString;
+
 /**
  * Validates email format strictly
  */

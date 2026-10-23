@@ -231,6 +231,29 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, id, status });
     }
 
+    if (action === 'update_registration' || action === 'update_member') {
+      const { id, student_id, full_name, email, phone, study_year, specialization, departments, status } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'Missing registration id' });
+      const updateData: any = {};
+      if (student_id !== undefined) updateData.student_id = student_id;
+      if (full_name !== undefined) updateData.full_name = full_name;
+      if (email !== undefined) updateData.email = email;
+      if (phone !== undefined) updateData.phone = phone;
+      if (study_year !== undefined) updateData.study_year = study_year;
+      if (specialization !== undefined) updateData.specialization = specialization;
+      if (departments !== undefined) updateData.departments = departments;
+      if (status !== undefined) updateData.status = status;
+
+      const { data, error } = await supabase
+        .from('registrations')
+        .update(updateData)
+        .eq('id', id)
+        .select();
+
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ success: true, data: data?.[0] });
+    }
+
     if (action === 'save_project') {
       const { project } = req.body || {};
       if (!project) return res.status(400).json({ error: 'Missing project payload' });

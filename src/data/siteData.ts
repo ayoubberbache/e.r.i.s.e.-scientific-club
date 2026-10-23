@@ -51,7 +51,7 @@ export const CONTACT = {
 
 export const HOME = {
   hero: {
-    title: "Engineers For Renewable Energy Innovation & Environmental Sustainability",
+    title: "Engineers For Renewable Energy, Innovation & Environmental Sustainability",
     subtitle: "Welcome to E.R.I.S.E. Scientific Club. We are a community of passionate students at the Higher National School of Renewable Energies, Environment, and Sustainable Development in Batna, Algeria.",
   },
   about: {

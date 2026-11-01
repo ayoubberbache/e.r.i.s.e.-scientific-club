@@ -7,7 +7,7 @@ import {
   Award, Calendar, Star, Download, CheckCircle, XCircle, Menu, Car, 
   Building2, UserCheck, Clock, Filter, FileText, Check, Copy, Phone, 
   Mail, GraduationCap, Search, ExternalLink, Cpu, Camera, Building,
-  ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound, Sliders
+  ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound, Sliders, RefreshCw
 } from 'lucide-react';
 import { authenticateUser, DEPARTMENT_HEADS, SUPER_ADMIN_CONFIG } from '../data/departmentHeads';
 import { Department, UserRole, DepartmentHeadUser } from '../types/portals';
@@ -147,7 +147,41 @@ export function AdminDashboard() {
   const [eventTitle, setEventTitle] = useState('');
   const [eventNotes, setEventNotes] = useState('');
 
-  const [memberStatusFilter, setMemberStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [memberStatusFilter, setMemberStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'meeting_sent' | 'meeting_pending' | 'acceptance_sent' | 'acceptance_pending'>('all');
+  const [syncingEmailLogs, setSyncingEmailLogs] = useState<boolean>(false);
+  const [syncResultBanner, setSyncResultBanner] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const handleSyncResendEmailLogs = async () => {
+    setSyncingEmailLogs(true);
+    setSyncResultBanner(null);
+    try {
+      const res = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: getAdminAuthHeaders(),
+        body: JSON.stringify({ action: 'sync_email_logs' })
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData?.error || 'Failed to sync with Resend API');
+      }
+
+      setSyncResultBanner({
+        type: 'success',
+        message: `Sync complete! Scanned ${resData.totalFetchedFromResend} emails from Resend: ${resData.meetingEmailsFound} interview invitations & ${resData.acceptanceEmailsFound} acceptances found. Synced ${resData.syncedRecipientsCount} applicant records.`
+      });
+
+      fetchData('registrations');
+    } catch (err: any) {
+      console.error('Error syncing Resend email logs:', err);
+      setSyncResultBanner({
+        type: 'error',
+        message: err.message || 'Error pulling email logs from Resend.'
+      });
+    } finally {
+      setSyncingEmailLogs(false);
+    }
+  };
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
 
@@ -213,6 +247,7 @@ export function AdminDashboard() {
         dateTime: meetingDateTime,
         eventTitle: eventTitle,
         notes: eventNotes,
+        registrationId: selectedMember?.id,
       };
 
       const res = await fetch('/api/send-recruitment-email', {
@@ -238,6 +273,32 @@ export function AdminDashboard() {
       }
 
       setEmailSuccessMsg(`Email sent successfully to ${recipientEmail}!`);
+      const sentNow = new Date().toISOString();
+      setData((prev) => prev.map((item) => {
+        if (item.id === selectedMember?.id || (recipientEmail && item.email?.toLowerCase() === recipientEmail.toLowerCase())) {
+          return {
+            ...item,
+            meeting_email_sent: emailType === 'meeting' ? true : item.meeting_email_sent,
+            meeting_email_sent_at: emailType === 'meeting' ? sentNow : item.meeting_email_sent_at,
+            acceptance_email_sent: emailType === 'acceptance' ? true : item.acceptance_email_sent,
+            acceptance_email_sent_at: emailType === 'acceptance' ? sentNow : item.acceptance_email_sent_at,
+            status: emailType === 'acceptance' ? 'approved' : item.status,
+          };
+        }
+        return item;
+      }));
+
+      if (selectedMember) {
+        setSelectedMember((prev: any) => ({
+          ...prev,
+          meeting_email_sent: emailType === 'meeting' ? true : prev.meeting_email_sent,
+          meeting_email_sent_at: emailType === 'meeting' ? sentNow : prev.meeting_email_sent_at,
+          acceptance_email_sent: emailType === 'acceptance' ? true : prev.acceptance_email_sent,
+          acceptance_email_sent_at: emailType === 'acceptance' ? sentNow : prev.acceptance_email_sent_at,
+          status: emailType === 'acceptance' ? 'approved' : prev.status,
+        }));
+      }
+
       if (emailType === 'acceptance' && selectedMember && selectedMember.status !== 'approved') {
         handleMemberStatusChange(selectedMember.id, 'approved');
       }
@@ -316,7 +377,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       return;
     }
 
-    const headers = ['ID', 'Full Name', 'Student Edu ID', 'Email', 'Phone', 'Study Year', 'Specialization', 'Departments', 'Status', 'Registered At'];
+    const headers = ['ID', 'Full Name', 'Student Edu ID', 'Email', 'Phone', 'Study Year', 'Specialization', 'Departments', 'Status', 'Meeting Email Sent', 'Meeting Sent At', 'Acceptance Email Sent', 'Acceptance Sent At', 'Registered At'];
     const rows = data.map((item) => {
       const depts = Array.isArray(item.departments) ? item.departments.join(' | ') : (item.departments || '');
       return [
@@ -329,6 +390,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         item.specialization || '',
         depts,
         item.status || 'pending',
+        item.meeting_email_sent ? 'YES' : 'NO',
+        item.meeting_email_sent_at || '',
+        item.acceptance_email_sent ? 'YES' : 'NO',
+        item.acceptance_email_sent_at || '',
         item.registered_at || ''
       ];
     });
@@ -2273,12 +2338,25 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     const approvedCount = data.filter((r) => r.status === 'approved').length;
     const pendingCount = data.filter((r) => !r.status || r.status === 'pending').length;
     const rejectedCount = data.filter((r) => r.status === 'rejected').length;
+    const meetingSentCount = data.filter((r) => Boolean(r.meeting_email_sent)).length;
+    const meetingPendingCount = totalCount - meetingSentCount;
+    const acceptanceSentCount = data.filter((r) => Boolean(r.acceptance_email_sent)).length;
+    const acceptancePendingCount = totalCount - acceptanceSentCount;
 
     const filteredMembers = data.filter((item) => {
       const status = item.status || 'pending';
-      if (memberStatusFilter !== 'all' && status !== memberStatusFilter) {
-        return false;
+      if (memberStatusFilter === 'pending' || memberStatusFilter === 'approved' || memberStatusFilter === 'rejected') {
+        if (status !== memberStatusFilter) return false;
+      } else if (memberStatusFilter === 'meeting_sent') {
+        if (!item.meeting_email_sent) return false;
+      } else if (memberStatusFilter === 'meeting_pending') {
+        if (item.meeting_email_sent) return false;
+      } else if (memberStatusFilter === 'acceptance_sent') {
+        if (!item.acceptance_email_sent) return false;
+      } else if (memberStatusFilter === 'acceptance_pending') {
+        if (item.acceptance_email_sent) return false;
       }
+
       if (memberSearchQuery.trim()) {
         const q = memberSearchQuery.toLowerCase();
         const depts = Array.isArray(item.departments) ? item.departments.join(' ') : (item.departments || '');
@@ -2287,7 +2365,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         const matchPhone = item.phone?.toLowerCase().includes(q);
         const matchSpec = item.specialization?.toLowerCase().includes(q);
         const matchDept = depts.toLowerCase().includes(q);
-        return matchName || matchEmail || matchPhone || matchSpec || matchDept;
+        const matchId = item.student_id?.toLowerCase().includes(q);
+        return matchName || matchEmail || matchPhone || matchSpec || matchDept || matchId;
       }
       return true;
     });
@@ -2305,6 +2384,19 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={handleSyncResendEmailLogs}
+              disabled={syncingEmailLogs}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-60"
+              title="Pull latest delivery logs from Resend API and match sent status"
+            >
+              {syncingEmailLogs ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              <span>{syncingEmailLogs ? 'Syncing...' : 'Sync Email Logs'}</span>
+            </button>
             {totalCount > 0 && (
               <button
                 onClick={exportClubRegistrationsCSV}
@@ -2334,6 +2426,29 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </div>
         </div>
 
+        {syncResultBanner && (
+          <div className={`p-3.5 border text-xs font-medium flex items-center justify-between gap-3 ${
+            syncResultBanner.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : 'bg-rose-50 border-rose-300 text-rose-900'
+          }`}>
+            <div className="flex items-center gap-2">
+              {syncResultBanner.type === 'success' ? (
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>{syncResultBanner.message}</span>
+            </div>
+            <button
+              onClick={() => setSyncResultBanner(null)}
+              className="text-slate-400 hover:text-slate-700 text-xs p-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Filter and Search Bar */}
         <div className="bg-white border border-slate-200 p-3 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           {/* Search Box */}
@@ -2360,9 +2475,13 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {[
               { id: 'all', label: `All (${totalCount})` },
-              { id: 'pending', label: `Pending (${pendingCount})`, color: 'text-amber-700' },
-              { id: 'approved', label: `Approved (${approvedCount})`, color: 'text-emerald-700' },
-              { id: 'rejected', label: `Rejected (${rejectedCount})`, color: 'text-rose-700' },
+              { id: 'pending', label: `Pending (${pendingCount})` },
+              { id: 'approved', label: `Approved (${approvedCount})` },
+              { id: 'rejected', label: `Rejected (${rejectedCount})` },
+              { id: 'meeting_sent', label: `Meeting Sent (${meetingSentCount})` },
+              { id: 'meeting_pending', label: `Meeting Pending (${meetingPendingCount})` },
+              { id: 'acceptance_sent', label: `Acceptance Sent (${acceptanceSentCount})` },
+              { id: 'acceptance_pending', label: `Acceptance Pending (${acceptancePendingCount})` },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -2457,6 +2576,35 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                           ))}
                         </div>
                       )}
+
+                      {/* Email Delivery Status Badges */}
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        {item.meeting_email_sent ? (
+                          <span
+                            className="px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold flex items-center gap-1 rounded"
+                            title={item.meeting_email_sent_at ? `Meeting invite sent on ${new Date(item.meeting_email_sent_at).toLocaleString()}` : 'Meeting invite sent'}
+                          >
+                            <Calendar className="w-2.5 h-2.5" /> Meeting Sent
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-slate-50 border border-slate-200 text-slate-400 text-[10px] font-medium rounded">
+                            Meeting: Not Sent
+                          </span>
+                        )}
+
+                        {item.acceptance_email_sent ? (
+                          <span
+                            className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold flex items-center gap-1 rounded"
+                            title={item.acceptance_email_sent_at ? `Acceptance email sent on ${new Date(item.acceptance_email_sent_at).toLocaleString()}` : 'Acceptance email sent'}
+                          >
+                            <CheckCircle className="w-2.5 h-2.5" /> Acceptance Sent
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-slate-50 border border-slate-200 text-slate-400 text-[10px] font-medium rounded">
+                            Acceptance: Not Sent
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -3274,6 +3422,41 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 </button>
               </div>
 
+              {/* Recruitment Email Tracking Overview */}
+              <div className="bg-slate-50 border border-slate-200 p-3 space-y-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
+                  <span>Recruitment Email Tracking</span>
+                  <span className="text-[10px] font-normal text-slate-400">Resend Status</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 bg-white border border-slate-200 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-blue-600" /> Meeting:
+                    </span>
+                    {selectedMember.meeting_email_sent ? (
+                      <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 text-[10px] border border-blue-200 flex items-center gap-1 rounded">
+                        <Check className="w-3 h-3" /> Sent {selectedMember.meeting_email_sent_at ? `(${new Date(selectedMember.meeting_email_sent_at).toLocaleDateString()})` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium text-[10px]">Not Sent</span>
+                    )}
+                  </div>
+
+                  <div className="p-2 bg-white border border-slate-200 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-emerald-600" /> Acceptance:
+                    </span>
+                    {selectedMember.acceptance_email_sent ? (
+                      <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 text-[10px] border border-emerald-200 flex items-center gap-1 rounded">
+                        <Check className="w-3 h-3" /> Sent {selectedMember.acceptance_email_sent_at ? `(${new Date(selectedMember.acceptance_email_sent_at).toLocaleDateString()})` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium text-[10px]">Not Sent</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Recruitment Email Automation Actions */}
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
                 <button
@@ -3285,10 +3468,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     setEmailErrorMsg(null);
                     setEmailModalOpen(true);
                   }}
-                  className="py-2 px-2.5 bg-white text-slate-800 hover:bg-slate-100 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                  className="py-2 px-2.5 bg-white text-slate-800 hover:bg-slate-100 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Calendar className="w-3.5 h-3.5 text-slate-600" />
-                  <span>Send Meeting Email</span>
+                  <span>{selectedMember.meeting_email_sent ? 'Resend Meeting Email' : 'Send Meeting Email'}</span>
                 </button>
 
                 <button
@@ -3305,10 +3488,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     setEmailErrorMsg(null);
                     setEmailModalOpen(true);
                   }}
-                  className="py-2 px-2.5 bg-white text-slate-800 hover:bg-slate-100 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                  className="py-2 px-2.5 bg-white text-slate-800 hover:bg-slate-100 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5 text-slate-600" />
-                  <span>Send Acceptance Email</span>
+                  <span>{selectedMember.acceptance_email_sent ? 'Resend Acceptance Email' : 'Send Acceptance Email'}</span>
                 </button>
               </div>
             </div>
@@ -3347,6 +3530,21 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
             <div className="text-xs text-slate-600 space-y-1">
               <p>Recipient: <strong className="text-slate-900">{targetRecipientName || selectedMember?.full_name}</strong> ({targetEmail || selectedMember?.email})</p>
             </div>
+
+            {/* Resend Notice if previously sent */}
+            {!emailSuccessMsg && emailType === 'meeting' && (selectedMember?.meeting_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.meeting_email_sent) && (
+              <div className="p-2.5 bg-blue-50 border border-blue-200 text-blue-800 text-xs flex items-center gap-2 rounded">
+                <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Notice: A meeting email was previously sent to this recipient. Submitting will resend it smoothly.</span>
+              </div>
+            )}
+
+            {!emailSuccessMsg && emailType === 'acceptance' && (selectedMember?.acceptance_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.acceptance_email_sent) && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 rounded">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Notice: An acceptance email was previously sent to this recipient. Submitting will resend it smoothly.</span>
+              </div>
+            )}
 
             {emailSuccessMsg && (
               <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center gap-2">
@@ -3519,7 +3717,13 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   ) : (
                     <>
                       <Mail className="w-3.5 h-3.5" />
-                      <span>Send Email</span>
+                      <span>
+                        {emailType === 'meeting' && (selectedMember?.meeting_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.meeting_email_sent)
+                          ? 'Resend Meeting Email'
+                          : emailType === 'acceptance' && (selectedMember?.acceptance_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.acceptance_email_sent)
+                          ? 'Resend Acceptance Email'
+                          : 'Send Email'}
+                      </span>
                     </>
                   )}
                 </button>

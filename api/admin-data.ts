@@ -106,6 +106,33 @@ export default async function handler(req: any, res: any) {
         console.warn('Could not merge org app profiles into registrations:', pErr);
       }
 
+      let emailTrackingMap: Record<string, any> = {};
+      try {
+        const { data: trackRow } = await supabase
+          .from('club_settings')
+          .select('value')
+          .eq('key', 'sent_recruitment_emails')
+          .single();
+        if (trackRow?.value && typeof trackRow.value === 'object') {
+          emailTrackingMap = trackRow.value;
+        }
+      } catch (tErr) {
+        console.warn('Could not load email tracking map:', tErr);
+      }
+
+      mergedList = mergedList.map((m: any) => {
+        const emailKey = (m.email || '').toLowerCase().trim();
+        const tracked = emailTrackingMap[emailKey] || {};
+        return {
+          ...m,
+          meeting_email_sent: Boolean(m.meeting_email_sent || tracked.meeting_email_sent),
+          meeting_email_sent_at: m.meeting_email_sent_at || tracked.meeting_email_sent_at || null,
+          acceptance_email_sent: Boolean(m.acceptance_email_sent || tracked.acceptance_email_sent),
+          acceptance_email_sent_at: m.acceptance_email_sent_at || tracked.acceptance_email_sent_at || null,
+          email_history: tracked.history || []
+        };
+      });
+
       return res.status(200).json({ data: mergedList });
     }
 
@@ -216,6 +243,257 @@ export default async function handler(req: any, res: any) {
   // 4. POST actions (status update, delete, etc.)
   if (req.method === 'POST') {
     const { action, table, id, status, payload } = req.body || {};
+
+    if (action === 'sync_email_logs') {
+      const resendApiKey = process.env.RESEND_API_KEY;
+      if (!resendApiKey) {
+        return res.status(400).json({ 
+          error: 'RESEND_API_KEY is not configured in environment variables. Please configure it in Vercel.' 
+        });
+      }
+
+      try {
+        // Fetch sent emails from Resend API (paginating up to 3 pages / 300 emails)
+        let allResendEmails: any[] = [];
+        let fetchUrl: string | null = 'https://api.resend.com/emails?limit=100';
+        let pageCount = 0;
+
+        while (fetchUrl && pageCount < 3) {
+          pageCount++;
+          const resendResp = await fetch(fetchUrl, {
+            headers: {
+              'Authorization': `Bearer ${resendApiKey}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!resendResp.ok) {
+            const errBody = await resendResp.text();
+            throw new Error(`Resend API returned ${resendResp.status}: ${errBody}`);
+          }
+
+          const resendData = await resendResp.json();
+          const items = Array.isArray(resendData.data) ? resendData.data : [];
+          allResendEmails = allResendEmails.concat(items);
+
+          if (resendData.has_more && items.length > 0) {
+            const lastId = items[items.length - 1].id;
+            fetchUrl = `https://api.resend.com/emails?limit=100&after=${lastId}`;
+          } else {
+            fetchUrl = null;
+          }
+        }
+
+        // Fetch current sent_recruitment_emails from club_settings
+        const { data: trackRow } = await supabase
+          .from('club_settings')
+          .select('value')
+          .eq('key', 'sent_recruitment_emails')
+          .single();
+
+        const currentMap = (trackRow?.value && typeof trackRow.value === 'object') ? trackRow.value : {};
+        let meetingEmailsFound = 0;
+        let acceptanceEmailsFound = 0;
+        const updatedEmails: string[] = [];
+
+        for (const item of allResendEmails) {
+          const toList: string[] = Array.isArray(item.to) ? item.to : (typeof item.to === 'string' ? [item.to] : []);
+          const subject = String(item.subject || '').toLowerCase();
+          const isMeeting = subject.includes('interview') || subject.includes('meeting');
+          const isAcceptance = subject.includes('welcome') || subject.includes('acceptance') || subject.includes('recruitment decision');
+
+          if (!isMeeting && !isAcceptance) continue;
+
+          for (const recipient of toList) {
+            const cleanEmail = recipient.toLowerCase().trim();
+            if (!cleanEmail) continue;
+
+            const record = currentMap[cleanEmail] || {};
+            const history = Array.isArray(record.history) ? record.history : [];
+            const existsInHistory = history.some((h: any) => h.resend_id === item.id);
+
+            if (!existsInHistory) {
+              history.push({
+                type: isMeeting ? 'meeting' : 'acceptance',
+                sent_at: item.created_at,
+                resend_id: item.id,
+                subject: item.subject,
+                last_event: item.last_event
+              });
+            }
+
+            if (isMeeting) {
+              meetingEmailsFound++;
+              record.meeting_email_sent = true;
+              if (!record.meeting_email_sent_at || new Date(item.created_at) > new Date(record.meeting_email_sent_at)) {
+                record.meeting_email_sent_at = item.created_at;
+              }
+            }
+
+            if (isAcceptance) {
+              acceptanceEmailsFound++;
+              record.acceptance_email_sent = true;
+              if (!record.acceptance_email_sent_at || new Date(item.created_at) > new Date(record.acceptance_email_sent_at)) {
+                record.acceptance_email_sent_at = item.created_at;
+              }
+            }
+
+            record.history = history;
+            currentMap[cleanEmail] = record;
+            if (!updatedEmails.includes(cleanEmail)) {
+              updatedEmails.push(cleanEmail);
+            }
+          }
+        }
+
+        // Save back to club_settings
+        await supabase.from('club_settings').upsert({
+          key: 'sent_recruitment_emails',
+          value: currentMap,
+          updated_at: new Date().toISOString()
+        });
+
+        // Also attempt to sync directly to registrations table for each updated email
+        for (const email of updatedEmails) {
+          const record = currentMap[email];
+          const updateData: any = {};
+          if (record.meeting_email_sent) {
+            updateData.meeting_email_sent = true;
+            updateData.meeting_email_sent_at = record.meeting_email_sent_at;
+          }
+          if (record.acceptance_email_sent) {
+            updateData.acceptance_email_sent = true;
+            updateData.acceptance_email_sent_at = record.acceptance_email_sent_at;
+            updateData.status = 'approved';
+          }
+          if (Object.keys(updateData).length > 0) {
+            try {
+              await supabase.from('registrations').update(updateData).ilike('email', email);
+            } catch (uErr) {
+              // ignore table column mismatch if not migrated yet
+            }
+          }
+        }
+
+        return res.status(200).json({
+          success: true,
+          totalFetchedFromResend: allResendEmails.length,
+          meetingEmailsFound,
+          acceptanceEmailsFound,
+          syncedRecipientsCount: updatedEmails.length,
+          syncedRecipients: updatedEmails
+        });
+      } catch (err: any) {
+        console.error('Error syncing email logs:', err);
+        return res.status(500).json({ error: err.message || 'Failed to sync email logs from Resend' });
+      }
+    }
+
+    if (action === 'toggle_email_status') {
+      const { email, id, emailType, sent } = req.body || {};
+      if (!emailType || (!email && !id)) {
+        return res.status(400).json({ error: 'Missing email/id or emailType' });
+      }
+      const cleanEmail = String(email || '').toLowerCase().trim();
+      const isSent = Boolean(sent !== false);
+      const now = isSent ? new Date().toISOString() : null;
+
+      // Update club_settings
+      const { data: trackRow } = await supabase
+        .from('club_settings')
+        .select('value')
+        .eq('key', 'sent_recruitment_emails')
+        .single();
+
+      const currentMap = (trackRow?.value && typeof trackRow.value === 'object') ? trackRow.value : {};
+      const record = currentMap[cleanEmail] || {};
+
+      if (emailType === 'meeting') {
+        record.meeting_email_sent = isSent;
+        record.meeting_email_sent_at = now;
+      } else if (emailType === 'acceptance') {
+        record.acceptance_email_sent = isSent;
+        record.acceptance_email_sent_at = now;
+      }
+
+      currentMap[cleanEmail] = record;
+      await supabase.from('club_settings').upsert({
+        key: 'sent_recruitment_emails',
+        value: currentMap,
+        updated_at: new Date().toISOString()
+      });
+
+      // Update registrations table if possible
+      try {
+        const updateData: any = {};
+        if (emailType === 'meeting') {
+          updateData.meeting_email_sent = isSent;
+          updateData.meeting_email_sent_at = now;
+        } else if (emailType === 'acceptance') {
+          updateData.acceptance_email_sent = isSent;
+          updateData.acceptance_email_sent_at = now;
+        }
+        if (id) {
+          await supabase.from('registrations').update(updateData).eq('id', id);
+        } else if (cleanEmail) {
+          await supabase.from('registrations').update(updateData).ilike('email', cleanEmail);
+        }
+      } catch (err) {}
+
+      return res.status(200).json({ success: true, email: cleanEmail, emailType, sent: isSent });
+    }
+
+    if (action === 'import_email_logs') {
+      const { logs } = req.body || {};
+      if (!Array.isArray(logs) || logs.length === 0) {
+        return res.status(400).json({ error: 'Missing or empty logs array' });
+      }
+
+      const { data: trackRow } = await supabase
+        .from('club_settings')
+        .select('value')
+        .eq('key', 'sent_recruitment_emails')
+        .single();
+
+      const currentMap = (trackRow?.value && typeof trackRow.value === 'object') ? trackRow.value : {};
+      let updatedCount = 0;
+
+      for (const entry of logs) {
+        const cleanEmail = String(entry.email || '').toLowerCase().trim();
+        if (!cleanEmail) continue;
+        const sentAt = entry.sent_at || new Date().toISOString();
+        const record = currentMap[cleanEmail] || {};
+        if (entry.type === 'meeting') {
+          record.meeting_email_sent = true;
+          record.meeting_email_sent_at = sentAt;
+        } else if (entry.type === 'acceptance') {
+          record.acceptance_email_sent = true;
+          record.acceptance_email_sent_at = sentAt;
+        }
+        currentMap[cleanEmail] = record;
+        updatedCount++;
+
+        try {
+          const updateData: any = {};
+          if (entry.type === 'meeting') {
+            updateData.meeting_email_sent = true;
+            updateData.meeting_email_sent_at = sentAt;
+          } else if (entry.type === 'acceptance') {
+            updateData.acceptance_email_sent = true;
+            updateData.acceptance_email_sent_at = sentAt;
+          }
+          await supabase.from('registrations').update(updateData).ilike('email', cleanEmail);
+        } catch (e) {}
+      }
+
+      await supabase.from('club_settings').upsert({
+        key: 'sent_recruitment_emails',
+        value: currentMap,
+        updated_at: new Date().toISOString()
+      });
+
+      return res.status(200).json({ success: true, imported: updatedCount });
+    }
 
     if (action === 'update_status') {
       if (!table || !id || !status) {

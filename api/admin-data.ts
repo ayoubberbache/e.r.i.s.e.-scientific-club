@@ -245,7 +245,7 @@ export default async function handler(req: any, res: any) {
     const { action, table, id, status, payload } = req.body || {};
 
     if (action === 'sync_email_logs') {
-      const resendApiKey = process.env.RESEND_API_KEY;
+      const resendApiKey = req.body?.apiKey || process.env.RESEND_API_KEY;
       if (!resendApiKey) {
         return res.status(400).json({ 
           error: 'RESEND_API_KEY is not configured in environment variables. Please configure it in Vercel.' 
@@ -268,8 +268,19 @@ export default async function handler(req: any, res: any) {
           });
 
           if (!resendResp.ok) {
-            const errBody = await resendResp.text();
-            throw new Error(`Resend API returned ${resendResp.status}: ${errBody}`);
+            let errMsg = `Resend API returned ${resendResp.status}`;
+            try {
+              const errJson = await resendResp.json();
+              if (errJson?.name === 'restricted_api_key' || errJson?.message?.includes('restricted to only send emails')) {
+                errMsg = "Your current Resend API key has 'Sending access' only. To automatically read sent email logs, create a Resend API key with 'Full access' at https://resend.com/api-keys, or use 'Import Sent Emails' below.";
+              } else {
+                errMsg = errJson?.message || errMsg;
+              }
+            } catch {
+              const errBody = await resendResp.text();
+              errMsg = `${errMsg}: ${errBody}`;
+            }
+            throw new Error(errMsg);
           }
 
           const resendData = await resendResp.json();

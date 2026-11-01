@@ -150,15 +150,111 @@ export function AdminDashboard() {
   const [memberStatusFilter, setMemberStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'meeting_sent' | 'meeting_pending' | 'acceptance_sent' | 'acceptance_pending'>('all');
   const [syncingEmailLogs, setSyncingEmailLogs] = useState<boolean>(false);
   const [syncResultBanner, setSyncResultBanner] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState<boolean>(false);
+  const [syncCustomApiKey, setSyncCustomApiKey] = useState<string>('');
+  const [manualMeetingEmails, setManualMeetingEmails] = useState<string>('');
+  const [manualAcceptanceEmails, setManualAcceptanceEmails] = useState<string>('');
+  const [syncModalTab, setSyncModalTab] = useState<'api' | 'manual'>('api');
 
-  const handleSyncResendEmailLogs = async () => {
+  const handleToggleMemberEmailStatus = async (id: number, email: string, emailType: 'meeting' | 'acceptance', sent: boolean) => {
+    try {
+      const authHeaders = getAdminAuthHeaders();
+      const res = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          action: 'toggle_email_status',
+          id,
+          email,
+          emailType,
+          sent
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err?.error || 'Failed to update email status');
+      }
+
+      const now = sent ? new Date().toISOString() : null;
+      setData(prev => prev.map(m => {
+        if (m.id === id || (email && m.email?.toLowerCase() === email.toLowerCase())) {
+          return {
+            ...m,
+            meeting_email_sent: emailType === 'meeting' ? sent : m.meeting_email_sent,
+            meeting_email_sent_at: emailType === 'meeting' ? now : m.meeting_email_sent_at,
+            acceptance_email_sent: emailType === 'acceptance' ? sent : m.acceptance_email_sent,
+            acceptance_email_sent_at: emailType === 'acceptance' ? now : m.acceptance_email_sent_at,
+          };
+        }
+        return m;
+      }));
+
+      if (selectedMember && (selectedMember.id === id || selectedMember.email === email)) {
+        setSelectedMember((prev: any) => ({
+          ...prev,
+          meeting_email_sent: emailType === 'meeting' ? sent : prev.meeting_email_sent,
+          meeting_email_sent_at: emailType === 'meeting' ? now : prev.meeting_email_sent_at,
+          acceptance_email_sent: emailType === 'acceptance' ? sent : prev.acceptance_email_sent,
+          acceptance_email_sent_at: emailType === 'acceptance' ? now : prev.acceptance_email_sent_at,
+        }));
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating email flag');
+    }
+  };
+
+  const handleManualBatchImport = async () => {
+    const meetingList = manualMeetingEmails.split(/[\n,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    const acceptanceList = manualAcceptanceEmails.split(/[\n,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    const logs: Array<{ email: string; type: 'meeting' | 'acceptance' }> = [];
+    meetingList.forEach(email => logs.push({ email, type: 'meeting' }));
+    acceptanceList.forEach(email => logs.push({ email, type: 'acceptance' }));
+
+    if (logs.length === 0) {
+      alert('Please enter at least one email address in the fields.');
+      return;
+    }
+
+    setSyncingEmailLogs(true);
+    try {
+      const res = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: getAdminAuthHeaders(),
+        body: JSON.stringify({ action: 'import_email_logs', logs })
+      });
+
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData?.error || 'Import failed');
+
+      setSyncResultBanner({
+        type: 'success',
+        message: `Successfully marked ${resData.imported} email delivery records!`
+      });
+      setSyncModalOpen(false);
+      setManualMeetingEmails('');
+      setManualAcceptanceEmails('');
+      fetchData('registrations');
+      setSyncModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Error importing email logs');
+    } finally {
+      setSyncingEmailLogs(false);
+    }
+  };
+
+  const handleSyncResendEmailLogs = async (overrideApiKey?: string) => {
     setSyncingEmailLogs(true);
     setSyncResultBanner(null);
     try {
       const res = await fetch('/api/admin-data', {
         method: 'POST',
         headers: getAdminAuthHeaders(),
-        body: JSON.stringify({ action: 'sync_email_logs' })
+        body: JSON.stringify({ 
+          action: 'sync_email_logs',
+          apiKey: overrideApiKey || syncCustomApiKey || undefined
+        })
       });
 
       const resData = await res.json();
@@ -2385,10 +2481,10 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <button
-              onClick={handleSyncResendEmailLogs}
+              onClick={() => setSyncModalOpen(true)}
               disabled={syncingEmailLogs}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-60"
-              title="Pull latest delivery logs from Resend API and match sent status"
+              title="Sync or import delivered recruitment emails"
             >
               {syncingEmailLogs ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -3433,26 +3529,46 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     <span className="text-slate-600 font-medium flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-blue-600" /> Meeting:
                     </span>
-                    {selectedMember.meeting_email_sent ? (
-                      <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 text-[10px] border border-blue-200 flex items-center gap-1 rounded">
-                        <Check className="w-3 h-3" /> Sent {selectedMember.meeting_email_sent_at ? `(${new Date(selectedMember.meeting_email_sent_at).toLocaleDateString()})` : ''}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 font-medium text-[10px]">Not Sent</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {selectedMember.meeting_email_sent ? (
+                        <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 text-[10px] border border-blue-200 flex items-center gap-1 rounded">
+                          <Check className="w-3 h-3" /> Sent {selectedMember.meeting_email_sent_at ? `(${new Date(selectedMember.meeting_email_sent_at).toLocaleDateString()})` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-medium text-[10px]">Not Sent</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMemberEmailStatus(selectedMember.id, selectedMember.email, 'meeting', !selectedMember.meeting_email_sent)}
+                        className="text-[10px] text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
+                        title="Toggle meeting email sent status manually"
+                      >
+                        {selectedMember.meeting_email_sent ? 'Unmark' : 'Mark Sent'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="p-2 bg-white border border-slate-200 flex items-center justify-between">
                     <span className="text-slate-600 font-medium flex items-center gap-1.5">
                       <Mail className="w-3.5 h-3.5 text-emerald-600" /> Acceptance:
                     </span>
-                    {selectedMember.acceptance_email_sent ? (
-                      <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 text-[10px] border border-emerald-200 flex items-center gap-1 rounded">
-                        <Check className="w-3 h-3" /> Sent {selectedMember.acceptance_email_sent_at ? `(${new Date(selectedMember.acceptance_email_sent_at).toLocaleDateString()})` : ''}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 font-medium text-[10px]">Not Sent</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {selectedMember.acceptance_email_sent ? (
+                        <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 text-[10px] border border-emerald-200 flex items-center gap-1 rounded">
+                          <Check className="w-3 h-3" /> Sent {selectedMember.acceptance_email_sent_at ? `(${new Date(selectedMember.acceptance_email_sent_at).toLocaleDateString()})` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-medium text-[10px]">Not Sent</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMemberEmailStatus(selectedMember.id, selectedMember.email, 'acceptance', !selectedMember.acceptance_email_sent)}
+                        className="text-[10px] text-emerald-600 hover:text-emerald-800 underline font-medium cursor-pointer"
+                        title="Toggle acceptance email sent status manually"
+                      >
+                        {selectedMember.acceptance_email_sent ? 'Unmark' : 'Mark Sent'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3495,6 +3611,168 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Sync & Import Modal */}
+      {syncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-300 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-5 h-5 text-slate-700" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Sync &amp; Import Recruitment Email Logs
+                </h3>
+              </div>
+              <button 
+                onClick={() => setSyncModalOpen(false)} 
+                className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tab switch */}
+            <div className="flex border-b border-slate-200">
+              <button
+                onClick={() => setSyncModalTab('api')}
+                className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+                  syncModalTab === 'api'
+                    ? 'border-slate-900 text-slate-900'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                1. Auto-Sync from Resend API
+              </button>
+              <button
+                onClick={() => setSyncModalTab('manual')}
+                className={`flex-1 py-2 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+                  syncModalTab === 'manual'
+                    ? 'border-slate-900 text-slate-900'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                2. Quick Paste / Import Emails
+              </button>
+            </div>
+
+            {syncModalTab === 'api' ? (
+              <div className="space-y-4 text-xs">
+                <p className="text-slate-600 leading-relaxed">
+                  Antigravity queries the Resend API to fetch all recent sent emails and automatically matches each recipient with applicant records in the database.
+                </p>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded space-y-1.5">
+                  <p className="font-bold">⚠️ Note regarding Resend API Key Permissions:</p>
+                  <p className="text-[11px] leading-relaxed text-amber-800">
+                    If your current key was created with <strong>"Sending access" only</strong>, Resend will deny read requests. To enable auto-syncing, generate a <strong>"Full access" API key</strong> on <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="underline font-bold text-amber-900">resend.com/api-keys</a> and paste it below, or update it in Vercel.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Full-Access Resend Key (Optional if configured on Vercel)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="re_..."
+                    value={syncCustomApiKey}
+                    onChange={(e) => setSyncCustomApiKey(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 font-mono text-xs focus:bg-white focus:border-slate-800"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setSyncModalOpen(false)}
+                    className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-300 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSyncResendEmailLogs()}
+                    disabled={syncingEmailLogs}
+                    className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {syncingEmailLogs ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Syncing from Resend...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Run Resend Auto-Sync</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                <p className="text-slate-600 leading-relaxed">
+                  You can copy recipient emails from your sent log at <a href="https://resend.com/emails" target="_blank" rel="noreferrer" className="underline font-bold text-blue-700">resend.com/emails</a> and paste them below (one per line, comma or space separated).
+                </p>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Meeting / Interview Email Recipients
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="student1@hns-re2sd.dz&#10;student2@gmail.com"
+                    value={manualMeetingEmails}
+                    onChange={(e) => setManualMeetingEmails(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 font-mono text-xs focus:bg-white focus:border-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Acceptance Email Recipients
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="student3@hns-re2sd.dz&#10;student4@gmail.com"
+                    value={manualAcceptanceEmails}
+                    onChange={(e) => setManualAcceptanceEmails(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 font-mono text-xs focus:bg-white focus:border-slate-800"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setSyncModalOpen(false)}
+                    className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-300 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleManualBatchImport}
+                    disabled={syncingEmailLogs}
+                    className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {syncingEmailLogs ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Updating Database...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Save &amp; Mark as Sent</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

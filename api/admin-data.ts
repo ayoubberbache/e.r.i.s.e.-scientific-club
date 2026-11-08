@@ -520,6 +520,24 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, id, status });
     }
 
+    if (action === 'bulk_update_status') {
+      const { table, ids, status } = req.body || {};
+      if (!table || !Array.isArray(ids) || ids.length === 0 || !status) {
+        return res.status(400).json({ error: 'Missing required parameters (table, ids, status)' });
+      }
+
+      const numericIds = ids.map((item: any) => Number(item)).filter((num: number) => !isNaN(num));
+      if (numericIds.length > 0) {
+        const { error } = await supabase
+          .from(table)
+          .update({ status })
+          .in('id', numericIds);
+
+        if (error) return res.status(500).json({ error: error.message });
+      }
+      return res.status(200).json({ success: true, count: ids.length, ids, status });
+    }
+
     if (action === 'update_registration' || action === 'update_member') {
       const { id, student_id, full_name, email, phone, study_year, specialization, departments, status } = req.body || {};
       if (!id) return res.status(400).json({ error: 'Missing registration id' });
@@ -693,6 +711,37 @@ export default async function handler(req: any, res: any) {
         return res.status(500).json({ error: error.message });
       }
       return res.status(200).json({ success: true, deletedId: id });
+    }
+
+    if (action === 'bulk_delete') {
+      const { table, ids } = req.body || {};
+      if (!table || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'Missing required parameters (table, ids)' });
+      }
+
+      const numericIds = ids.map((item: any) => Number(item)).filter((num: number) => !isNaN(num));
+      const stringIds = ids.map((item: any) => String(item)).filter((str: string) => isNaN(Number(str)));
+
+      if (table === 'projects' && stringIds.length > 0) {
+        try {
+          const orgSb = getOrgAdminClient();
+          await orgSb.from('task_assignments').delete().in('task_id', stringIds);
+          await orgSb.from('tasks').delete().in('id', stringIds);
+        } catch (orgDelErr) {
+          console.warn('Could not bulk delete from organization app:', orgDelErr);
+        }
+      }
+
+      if (numericIds.length > 0) {
+        const { error } = await supabase
+          .from(table)
+          .delete()
+          .in('id', numericIds);
+
+        if (error) return res.status(500).json({ error: error.message });
+      }
+
+      return res.status(200).json({ success: true, deletedCount: ids.length, ids });
     }
 
     if (action === 'toggle_registration') {

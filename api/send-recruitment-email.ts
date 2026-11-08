@@ -14,7 +14,30 @@ function getAdminClient() {
 // Rate Limiting Map
 const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 min
-const MAX_REQUESTS_PER_WINDOW = 30; // 30 requests per IP per window
+const MAX_REQUESTS_PER_WINDOW = 500; // Increased for admin operations
+
+const CURRENT_SESSION_EPOCH = 'ERISE_REVOKED_2026_09_V2';
+
+function verifyAdminAuth(req: any): boolean {
+  const authHeader = req.headers?.authorization || req.headers?.Authorization;
+  if (!authHeader || typeof authHeader !== 'string') return false;
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') return false;
+
+  const tokenStr = parts[1];
+  try {
+    const parsed = JSON.parse(Buffer.from(tokenStr, 'base64').toString('utf8'));
+    if (!parsed || parsed.epoch !== CURRENT_SESSION_EPOCH) return false;
+    if (!parsed.expiresAt || Date.now() > parsed.expiresAt) return false;
+    if (!parsed.user || (parsed.user.role !== 'admin' && !parsed.user.role?.startsWith('head_'))) {
+      return false;
+    }
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
@@ -655,7 +678,7 @@ export default async function handler(req: any, res: any) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -665,10 +688,13 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Rate Limiting
-  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || 'unknown';
-  if (isRateLimited(clientIp)) {
-    return res.status(429).json({ error: 'Too many email requests. Please wait a bit.' });
+  // Rate Limiting: Skip for authenticated admin
+  const isAdmin = verifyAdminAuth(req);
+  if (!isAdmin) {
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || 'unknown';
+    if (isRateLimited(clientIp)) {
+      return res.status(429).json({ error: 'Too many email requests. Please wait a bit.' });
+    }
   }
 
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -676,72 +702,181 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: 'Resend API key is not configured' });
   }
 
-  const { type, email, name, departments, location, dateTime, eventTitle, notes, registrationId } = req.body || {};
+  const { type, email, name, departments, location, dateTime, eventTitle, notes, registrationId, recipients } = req.body || {};
 
-  if (!email || !name || !type) {
-    return res.status(400).json({ error: 'Missing required parameters (type, email, name)' });
+  interface RecipientEntry {
+    id?: number | string;
+    email: string;
+    name: string;
+    departments?: any;
   }
 
-  let subject = '';
-  let htmlContent = '';
-  let textContent = '';
+  let targetRecipients: RecipientEntry[] = [];
+  if (Array.isArray(recipients) && recipients.length > 0) {
+    targetRecipients = recipients
+      .filter((r: any) => r && r.email)
+      .map((r: any) => ({
+        id: r.id,
+        email: String(r.email).trim().toLowerCase(),
+        name: r.name ? String(r.name).trim() : 'Candidate',
+        departments: r.departments || departments
+      }));
+  } else if (email && name) {
+    targetRecipients = [{
+      id: registrationId,
+      email: String(email).trim().toLowerCase(),
+      name: String(name).trim(),
+      departments: departments
+    }];
+  }
 
-  if (type === 'acceptance') {
-    subject = 'Welcome to E.R.I.S.E. Scientific Club!';
-    htmlContent = generateAcceptanceHtml(name, departments);
-    textContent = generateAcceptanceText(name, departments);
-  } else if (type === 'meeting') {
-    if (!location || !dateTime) {
-      return res.status(400).json({ error: 'Meeting email requires location and dateTime' });
-    }
-    subject = 'Interview Invitation — E.R.I.S.E. Scientific Club';
-    htmlContent = generateMeetingHtml(name, location, dateTime);
-    textContent = generateMeetingText(name, location, dateTime);
-  } else if (type === 'event_invitation' || type === 'event_acceptance') {
-    if (!eventTitle || !location || !dateTime) {
-      return res.status(400).json({ error: 'Event email requires eventTitle, location, and dateTime' });
-    }
-    subject = `Invitation & Selection Confirmed: ${eventTitle} — E.R.I.S.E. Scientific Club`;
-    htmlContent = generateEventInvitationHtml(name, eventTitle, location, dateTime, notes);
-    textContent = generateEventInvitationText(name, eventTitle, location, dateTime, notes);
-  } else {
-    return res.status(400).json({ error: 'Invalid email type' });
+  if (!type || targetRecipients.length === 0) {
+    return res.status(400).json({ error: 'Missing required parameters (type, email/name or recipients array)' });
+  }
+
+  if (type === 'meeting' && (!location || !dateTime)) {
+    return res.status(400).json({ error: 'Meeting email requires location and dateTime' });
+  }
+
+  if ((type === 'event_invitation' || type === 'event_acceptance') && (!eventTitle || !location || !dateTime)) {
+    return res.status(400).json({ error: 'Event email requires eventTitle, location, and dateTime' });
   }
 
   // Authentic Humanized Sender & Trusted Reply-To
   const SENDER_EMAIL = process.env.SENDER_EMAIL || 'E.R.I.S.E. Recruitment Team <recruitment@erise-scientific-club.site>';
   const REPLY_TO_EMAIL = process.env.REPLY_TO_EMAIL || 'erise.club@gmail.com';
 
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: SENDER_EMAIL,
-        reply_to: REPLY_TO_EMAIL,
-        to: [email],
-        subject: subject,
-        html: htmlContent,
-        text: textContent,
-      }),
-    });
+  const emailPayloads = targetRecipients.map((rec) => {
+    let subject = '';
+    let htmlContent = '';
+    let textContent = '';
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('Resend API Error:', data);
-      return res.status(response.status).json({ error: 'Failed to send email via Resend', details: data });
+    if (type === 'acceptance') {
+      subject = 'Welcome to E.R.I.S.E. Scientific Club!';
+      htmlContent = generateAcceptanceHtml(rec.name, rec.departments || departments);
+      textContent = generateAcceptanceText(rec.name, rec.departments || departments);
+    } else if (type === 'meeting') {
+      subject = 'Interview Invitation — E.R.I.S.E. Scientific Club';
+      htmlContent = generateMeetingHtml(rec.name, location, dateTime);
+      textContent = generateMeetingText(rec.name, location, dateTime);
+    } else if (type === 'event_invitation' || type === 'event_acceptance') {
+      subject = `Invitation & Selection Confirmed: ${eventTitle} — E.R.I.S.E. Scientific Club`;
+      htmlContent = generateEventInvitationHtml(rec.name, eventTitle, location, dateTime, notes);
+      textContent = generateEventInvitationText(rec.name, eventTitle, location, dateTime, notes);
     }
 
-    console.log(`[EMAIL_SENT] Type: ${type}, Recipient: ${email}, Name: ${name}, ResendId: ${data.id}`);
+    return {
+      from: SENDER_EMAIL,
+      reply_to: REPLY_TO_EMAIL,
+      to: [rec.email],
+      subject,
+      html: htmlContent,
+      text: textContent,
+      recipient: rec
+    };
+  });
+
+  const sentResults: Array<{ id: string; email: string }> = [];
+  const errors: any[] = [];
+
+  try {
+    if (emailPayloads.length === 1) {
+      const payload = emailPayloads[0];
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: payload.from,
+          reply_to: payload.reply_to,
+          to: payload.to,
+          subject: payload.subject,
+          html: payload.html,
+          text: payload.text,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        console.error('Resend API Error:', data);
+        return res.status(response.status).json({ error: 'Failed to send email via Resend', details: data });
+      }
+      sentResults.push({ id: data.id, email: payload.to[0] });
+      console.log(`[EMAIL_SENT] Type: ${type}, Recipient: ${payload.to[0]}, Name: ${payload.recipient.name}, ResendId: ${data.id}`);
+    } else {
+      // Chunk batches of up to 100
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < emailPayloads.length; i += CHUNK_SIZE) {
+        const chunk = emailPayloads.slice(i, i + CHUNK_SIZE);
+        const batchBody = chunk.map(p => ({
+          from: p.from,
+          reply_to: p.reply_to,
+          to: p.to,
+          subject: p.subject,
+          html: p.html,
+          text: p.text,
+        }));
+
+        let batchSuccess = false;
+        try {
+          const batchRes = await fetch('https://api.resend.com/emails/batch', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${RESEND_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(batchBody),
+          });
+
+          if (batchRes.ok) {
+            const batchData = await batchRes.json();
+            const items = Array.isArray(batchData?.data) ? batchData.data : [];
+            chunk.forEach((p, idx) => {
+              sentResults.push({ id: items[idx]?.id || 'batch-sent', email: p.to[0] });
+            });
+            batchSuccess = true;
+          }
+        } catch (bErr) {
+          console.warn('Batch endpoint failed, falling back to individual sends:', bErr);
+        }
+
+        if (!batchSuccess) {
+          for (const item of chunk) {
+            try {
+              const singleRes = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${RESEND_API_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  from: item.from,
+                  reply_to: item.reply_to,
+                  to: item.to,
+                  subject: item.subject,
+                  html: item.html,
+                  text: item.text,
+                }),
+              });
+              const sData = await singleRes.json();
+              if (singleRes.ok) {
+                sentResults.push({ id: sData.id, email: item.to[0] });
+              } else {
+                errors.push({ email: item.to[0], error: sData });
+              }
+            } catch (err: any) {
+              errors.push({ email: item.to[0], error: err.message });
+            }
+          }
+        }
+      }
+    }
 
     const sentAt = new Date().toISOString();
-    const cleanEmail = String(email).trim().toLowerCase();
 
-    // 1. Persist tracking in club_settings JSON store (always resilient, zero schema dependency)
+    // 1. Persist tracking in club_settings JSON store
     try {
       const supabase = getAdminClient();
       const { data: settingsRow } = await supabase
@@ -751,29 +886,32 @@ export default async function handler(req: any, res: any) {
         .single();
 
       const currentMap = (settingsRow?.value && typeof settingsRow.value === 'object') ? settingsRow.value : {};
-      const userRecord = currentMap[cleanEmail] || {};
-      const history = Array.isArray(userRecord.history) ? userRecord.history : [];
 
-      history.push({
-        type,
-        sent_at: sentAt,
-        resend_id: data.id,
-        recipient_name: name,
-        subject,
-      });
+      for (const sent of sentResults) {
+        const cleanEmail = sent.email;
+        const rec = targetRecipients.find(r => r.email === cleanEmail);
+        const userRecord = currentMap[cleanEmail] || {};
+        const history = Array.isArray(userRecord.history) ? userRecord.history : [];
 
-      const updatedRecord = {
-        ...userRecord,
-        meeting_email_sent: type === 'meeting' ? true : Boolean(userRecord.meeting_email_sent),
-        meeting_email_sent_at: type === 'meeting' ? sentAt : (userRecord.meeting_email_sent_at || null),
-        acceptance_email_sent: type === 'acceptance' ? true : Boolean(userRecord.acceptance_email_sent),
-        acceptance_email_sent_at: type === 'acceptance' ? sentAt : (userRecord.acceptance_email_sent_at || null),
-        last_sent_at: sentAt,
-        last_type: type,
-        history,
-      };
+        history.push({
+          type,
+          sent_at: sentAt,
+          resend_id: sent.id,
+          recipient_name: rec?.name || 'Member',
+          subject: type === 'meeting' ? 'Interview Invitation' : (type === 'acceptance' ? 'Welcome to E.R.I.S.E.' : 'Event Notification'),
+        });
 
-      currentMap[cleanEmail] = updatedRecord;
+        currentMap[cleanEmail] = {
+          ...userRecord,
+          meeting_email_sent: type === 'meeting' ? true : Boolean(userRecord.meeting_email_sent),
+          meeting_email_sent_at: type === 'meeting' ? sentAt : (userRecord.meeting_email_sent_at || null),
+          acceptance_email_sent: type === 'acceptance' ? true : Boolean(userRecord.acceptance_email_sent),
+          acceptance_email_sent_at: type === 'acceptance' ? sentAt : (userRecord.acceptance_email_sent_at || null),
+          last_sent_at: sentAt,
+          last_type: type,
+          history,
+        };
+      }
 
       await supabase.from('club_settings').upsert({
         key: 'sent_recruitment_emails',
@@ -784,7 +922,7 @@ export default async function handler(req: any, res: any) {
       console.warn('Failed to update sent_recruitment_emails in club_settings:', storeErr);
     }
 
-    // 2. Also update registrations table directly if columns are available
+    // 2. Also update registrations table directly
     try {
       const supabase = getAdminClient();
       const regUpdate: any = {};
@@ -798,23 +936,43 @@ export default async function handler(req: any, res: any) {
       }
 
       if (Object.keys(regUpdate).length > 0) {
-        if (registrationId) {
-          await supabase.from('registrations').update(regUpdate).eq('id', registrationId);
-        } else {
-          await supabase.from('registrations').update(regUpdate).ilike('email', cleanEmail);
+        const validNumericIds = targetRecipients
+          .filter(r => sentResults.some(s => s.email === r.email))
+          .map(r => Number(r.id))
+          .filter(id => !isNaN(id) && id > 0);
+
+        if (validNumericIds.length > 0) {
+          await supabase.from('registrations').update(regUpdate).in('id', validNumericIds);
+        }
+
+        const sentEmails = sentResults.map(s => s.email);
+        if (sentEmails.length > 0) {
+          await supabase.from('registrations').update(regUpdate).in('email', sentEmails);
         }
       }
     } catch (tableErr) {
-      console.warn('Registrations table direct column update skipped:', tableErr);
+      console.warn('Registrations table direct update skipped:', tableErr);
     }
 
-    return res.status(200).json({ 
-      success: true, 
-      id: data.id, 
-      type, 
-      recipient: cleanEmail,
+    if (targetRecipients.length === 1 && sentResults.length === 1) {
+      return res.status(200).json({
+        success: true,
+        id: sentResults[0].id,
+        type,
+        recipient: sentResults[0].email,
+        sentAt,
+        isResend: true
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      totalSent: sentResults.length,
+      sentRecipients: sentResults.map(s => s.email),
+      errors: errors.length > 0 ? errors : undefined,
+      type,
       sentAt,
-      isResend: true 
+      isResend: true
     });
   } catch (error: any) {
     console.error('Send Email Error:', error);

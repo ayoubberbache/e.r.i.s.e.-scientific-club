@@ -156,6 +156,169 @@ export function AdminDashboard() {
   const [manualAcceptanceEmails, setManualAcceptanceEmails] = useState<string>('');
   const [syncModalTab, setSyncModalTab] = useState<'api' | 'manual'>('api');
 
+  // Multi-select Checklist & Bulk Operations State
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<number>>(new Set());
+  const [isBulkEmailMode, setIsBulkEmailMode] = useState<boolean>(false);
+  const [bulkActionLoading, setBulkActionLoading] = useState<boolean>(false);
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; message: string } | null>(null);
+  const [useApplicantDepts, setUseApplicantDepts] = useState<boolean>(true);
+  const [showRecipientList, setShowRecipientList] = useState<boolean>(false);
+
+  const handleToggleSelectMember = (id: number) => {
+    setSelectedMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFiltered = (filteredList: any[]) => {
+    const allFilteredIds = filteredList.map((m) => m.id);
+    const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedMemberIds.has(id));
+    if (allSelected) {
+      setSelectedMemberIds((prev) => {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedMemberIds((prev) => {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const handleSelectFirstN = (n: number, filteredList: any[]) => {
+    const slice = filteredList.slice(0, n);
+    setSelectedMemberIds(new Set(slice.map((m) => m.id)));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedMemberIds(new Set());
+  };
+
+  const handleOpenBulkMeetingModal = () => {
+    if (selectedMemberIds.size === 0) return;
+    setIsBulkEmailMode(true);
+    setEmailType('meeting');
+    setEmailSuccessMsg(null);
+    setEmailErrorMsg(null);
+    setBulkProgress(null);
+    setShowRecipientList(false);
+    setEmailModalOpen(true);
+  };
+
+  const handleOpenBulkAcceptanceModal = () => {
+    if (selectedMemberIds.size === 0) return;
+    setIsBulkEmailMode(true);
+    setEmailType('acceptance');
+    setEmailSuccessMsg(null);
+    setEmailErrorMsg(null);
+    setBulkProgress(null);
+    setUseApplicantDepts(true);
+    setShowRecipientList(false);
+    setEmailModalOpen(true);
+  };
+
+  const handleBulkApproveStatusOnly = async () => {
+    const count = selectedMemberIds.size;
+    if (count === 0) return;
+    if (!window.confirm(`Are you sure you want to approve status for all ${count} selected members (without sending emails)?`)) {
+      return;
+    }
+
+    setBulkActionLoading(true);
+    try {
+      const idsArray = Array.from(selectedMemberIds);
+      const authHeaders = getAdminAuthHeaders();
+      let updated = false;
+
+      try {
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            action: 'bulk_update_status',
+            table: 'registrations',
+            ids: idsArray,
+            status: 'approved'
+          })
+        });
+        if (res.ok) updated = true;
+      } catch (e) {}
+
+      if (!updated) {
+        const { error } = await supabase
+          .from('registrations')
+          .update({ status: 'approved' })
+          .in('id', idsArray);
+
+        if (error) throw error;
+      }
+
+      setData((prev) => prev.map((item) => selectedMemberIds.has(item.id) ? { ...item, status: 'approved' } : item));
+      setSelectedMemberIds(new Set());
+      alert(`Successfully approved status for ${count} members.`);
+    } catch (err: any) {
+      console.error('Error during bulk status approve:', err);
+      alert(`Failed to approve members: ${err.message || err}`);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectedMemberIds.size;
+    if (count === 0) return;
+    if (!window.confirm(`Are you sure you want to permanently delete all ${count} selected members? This action cannot be undone.`)) {
+      return;
+    }
+
+    setBulkActionLoading(true);
+    try {
+      const idsArray = Array.from(selectedMemberIds);
+      const authHeaders = getAdminAuthHeaders();
+      let deleted = false;
+
+      try {
+        const res = await fetch('/api/admin-data', {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            action: 'bulk_delete',
+            table: 'registrations',
+            ids: idsArray
+          })
+        });
+        if (res.ok) deleted = true;
+      } catch (e) {}
+
+      if (!deleted) {
+        const { error } = await supabase
+          .from('registrations')
+          .delete()
+          .in('id', idsArray);
+
+        if (error) throw error;
+      }
+
+      setData((prev) => prev.filter((item) => !selectedMemberIds.has(item.id)));
+      setSelectedMemberIds(new Set());
+      alert(`Successfully deleted ${count} members.`);
+    } catch (err: any) {
+      console.error('Error during bulk delete:', err);
+      alert(`Failed to delete members: ${err.message || err}`);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   const handleToggleMemberEmailStatus = async (id: number, email: string, emailType: 'meeting' | 'acceptance', sent: boolean) => {
     try {
       const authHeaders = getAdminAuthHeaders();
@@ -325,53 +488,100 @@ export function AdminDashboard() {
   };
 
   const handleSendEmailSubmit = async () => {
-    const recipientEmail = targetEmail || selectedMember?.email;
-    const recipientName = targetRecipientName || selectedMember?.full_name;
+    let recipientsList: Array<{ id?: number; email: string; name: string; departments?: any }> = [];
 
-    if (!recipientEmail || !recipientName) return;
+    if (isBulkEmailMode) {
+      recipientsList = data
+        .filter((m) => selectedMemberIds.has(m.id))
+        .map((m) => ({
+          id: m.id,
+          email: m.email,
+          name: m.full_name,
+          departments: useApplicantDepts ? m.departments : (acceptanceDepts || m.departments)
+        }));
+    } else {
+      const recipientEmail = targetEmail || selectedMember?.email;
+      const recipientName = targetRecipientName || selectedMember?.full_name;
+      if (!recipientEmail || !recipientName) return;
+      recipientsList = [{
+        id: selectedMember?.id,
+        email: recipientEmail,
+        name: recipientName,
+        departments: acceptanceDepts || selectedMember?.departments
+      }];
+    }
+
+    if (recipientsList.length === 0) {
+      alert('No recipients selected');
+      return;
+    }
+
     setEmailSendingLoading(true);
     setEmailErrorMsg(null);
     setEmailSuccessMsg(null);
+    setBulkProgress({
+      current: 0,
+      total: recipientsList.length,
+      message: `Preparing to send ${recipientsList.length} email(s)...`
+    });
 
     try {
-      const payload = {
-        type: emailType,
-        email: recipientEmail,
-        name: recipientName,
-        departments: acceptanceDepts,
-        location: meetingLocation,
-        dateTime: meetingDateTime,
-        eventTitle: eventTitle,
-        notes: eventNotes,
-        registrationId: selectedMember?.id,
-      };
+      const authHeaders = getAdminAuthHeaders();
+      const BATCH_SIZE = 40;
+      let sentCount = 0;
 
-      const res = await fetch('/api/send-recruitment-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      for (let i = 0; i < recipientsList.length; i += BATCH_SIZE) {
+        const chunk = recipientsList.slice(i, i + BATCH_SIZE);
+        setBulkProgress({
+          current: sentCount,
+          total: recipientsList.length,
+          message: `Sending ${sentCount + 1}–${Math.min(sentCount + chunk.length, recipientsList.length)} of ${recipientsList.length}...`
+        });
 
-      let resData: any = null;
-      try {
-        const text = await res.text();
-        resData = text ? JSON.parse(text) : null;
-      } catch {
-        resData = null;
+        const payload: any = {
+          type: emailType,
+          recipients: chunk,
+          location: meetingLocation,
+          dateTime: meetingDateTime,
+          eventTitle: eventTitle,
+          notes: eventNotes,
+          departments: acceptanceDepts,
+        };
+
+        const res = await fetch('/api/send-recruitment-email', {
+          method: 'POST',
+          headers: {
+            ...authHeaders,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload),
+        });
+
+        let resData: any = null;
+        try {
+          const text = await res.text();
+          resData = text ? JSON.parse(text) : null;
+        } catch {
+          resData = null;
+        }
+
+        if (!res.ok) {
+          throw new Error(
+            resData?.error || 
+            resData?.details?.message || 
+            `Server returned status ${res.status}: ${res.statusText || 'Email service unavailable'}`
+          );
+        }
+
+        sentCount += chunk.length;
       }
 
-      if (!res.ok) {
-        throw new Error(
-          resData?.error || 
-          resData?.details?.message || 
-          `Server returned status ${res.status}: ${res.statusText || 'Email service unavailable'}`
-        );
-      }
-
-      setEmailSuccessMsg(`Email sent successfully to ${recipientEmail}!`);
       const sentNow = new Date().toISOString();
+      const targetIds = new Set(recipientsList.map((r) => r.id).filter(Boolean));
+      const targetEmailSet = new Set(recipientsList.map((r) => r.email?.toLowerCase().trim()).filter(Boolean));
+
       setData((prev) => prev.map((item) => {
-        if (item.id === selectedMember?.id || (recipientEmail && item.email?.toLowerCase() === recipientEmail.toLowerCase())) {
+        if (targetIds.has(item.id) || (item.email && targetEmailSet.has(item.email.toLowerCase().trim()))) {
           return {
             ...item,
             meeting_email_sent: emailType === 'meeting' ? true : item.meeting_email_sent,
@@ -384,25 +594,29 @@ export function AdminDashboard() {
         return item;
       }));
 
-      if (selectedMember) {
-        setSelectedMember((prev: any) => ({
+      if (selectedMember && (targetIds.has(selectedMember.id) || (selectedMember.email && targetEmailSet.has(selectedMember.email.toLowerCase().trim())))) {
+        setSelectedMember((prev: any) => prev ? ({
           ...prev,
           meeting_email_sent: emailType === 'meeting' ? true : prev.meeting_email_sent,
           meeting_email_sent_at: emailType === 'meeting' ? sentNow : prev.meeting_email_sent_at,
           acceptance_email_sent: emailType === 'acceptance' ? true : prev.acceptance_email_sent,
           acceptance_email_sent_at: emailType === 'acceptance' ? sentNow : prev.acceptance_email_sent_at,
           status: emailType === 'acceptance' ? 'approved' : prev.status,
-        }));
+        }) : prev);
       }
 
-      if (emailType === 'acceptance' && selectedMember && selectedMember.status !== 'approved') {
-        handleMemberStatusChange(selectedMember.id, 'approved');
+      if (isBulkEmailMode) {
+        setEmailSuccessMsg(`Successfully sent ${recipientsList.length} ${emailType === 'meeting' ? 'interview invitation' : 'acceptance'} email(s)!`);
+        setSelectedMemberIds(new Set());
+      } else {
+        setEmailSuccessMsg(`Email sent successfully to ${recipientsList[0]?.email}!`);
       }
     } catch (err: any) {
       console.error('Email sending error:', err);
       setEmailErrorMsg(err.message || 'Failed to send email');
     } finally {
       setEmailSendingLoading(false);
+      setBulkProgress(null);
     }
   };
 
@@ -2403,6 +2617,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                         <button
                           onClick={() => {
                             const targetName = isTeam ? (item.team_name || 'Team') : leader.full_name;
+                            setIsBulkEmailMode(false);
                             setTargetRecipientName(targetName);
                             setTargetEmail(leader.email || '');
                             setEventTitle(item.events?.title || 'E.R.I.S.E. Event');
@@ -2594,6 +2809,111 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           </div>
         </div>
 
+        {/* Bulk Selection and Action Bar */}
+        {filteredMembers.length > 0 && (
+          <div className="bg-slate-900 text-white p-3 sm:p-4 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-2 cursor-pointer font-bold text-xs select-none">
+                <input
+                  type="checkbox"
+                  checked={filteredMembers.length > 0 && filteredMembers.every((m) => selectedMemberIds.has(m.id))}
+                  onChange={() => handleSelectAllFiltered(filteredMembers)}
+                  className="w-4 h-4 rounded border-slate-400 text-slate-900 bg-slate-800 focus:ring-0 cursor-pointer"
+                />
+                <span className="flex items-center gap-1.5">
+                  {selectedMemberIds.size > 0 ? (
+                    <span className="text-cyan-300 font-extrabold">{selectedMemberIds.size} Selected</span>
+                  ) : (
+                    <span className="text-slate-300">Select All ({filteredMembers.length})</span>
+                  )}
+                </span>
+              </label>
+
+              <div className="h-4 w-[1px] bg-slate-700 hidden sm:block" />
+
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-slate-400 text-[11px] hidden sm:inline">Select:</span>
+                <button
+                  type="button"
+                  onClick={() => handleSelectFirstN(35, filteredMembers)}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  title="Select first 35 members"
+                >
+                  Top 35
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectFirstN(40, filteredMembers)}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  title="Select first 40 members"
+                >
+                  Top 40
+                </button>
+                {selectedMemberIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="px-2 py-1 bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-200 border border-slate-700 text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    Clear ({selectedMemberIds.size})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Bulk Action Buttons */}
+            {selectedMemberIds.size > 0 ? (
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <button
+                  type="button"
+                  onClick={handleOpenBulkMeetingModal}
+                  className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  title="Send Interview / Meeting Invitation with custom time & place"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Interview Invite ({selectedMemberIds.size})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenBulkAcceptanceModal}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  title="Send Recruitment Acceptance & Approve selected members"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Send Acceptance ({selectedMemberIds.size})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBulkApproveStatusOnly}
+                  disabled={bulkActionLoading}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Approve selected members without sending emails"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Approve Only</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  disabled={bulkActionLoading}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Permanently delete selected members"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete ({selectedMemberIds.size})</span>
+                </button>
+              </div>
+            ) : (
+              <div className="text-slate-400 text-xs hidden lg:block italic">
+                Check members to send interview invitations, accept, or delete in bulk.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Member List */}
         {dataLoading ? (
           <div className="flex justify-center py-12 bg-white border border-slate-200">
@@ -2609,6 +2929,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           <div className="space-y-2.5">
             {filteredMembers.map((item) => {
               const status = item.status || 'pending';
+              const isSelected = selectedMemberIds.has(item.id);
               const depts: string[] = Array.isArray(item.departments)
                 ? item.departments
                 : typeof item.departments === 'string'
@@ -2622,9 +2943,29 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     setSelectedMember(item);
                     setMemberModalOpen(true);
                   }}
-                  className="bg-white border border-slate-200 hover:border-slate-400 p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors cursor-pointer group"
+                  className={`p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors cursor-pointer group border ${
+                    isSelected
+                      ? 'bg-slate-50 border-slate-900 ring-1 ring-slate-900/30 shadow-sm'
+                      : 'bg-white border-slate-200 hover:border-slate-400'
+                  }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleSelectMember(item.id);
+                      }}
+                      className="pt-1.5 pr-0.5 cursor-pointer shrink-0"
+                      title={isSelected ? "Deselect member" : "Select member"}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}} // handled by wrapper onClick
+                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                      />
+                    </div>
+
                     <div className="w-9 h-9 bg-slate-100 border border-slate-300 text-slate-700 font-bold flex items-center justify-center text-xs uppercase shrink-0">
                       {item.full_name ? item.full_name.charAt(0) : 'M'}
                     </div>
@@ -3577,6 +3918,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
                 <button
                   onClick={() => {
+                    setIsBulkEmailMode(false);
                     setEmailType('meeting');
                     setTargetRecipientName(selectedMember.full_name || '');
                     setTargetEmail(selectedMember.email || '');
@@ -3592,6 +3934,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
                 <button
                   onClick={() => {
+                    setIsBulkEmailMode(false);
                     setEmailType('acceptance');
                     setTargetRecipientName(selectedMember.full_name || '');
                     setTargetEmail(selectedMember.email || '');
@@ -3778,7 +4121,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       )}
 
       {/* Email Dialog Modal */}
-      {emailModalOpen && (selectedMember || targetEmail) && (
+      {emailModalOpen && (selectedMember || targetEmail || (isBulkEmailMode && selectedMemberIds.size > 0)) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 animate-in fade-in duration-150">
           <div className="bg-white border border-slate-300 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl space-y-4 p-5 sm:p-6">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
@@ -3791,33 +4134,83 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   <CheckCircle className="w-5 h-5 text-emerald-600" />
                 )}
                 <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                  {emailType === 'meeting' ? 'Schedule Interview Email' :
-                   emailType === 'acceptance' ? 'Send Recruitment Acceptance' :
-                   emailType === 'event_invitation' ? 'Send Event Invitation' :
-                   'Send Event Selection Pass'}
+                  {isBulkEmailMode ? (
+                    emailType === 'meeting' ? `Schedule Interview (${selectedMemberIds.size} Members)` :
+                    emailType === 'acceptance' ? `Send Acceptance (${selectedMemberIds.size} Members)` :
+                    emailType === 'event_invitation' ? `Send Event Invitation (${selectedMemberIds.size} Members)` :
+                    `Send Event Pass (${selectedMemberIds.size} Members)`
+                  ) : (
+                    emailType === 'meeting' ? 'Schedule Interview Email' :
+                    emailType === 'acceptance' ? 'Send Recruitment Acceptance' :
+                    emailType === 'event_invitation' ? 'Send Event Invitation' :
+                    'Send Event Selection Pass'
+                  )}
                 </h3>
               </div>
               <button 
                 onClick={() => setEmailModalOpen(false)} 
-                className="text-slate-500 hover:text-slate-900 p-1 transition-colors"
+                className="text-slate-500 hover:text-slate-900 p-1 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="text-xs text-slate-600 space-y-1">
-              <p>Recipient: <strong className="text-slate-900">{targetRecipientName || selectedMember?.full_name}</strong> ({targetEmail || selectedMember?.email})</p>
-            </div>
+            {isBulkEmailMode ? (
+              <div className="bg-slate-50 border border-slate-200 p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800">
+                    Recipients: <strong className="text-cyan-800">{selectedMemberIds.size}</strong> members selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowRecipientList(!showRecipientList)}
+                    className="text-cyan-700 hover:text-cyan-900 underline font-semibold text-[11px] cursor-pointer"
+                  >
+                    {showRecipientList ? 'Hide List' : 'View Names'}
+                  </button>
+                </div>
+                {showRecipientList && (
+                  <div className="max-h-36 overflow-y-auto space-y-1 pr-1 border-t border-slate-200 pt-1.5 no-scrollbar">
+                    {data.filter(m => selectedMemberIds.has(m.id)).map(m => (
+                      <div key={m.id} className="flex items-center justify-between text-[11px] py-0.5 border-b border-slate-100 last:border-0">
+                        <span className="font-semibold text-slate-900 truncate max-w-[170px]">{m.full_name}</span>
+                        <span className="text-slate-500 font-mono text-[10px] truncate max-w-[180px]">{m.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-600 space-y-1">
+                <p>Recipient: <strong className="text-slate-900">{targetRecipientName || selectedMember?.full_name}</strong> ({targetEmail || selectedMember?.email})</p>
+              </div>
+            )}
 
-            {/* Resend Notice if previously sent */}
-            {!emailSuccessMsg && emailType === 'meeting' && (selectedMember?.meeting_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.meeting_email_sent) && (
+            {/* Bulk Progress Indicator */}
+            {bulkProgress && (
+              <div className="p-3 bg-cyan-50 border border-cyan-200 text-cyan-900 text-xs rounded space-y-1.5 animate-in fade-in">
+                <div className="flex items-center justify-between font-bold">
+                  <span>{bulkProgress.message}</span>
+                  <span>{bulkProgress.current} / {bulkProgress.total}</span>
+                </div>
+                <div className="w-full bg-cyan-200 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-cyan-700 h-full transition-all duration-300"
+                    style={{ width: `${Math.round((bulkProgress.current / Math.max(bulkProgress.total, 1)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Resend Notice if previously sent (single mode) */}
+            {!isBulkEmailMode && !emailSuccessMsg && emailType === 'meeting' && (selectedMember?.meeting_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.meeting_email_sent) && (
               <div className="p-2.5 bg-blue-50 border border-blue-200 text-blue-800 text-xs flex items-center gap-2 rounded">
                 <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
                 <span>Notice: A meeting email was previously sent to this recipient. Submitting will resend it smoothly.</span>
               </div>
             )}
 
-            {!emailSuccessMsg && emailType === 'acceptance' && (selectedMember?.acceptance_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.acceptance_email_sent) && (
+            {!isBulkEmailMode && !emailSuccessMsg && emailType === 'acceptance' && (selectedMember?.acceptance_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.acceptance_email_sent) && (
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 rounded">
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Notice: An acceptance email was previously sent to this recipient. Submitting will resend it smoothly.</span>
@@ -3840,31 +4233,35 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
             {!emailSuccessMsg && (
               <div className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Recipient Name (Greeting Name)
-                  </label>
-                  <input
-                    type="text"
-                    value={targetRecipientName}
-                    onChange={(e) => setTargetRecipientName(e.target.value)}
-                    placeholder="Candidate Name or Team Name"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-bold text-slate-900"
-                  />
-                </div>
+                {!isBulkEmailMode && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Recipient Name (Greeting Name)
+                      </label>
+                      <input
+                        type="text"
+                        value={targetRecipientName}
+                        onChange={(e) => setTargetRecipientName(e.target.value)}
+                        placeholder="Candidate Name or Team Name"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-bold text-slate-900"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Recipient Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={targetEmail}
-                    onChange={(e) => setTargetEmail(e.target.value)}
-                    placeholder="candidate@example.com"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-medium text-slate-900"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Recipient Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={targetEmail}
+                        onChange={(e) => setTargetEmail(e.target.value)}
+                        placeholder="candidate@example.com"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-medium text-slate-900"
+                      />
+                    </div>
+                  </>
+                )}
 
                 {(emailType === 'event_invitation' || emailType === 'event_acceptance') && (
                   <div>
@@ -3885,14 +4282,14 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   <>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Date & Time
+                        Date &amp; Time
                       </label>
                       <input
                         type="text"
                         value={meetingDateTime}
                         onChange={(e) => setMeetingDateTime(e.target.value)}
                         placeholder="e.g. Tuesday, Aug 5 at 14:00"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-semibold text-slate-900"
                       />
                     </div>
                     <div>
@@ -3904,7 +4301,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                         value={meetingLocation}
                         onChange={(e) => setMeetingLocation(e.target.value)}
                         placeholder="e.g. Batna Campus"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-semibold text-slate-900"
                       />
                     </div>
                   </>
@@ -3927,44 +4324,66 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
                 {emailType === 'acceptance' && (
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Assigned Department(s)
-                    </label>
-                    <input
-                      type="text"
-                      value={acceptanceDepts}
-                      onChange={(e) => setAcceptanceDepts(e.target.value)}
-                      placeholder="e.g. Organization, Media, Projects"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
-                    />
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {['Projects', 'Organization', 'Media'].map((dept) => {
-                        const isIncluded = acceptanceDepts.toLowerCase().includes(dept.toLowerCase());
-                        return (
-                          <button
-                            key={dept}
-                            type="button"
-                            onClick={() => {
-                              const deptsArr = acceptanceDepts ? acceptanceDepts.split(',').map(s => s.trim()).filter(Boolean) : [];
-                              if (isIncluded) {
-                                setAcceptanceDepts(deptsArr.filter(d => !d.toLowerCase().includes(dept.toLowerCase())).join(', '));
-                              } else {
-                                setAcceptanceDepts([...deptsArr, dept].join(', '));
-                              }
-                            }}
-                            className={`px-2.5 py-1 text-xs font-bold transition-all border ${
-                              isIncluded
-                                ? 'bg-slate-900 text-white border-slate-900'
-                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                            }`}
-                          >
-                            + {dept}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                      Organization members will automatically receive a required onboarding note & link to the E.R.I.S.E. portal.
+                    {isBulkEmailMode && (
+                      <div className="mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={useApplicantDepts}
+                            onChange={(e) => setUseApplicantDepts(e.target.checked)}
+                            className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                          />
+                          <span>Use each member's chosen department(s) from registration</span>
+                        </label>
+                        <p className="text-[10px] text-slate-500 pl-6">
+                          Each applicant will receive an acceptance customized with the department(s) they selected when applying.
+                        </p>
+                      </div>
+                    )}
+
+                    {(!isBulkEmailMode || !useApplicantDepts) && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                          {isBulkEmailMode ? 'Override Assigned Department(s) for All' : 'Assigned Department(s)'}
+                        </label>
+                        <input
+                          type="text"
+                          value={acceptanceDepts}
+                          onChange={(e) => setAcceptanceDepts(e.target.value)}
+                          placeholder="e.g. Organization, Media, Projects"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs text-slate-900"
+                        />
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {['Projects', 'Organization', 'Media'].map((dept) => {
+                            const isIncluded = acceptanceDepts.toLowerCase().includes(dept.toLowerCase());
+                            return (
+                              <button
+                                key={dept}
+                                type="button"
+                                onClick={() => {
+                                  const deptsArr = acceptanceDepts ? acceptanceDepts.split(',').map(s => s.trim()).filter(Boolean) : [];
+                                  if (isIncluded) {
+                                    setAcceptanceDepts(deptsArr.filter(d => !d.toLowerCase().includes(dept.toLowerCase())).join(', '));
+                                  } else {
+                                    setAcceptanceDepts([...deptsArr, dept].join(', '));
+                                  }
+                                }}
+                                className={`px-2.5 py-1 text-xs font-bold transition-all border cursor-pointer ${
+                                  isIncluded
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                                }`}
+                              >
+                                + {dept}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                      Organization members will automatically receive a required onboarding note &amp; link to the E.R.I.S.E. portal.
                     </p>
                   </div>
                 )}
@@ -3975,7 +4394,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               <button
                 type="button"
                 onClick={() => setEmailModalOpen(false)}
-                className="px-3.5 py-1.5 border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+                className="px-3.5 py-1.5 border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 {emailSuccessMsg ? 'Close' : 'Cancel'}
               </button>
@@ -3985,22 +4404,28 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   type="button"
                   onClick={handleSendEmailSubmit}
                   disabled={emailSendingLoading}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all flex items-center gap-2 disabled:opacity-50"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {emailSendingLoading ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Sending Email...</span>
+                      <span>Sending Email{isBulkEmailMode ? 's...' : '...'}</span>
                     </>
                   ) : (
                     <>
                       <Mail className="w-3.5 h-3.5" />
                       <span>
-                        {emailType === 'meeting' && (selectedMember?.meeting_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.meeting_email_sent)
-                          ? 'Resend Meeting Email'
-                          : emailType === 'acceptance' && (selectedMember?.acceptance_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.acceptance_email_sent)
-                          ? 'Resend Acceptance Email'
-                          : 'Send Email'}
+                        {isBulkEmailMode ? (
+                          emailType === 'meeting'
+                            ? `Send ${selectedMemberIds.size} Interview Invitations`
+                            : `Send ${selectedMemberIds.size} Acceptances & Approve`
+                        ) : (
+                          emailType === 'meeting' && (selectedMember?.meeting_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.meeting_email_sent)
+                            ? 'Resend Meeting Email'
+                            : emailType === 'acceptance' && (selectedMember?.acceptance_email_sent || data.find(m => m.email?.toLowerCase() === (targetEmail || '').toLowerCase())?.acceptance_email_sent)
+                            ? 'Resend Acceptance Email'
+                            : 'Send Email'
+                        )}
                       </span>
                     </>
                   )}

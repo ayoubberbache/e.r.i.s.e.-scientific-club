@@ -15,7 +15,7 @@ import { DepartmentMember, ClubProject, AttendanceRecord } from '../../types/por
 import { 
   FolderGit2, Users, CheckSquare, Plus, 
   Search, Trash2, Edit3, Check, X, Loader2, 
-  Mail, Phone, UserPlus, UserCheck, Download, Award, Sliders
+  Mail, Phone, UserPlus, UserCheck, Download, Award, Sliders, Filter
 } from 'lucide-react';
 import { PortalMemberEvaluationModal } from './PortalMemberEvaluationModal';
 
@@ -39,6 +39,9 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   const [memberNamesMap, setMemberNamesMap] = useState<Record<string, string>>({});
   const [membersLoading, setMembersLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [memberYearFilter, setMemberYearFilter] = useState<string>('all');
+  const [memberProjectFilter, setMemberProjectFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
+  const [memberSpecializationFilter, setMemberSpecializationFilter] = useState<string>('all');
 
   // Attendance State (Bootcamps & Workshops)
   const [events, setEvents] = useState<any[]>([]);
@@ -64,6 +67,9 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   const [targetProject, setTargetProject] = useState<ClubProject | null>(null);
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<(string | number)[]>([]);
   const [memberRolesMap, setMemberRolesMap] = useState<Record<string, string>>({});
+  const [assignSearchQuery, setAssignSearchQuery] = useState('');
+  const [assignYearFilter, setAssignYearFilter] = useState<string>('all');
+  const [assignSelectionFilter, setAssignSelectionFilter] = useState<'all' | 'selected' | 'unselected'>('all');
 
   // Add Member Modal State
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -358,6 +364,9 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
       }
     });
     setMemberRolesMap(roles);
+    setAssignSearchQuery('');
+    setAssignYearFilter('all');
+    setAssignSelectionFilter('all');
     setTeamModalOpen(true);
   };
 
@@ -432,15 +441,57 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
     }
   };
 
+  const availableYears = Array.from(new Set(members.map((m) => m.study_year).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
+  const availableSpecializations = Array.from(new Set(members.map((m) => m.specialization).filter(Boolean) as string[])).sort();
+
   const filteredMembers = members.filter((m) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      m.full_name?.toLowerCase().includes(q) ||
-      m.email?.toLowerCase().includes(q) ||
-      m.phone?.includes(q) ||
-      m.role?.toLowerCase().includes(q)
-    );
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const match =
+        m.full_name?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q) ||
+        m.phone?.includes(q) ||
+        m.role?.toLowerCase().includes(q) ||
+        m.specialization?.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    if (memberYearFilter !== 'all' && String(m.study_year) !== String(memberYearFilter)) {
+      return false;
+    }
+    if (memberSpecializationFilter !== 'all' && m.specialization !== memberSpecializationFilter) {
+      return false;
+    }
+    if (memberProjectFilter !== 'all') {
+      const isAssigned = projects.some((p) =>
+        (p.team_members || []).some((tm) => String(tm.member_id ?? (tm as any).id) === String(m.id)) ||
+        (Array.isArray(p.team_member_ids) && p.team_member_ids.map(String).includes(String(m.id)))
+      );
+      if (memberProjectFilter === 'assigned' && !isAssigned) return false;
+      if (memberProjectFilter === 'unassigned' && isAssigned) return false;
+    }
+    return true;
+  });
+
+  const assignAvailableYears = Array.from(new Set(members.map((m) => m.study_year).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
+
+  const assignFilteredMembers = members.filter((mem) => {
+    if (assignSearchQuery) {
+      const q = assignSearchQuery.toLowerCase();
+      const match =
+        mem.full_name?.toLowerCase().includes(q) ||
+        mem.role?.toLowerCase().includes(q) ||
+        mem.specialization?.toLowerCase().includes(q) ||
+        mem.email?.toLowerCase().includes(q) ||
+        String(mem.study_year).includes(q);
+      if (!match) return false;
+    }
+    if (assignYearFilter !== 'all' && String(mem.study_year) !== String(assignYearFilter)) {
+      return false;
+    }
+    const isSelected = selectedTeamMemberIds.some((id) => String(id) === String(mem.id));
+    if (assignSelectionFilter === 'selected' && !isSelected) return false;
+    if (assignSelectionFilter === 'unselected' && isSelected) return false;
+    return true;
   });
 
   const activeProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
@@ -973,8 +1024,17 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search members..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
+                  className="w-full pl-9 pr-7 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               <button
@@ -984,6 +1044,101 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                 <UserPlus className="w-3.5 h-3.5" /> Add Member
               </button>
             </div>
+          </div>
+
+          {/* Members Search & Filtering Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-slate-50 p-2.5 border border-slate-200 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-slate-500 font-semibold flex items-center gap-1 text-[11px] uppercase tracking-wider">
+                <Filter className="w-3 h-3" /> Filter:
+              </span>
+
+              {/* Study Year */}
+              <select
+                value={memberYearFilter}
+                onChange={(e) => setMemberYearFilter(e.target.value)}
+                className="px-2 py-1 bg-white border border-slate-300 text-xs text-slate-700 font-medium focus:outline-none cursor-pointer"
+              >
+                <option value="all">All Study Years</option>
+                {availableYears.map((yr) => (
+                  <option key={String(yr)} value={String(yr)}>
+                    Year {yr}
+                  </option>
+                ))}
+              </select>
+
+              {/* Specialization */}
+              {availableSpecializations.length > 0 && (
+                <select
+                  value={memberSpecializationFilter}
+                  onChange={(e) => setMemberSpecializationFilter(e.target.value)}
+                  className="px-2 py-1 bg-white border border-slate-300 text-xs text-slate-700 font-medium focus:outline-none cursor-pointer max-w-[170px] truncate"
+                >
+                  <option value="all">All Specializations</option>
+                  {availableSpecializations.map((spec) => (
+                    <option key={spec} value={spec}>
+                      {spec}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Project Assignment Status */}
+              <div className="inline-flex p-0.5 bg-white border border-slate-200 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setMemberProjectFilter('all')}
+                  className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                    memberProjectFilter === 'all'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All ({members.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMemberProjectFilter('assigned')}
+                  className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                    memberProjectFilter === 'assigned'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Assigned
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMemberProjectFilter('unassigned')}
+                  className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                    memberProjectFilter === 'unassigned'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Unassigned
+                </button>
+              </div>
+
+              {(searchQuery || memberYearFilter !== 'all' || memberSpecializationFilter !== 'all' || memberProjectFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setMemberYearFilter('all');
+                    setMemberSpecializationFilter('all');
+                    setMemberProjectFilter('all');
+                  }}
+                  className="text-[11px] text-slate-500 hover:text-slate-900 underline ml-1 cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              )}
+            </div>
+
+            <span className="text-[11px] text-slate-500 font-mono">
+              Showing {filteredMembers.length} of {members.length} members
+            </span>
           </div>
 
           {membersLoading ? (
@@ -1174,12 +1329,111 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
               </button>
             </div>
 
-            <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-              <p className="text-xs text-slate-600 mb-2">
-                Select members from the Projects department roster and assign their specific working role in this project:
-              </p>
+            <p className="text-xs text-slate-600">
+              Select members from the Projects department roster and assign their specific working role in this project:
+            </p>
 
-              {members.map((mem) => {
+            {/* Search and Filtering Bar in Assign Modal */}
+            <div className="space-y-2 bg-slate-50 p-2.5 border border-slate-200">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={assignSearchQuery}
+                  onChange={(e) => setAssignSearchQuery(e.target.value)}
+                  placeholder="Search members by name, role, specialization..."
+                  className="w-full pl-9 pr-8 py-1.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:border-slate-500"
+                />
+                {assignSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setAssignSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <select
+                    value={assignYearFilter}
+                    onChange={(e) => setAssignYearFilter(e.target.value)}
+                    className="px-2 py-1 bg-white border border-slate-300 text-xs text-slate-700 font-medium focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Years</option>
+                    {assignAvailableYears.map((yr) => (
+                      <option key={String(yr)} value={String(yr)}>
+                        Yr {yr}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="inline-flex p-0.5 bg-white border border-slate-200 text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setAssignSelectionFilter('all')}
+                      className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                        assignSelectionFilter === 'all'
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      All ({members.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignSelectionFilter('selected')}
+                      className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                        assignSelectionFilter === 'selected'
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Selected ({selectedTeamMemberIds.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssignSelectionFilter('unselected')}
+                      className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                        assignSelectionFilter === 'unselected'
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Unselected ({members.length - selectedTeamMemberIds.length})
+                    </button>
+                  </div>
+
+                  {(assignSearchQuery || assignYearFilter !== 'all' || assignSelectionFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssignSearchQuery('');
+                        setAssignYearFilter('all');
+                        setAssignSelectionFilter('all');
+                      }}
+                      className="text-[11px] text-slate-500 hover:text-slate-900 underline ml-1 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Showing {assignFilteredMembers.length} of {members.length}
+                </span>
+              </div>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+              {assignFilteredMembers.length === 0 ? (
+                <div className="p-6 text-center text-slate-500 text-xs border border-dashed border-slate-200 bg-slate-50">
+                  No members match your search or filter.
+                </div>
+              ) : (
+                assignFilteredMembers.map((mem) => {
                 const isSelected = selectedTeamMemberIds.some((id) => String(id) === String(mem.id));
                 return (
                   <div
@@ -1237,8 +1491,9 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                     )}
                   </div>
                 );
-              })}
-            </div>
+              })
+            )}
+          </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-200">
               <span className="text-xs text-slate-600">

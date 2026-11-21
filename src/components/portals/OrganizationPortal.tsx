@@ -11,7 +11,7 @@ import { DepartmentMember, ClubTask } from '../../types/portals';
 import { 
   Building2, CheckSquare, Plus, CheckCircle2, Clock, 
   Trash2, Users, X, Check, Loader2,
-  Search, Mail, Phone
+  Search, Mail, Phone, Filter
 } from 'lucide-react';
 
 interface OrganizationPortalProps {
@@ -33,6 +33,9 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
   const [members, setMembers] = useState<DepartmentMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [memberYearFilter, setMemberYearFilter] = useState<string>('all');
+  const [memberTaskFilter, setMemberTaskFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
+  const [memberSpecializationFilter, setMemberSpecializationFilter] = useState<string>('all');
 
   // New Task Modal State
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -42,6 +45,9 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
   const [taskDeadline, setTaskDeadline] = useState('');
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<(string | number)[]>([]);
   const [creatingTask, setCreatingTask] = useState(false);
+  const [assignSearchQuery, setAssignSearchQuery] = useState('');
+  const [assignYearFilter, setAssignYearFilter] = useState<string>('all');
+  const [assignSelectionFilter, setAssignSelectionFilter] = useState<'all' | 'selected' | 'unselected'>('all');
 
   useEffect(() => {
     loadMembers();
@@ -142,15 +148,56 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
   const activeCount = tasks.filter((t) => t.status !== 'Completed').length;
   const completedCount = tasks.filter((t) => t.status === 'Completed').length;
 
+  const availableYears = Array.from(new Set(members.map((m) => m.study_year).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
+  const availableSpecializations = Array.from(new Set(members.map((m) => m.specialization).filter(Boolean) as string[])).sort();
+
   const filteredMembers = members.filter((m) => {
-    if (!memberSearchQuery) return true;
-    const q = memberSearchQuery.toLowerCase();
-    return (
-      m.full_name?.toLowerCase().includes(q) ||
-      m.email?.toLowerCase().includes(q) ||
-      m.phone?.includes(q) ||
-      m.role?.toLowerCase().includes(q)
-    );
+    if (memberSearchQuery) {
+      const q = memberSearchQuery.toLowerCase();
+      const match =
+        m.full_name?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q) ||
+        m.phone?.includes(q) ||
+        m.role?.toLowerCase().includes(q) ||
+        m.specialization?.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    if (memberYearFilter !== 'all' && String(m.study_year) !== String(memberYearFilter)) {
+      return false;
+    }
+    if (memberSpecializationFilter !== 'all' && m.specialization !== memberSpecializationFilter) {
+      return false;
+    }
+    if (memberTaskFilter !== 'all') {
+      const isAssigned = tasks.some((t) =>
+        (t.assigned_member_ids || []).map(String).includes(String(m.id))
+      );
+      if (memberTaskFilter === 'assigned' && !isAssigned) return false;
+      if (memberTaskFilter === 'unassigned' && isAssigned) return false;
+    }
+    return true;
+  });
+
+  const assignAvailableYears = Array.from(new Set(members.map((m) => m.study_year).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
+
+  const assignFilteredMembers = members.filter((mem) => {
+    if (assignSearchQuery) {
+      const q = assignSearchQuery.toLowerCase();
+      const match =
+        mem.full_name?.toLowerCase().includes(q) ||
+        mem.role?.toLowerCase().includes(q) ||
+        mem.specialization?.toLowerCase().includes(q) ||
+        mem.email?.toLowerCase().includes(q) ||
+        String(mem.study_year).includes(q);
+      if (!match) return false;
+    }
+    if (assignYearFilter !== 'all' && String(mem.study_year) !== String(assignYearFilter)) {
+      return false;
+    }
+    const isSelected = selectedAssigneeIds.some((id) => String(id) === String(mem.id));
+    if (assignSelectionFilter === 'selected' && !isSelected) return false;
+    if (assignSelectionFilter === 'unselected' && isSelected) return false;
+    return true;
   });
 
   return (
@@ -267,7 +314,12 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
               </div>
 
               <button
-                onClick={() => setCreateModalOpen(true)}
+                onClick={() => {
+                  setAssignSearchQuery('');
+                  setAssignYearFilter('all');
+                  setAssignSelectionFilter('all');
+                  setCreateModalOpen(true);
+                }}
                 className="px-3.5 py-2 sm:py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -423,10 +475,114 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
                   value={memberSearchQuery}
                   onChange={(e) => setMemberSearchQuery(e.target.value)}
                   placeholder="Search members..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 text-xs text-slate-900 focus:outline-none focus:bg-white"
+                  className="w-full pl-9 pr-7 py-1.5 bg-slate-50 border border-slate-300 text-xs text-slate-900 focus:outline-none focus:bg-white"
                 />
+                {memberSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setMemberSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
+          </div>
+
+          {/* Members Search & Filtering Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 bg-slate-50 p-2.5 border border-slate-200 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-slate-500 font-semibold flex items-center gap-1 text-[11px] uppercase tracking-wider">
+                <Filter className="w-3 h-3" /> Filter:
+              </span>
+
+              {/* Study Year */}
+              <select
+                value={memberYearFilter}
+                onChange={(e) => setMemberYearFilter(e.target.value)}
+                className="px-2 py-1 bg-white border border-slate-300 text-xs text-slate-700 font-medium focus:outline-none cursor-pointer"
+              >
+                <option value="all">All Study Years</option>
+                {availableYears.map((yr) => (
+                  <option key={String(yr)} value={String(yr)}>
+                    Year {yr}
+                  </option>
+                ))}
+              </select>
+
+              {/* Specialization */}
+              {availableSpecializations.length > 0 && (
+                <select
+                  value={memberSpecializationFilter}
+                  onChange={(e) => setMemberSpecializationFilter(e.target.value)}
+                  className="px-2 py-1 bg-white border border-slate-300 text-xs text-slate-700 font-medium focus:outline-none cursor-pointer max-w-[170px] truncate"
+                >
+                  <option value="all">All Specializations</option>
+                  {availableSpecializations.map((spec) => (
+                    <option key={spec} value={spec}>
+                      {spec}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Task Assignment Status */}
+              <div className="inline-flex p-0.5 bg-white border border-slate-200 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setMemberTaskFilter('all')}
+                  className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                    memberTaskFilter === 'all'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All ({members.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMemberTaskFilter('assigned')}
+                  className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                    memberTaskFilter === 'assigned'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Assigned
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMemberTaskFilter('unassigned')}
+                  className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                    memberTaskFilter === 'unassigned'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Unassigned
+                </button>
+              </div>
+
+              {(memberSearchQuery || memberYearFilter !== 'all' || memberSpecializationFilter !== 'all' || memberTaskFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMemberSearchQuery('');
+                    setMemberYearFilter('all');
+                    setMemberSpecializationFilter('all');
+                    setMemberTaskFilter('all');
+                  }}
+                  className="text-[11px] text-slate-500 hover:text-slate-900 underline ml-1 cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              )}
+            </div>
+
+            <span className="text-[11px] text-slate-500 font-mono">
+              Showing {filteredMembers.length} of {members.length} members
+            </span>
           </div>
 
           {membersLoading ? (
@@ -552,32 +708,139 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
               </div>
 
               {/* Multi-member Assignee Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Assign Team Members ({selectedAssigneeIds.length} selected)
-                </label>
-                <div className="max-h-36 overflow-y-auto p-2 bg-slate-50 border border-slate-300 space-y-1">
-                  {members.map((mem) => {
-                    const isSelected = selectedAssigneeIds.includes(mem.id);
-                    return (
-                      <div
-                        key={mem.id}
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedAssigneeIds(selectedAssigneeIds.filter((id) => id !== mem.id));
-                          } else {
-                            setSelectedAssigneeIds([...selectedAssigneeIds, mem.id]);
-                          }
-                        }}
-                        className={`p-1.5 flex items-center justify-between text-xs cursor-pointer transition-colors border ${
-                          isSelected ? 'bg-white border-slate-900 text-slate-900 font-bold' : 'border-transparent text-slate-700 hover:bg-slate-200'
-                        }`}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Assign Team Members ({selectedAssigneeIds.length} selected)
+                  </label>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    Showing {assignFilteredMembers.length} of {members.length}
+                  </span>
+                </div>
+
+                {/* Search & Filter Bar */}
+                <div className="space-y-1.5 bg-slate-100 p-2 border border-slate-200">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={assignSearchQuery}
+                      onChange={(e) => setAssignSearchQuery(e.target.value)}
+                      placeholder="Search members by name, role..."
+                      className="w-full pl-8 pr-7 py-1 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none"
+                    />
+                    {assignSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setAssignSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
                       >
-                        <span>{mem.full_name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-slate-900" />}
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <select
+                        value={assignYearFilter}
+                        onChange={(e) => setAssignYearFilter(e.target.value)}
+                        className="px-1.5 py-0.5 bg-white border border-slate-300 text-[11px] text-slate-700 font-medium focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All Years</option>
+                        {assignAvailableYears.map((yr) => (
+                          <option key={String(yr)} value={String(yr)}>
+                            Yr {yr}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="inline-flex p-0.5 bg-white border border-slate-200 text-[10px] font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => setAssignSelectionFilter('all')}
+                          className={`px-1.5 py-0.5 cursor-pointer transition-colors ${
+                            assignSelectionFilter === 'all'
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAssignSelectionFilter('selected')}
+                          className={`px-1.5 py-0.5 cursor-pointer transition-colors ${
+                            assignSelectionFilter === 'selected'
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Selected ({selectedAssigneeIds.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAssignSelectionFilter('unselected')}
+                          className={`px-1.5 py-0.5 cursor-pointer transition-colors ${
+                            assignSelectionFilter === 'unselected'
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Unselected
+                        </button>
                       </div>
-                    );
-                  })}
+
+                      {(assignSearchQuery || assignYearFilter !== 'all' || assignSelectionFilter !== 'all') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssignSearchQuery('');
+                            setAssignYearFilter('all');
+                            setAssignSelectionFilter('all');
+                          }}
+                          className="text-[10px] text-slate-500 hover:text-slate-900 underline ml-0.5 cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="max-h-36 overflow-y-auto p-2 bg-slate-50 border border-slate-300 space-y-1">
+                  {assignFilteredMembers.length === 0 ? (
+                    <div className="p-3 text-center text-slate-500 text-xs">
+                      No members match search or filter.
+                    </div>
+                  ) : (
+                    assignFilteredMembers.map((mem) => {
+                      const isSelected = selectedAssigneeIds.some((id) => String(id) === String(mem.id));
+                      return (
+                        <div
+                          key={mem.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedAssigneeIds(selectedAssigneeIds.filter((id) => String(id) !== String(mem.id)));
+                            } else {
+                              setSelectedAssigneeIds([...selectedAssigneeIds, mem.id]);
+                            }
+                          }}
+                          className={`p-1.5 flex items-center justify-between text-xs cursor-pointer transition-colors border ${
+                            isSelected ? 'bg-white border-slate-900 text-slate-900 font-bold' : 'border-transparent text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="truncate">{mem.full_name}</span>
+                            <span className="text-[10px] text-slate-500 font-normal">
+                              Yr {mem.study_year}{mem.specialization ? ` • ${mem.specialization}` : ''}
+                            </span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-slate-900 shrink-0" />}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 

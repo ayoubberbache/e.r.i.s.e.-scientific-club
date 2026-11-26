@@ -41,13 +41,20 @@ export default async function handler(req: any, res: any) {
 
   try {
     const eventIdNum = Number(regPayload.event_id);
+    if (!Number.isFinite(eventIdNum) || eventIdNum <= 0) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
     const { data: eventRow, error: eventErr } = await supabase
       .from('events')
-      .select('id, title, date, location, registration_enabled, category, email_template_id')
+      .select('id, title, date, time, location, registration_enabled, event_category, email_template_id')
       .eq('id', eventIdNum)
       .maybeSingle();
 
-    if (eventErr || !eventRow) {
+    if (eventErr) {
+      console.error('[api/submit-event-registration] events lookup error:', eventErr);
+      return res.status(500).json({ error: eventErr.message || 'Database error loading event' });
+    }
+    if (!eventRow) {
       return res.status(404).json({ error: 'Event not found' });
     }
     if (eventRow.registration_enabled === false) {
@@ -117,6 +124,8 @@ export default async function handler(req: any, res: any) {
         .maybeSingle();
 
       if (tpl) {
+        const tplDetails = (tpl.theme_config as any)?.eventDetails || {};
+        const tplDateTime = [tplDetails.day, tplDetails.time].filter(Boolean).join(', ');
         rendered = renderEmailFromBlocks({
           subject: tpl.subject,
           blocks: Array.isArray(tpl.blocks) ? tpl.blocks : [],
@@ -124,10 +133,10 @@ export default async function handler(req: any, res: any) {
           variables: {
             name: leader.full_name,
             fullName: leader.full_name,
-            eventTitle: eventRow.title,
-            dateTime: eventRow.date || 'TBA',
-            location: eventRow.location || 'HNSRE Campus, Batna',
-            notes: regPayload.team_name ? `Reference: ${regPayload.team_name}` : '',
+            eventTitle: eventRow.title || tplDetails.eventTitle,
+            dateTime: eventRow.date || tplDateTime || 'TBA',
+            location: eventRow.location || tplDetails.place || 'HNSRE Campus, Batna',
+            notes: tplDetails.notes || (regPayload.team_name ? `Reference: ${regPayload.team_name}` : ''),
           },
         });
       }

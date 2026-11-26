@@ -357,19 +357,21 @@ export function EventRegister() {
         throw new Error(json.error || `Registration failed (${res.status})`);
       }
 
-      // Send confirmation email asynchronously
-      fetch('/api/send-registration-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: sanitizedMembers[0].full_name,
-          email: sanitizedMembers[0].email,
-          phone: sanitizedMembers[0].phone || '',
-          study_year: studyYear || '',
-          eventTitle: getLocalized(event, 'title') || event.title,
-          isEvent: true
-        })
-      }).catch(e => console.warn('Event email trigger warning:', e));
+      // Send fallback confirmation email only if /api/submit-event-registration did not already send one
+      if (!json.emailSent) {
+        fetch('/api/send-registration-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full_name: sanitizedMembers[0].full_name,
+            email: sanitizedMembers[0].email,
+            phone: sanitizedMembers[0].phone || '',
+            study_year: studyYear || '',
+            eventTitle: getLocalized(event, 'title') || event.title,
+            isEvent: true
+          })
+        }).catch(e => console.warn('Event email trigger warning:', e));
+      }
 
       setSuccess(true);
     } catch (err: any) {

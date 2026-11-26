@@ -2088,13 +2088,36 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                   </div>
                 )}
 
-                <div className="pt-2 border-t border-slate-200 mt-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Linked Confirmation Email Template (Optional)
-                  </label>
+                <div className="pt-2 border-t border-slate-200 mt-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Confirmation Email Template (Optional)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeModal();
+                        setActiveTab('email_studio');
+                      }}
+                      className="text-[11px] font-bold text-teal-700 hover:text-teal-900 underline cursor-pointer"
+                    >
+                      + Create New Template
+                    </button>
+                  </div>
                   <select
                     value={formData.email_template_id || ''}
-                    onChange={(e) => handleInputChange('email_template_id', e.target.value || null)}
+                    onChange={(e) => {
+                      const tplId = e.target.value || null;
+                      handleInputChange('email_template_id', tplId);
+                      const tpl = savedEmailTemplates.find((t) => t.id === tplId) as any;
+                      const details = tpl?.theme_config?.eventDetails;
+                      if (details) {
+                        if (!formData.title && details.eventTitle) handleInputChange('title', details.eventTitle);
+                        if (!formData.location && details.place) handleInputChange('location', details.place);
+                        const dt = [details.day, details.time].filter(Boolean).join(', ');
+                        if (!formData.date && dt) handleInputChange('date', dt);
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-800"
                   >
                     <option value="">Default E.R.I.S.E. Event Confirmation</option>
@@ -2104,6 +2127,19 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       </option>
                     ))}
                   </select>
+                  {(() => {
+                    const selectedTpl = savedEmailTemplates.find((t) => t.id === formData.email_template_id) as any;
+                    const details = selectedTpl?.theme_config?.eventDetails;
+                    if (!details) return null;
+                    return (
+                      <div className="p-2.5 rounded bg-teal-50/70 border border-teal-200 text-[11px] text-slate-700 space-y-1">
+                        <div className="font-bold text-teal-900">Template Session Info:</div>
+                        <div><strong>Title:</strong> {details.eventTitle || '—'}</div>
+                        <div><strong>Place:</strong> {details.place || '—'} &nbsp;|&nbsp; <strong>Day &amp; Time:</strong> {[details.day, details.time].filter(Boolean).join(', ') || '—'}</div>
+                        {details.notes && <div><strong>Notes:</strong> {details.notes}</div>}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

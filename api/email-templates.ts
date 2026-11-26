@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { getAdminClient } from './_lib/supabaseAdmin.js';
 import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth.js';
@@ -64,7 +65,15 @@ export default async function handler(req: any, res: any) {
   applySecurityCors(req, res, 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const session = verifyAdminAuth(req);
+  const rhKey = String(req.headers?.['x-erise-rh-key'] || '').trim();
+  const serverSecret = String(process.env.SUPABASE_SECRET_KEY || '').trim();
+  const isRhDesktop =
+    rhKey.length > 16 &&
+    serverSecret.length > 16 &&
+    rhKey.length === serverSecret.length &&
+    crypto.timingSafeEqual(Buffer.from(rhKey), Buffer.from(serverSecret));
+
+  const session = verifyAdminAuth(req) || (isRhDesktop ? { user: { username: 'erise_rh_desktop', name: 'E.R.I.S.E. RH', role: 'admin' } } : null);
   if (!session) {
     return res.status(401).json({ error: 'Unauthorized. Valid admin session required.' });
   }
@@ -212,7 +221,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'send_test') {
-      const { to, subject, blocks, theme_config } = body;
+      const { to, subject, blocks, theme_config, variables } = body;
       if (!to || typeof to !== 'string') return res.status(400).json({ error: 'Recipient email required' });
 
       const rendered = renderEmailFromBlocks({
@@ -227,6 +236,7 @@ export default async function handler(req: any, res: any) {
           notes: 'Test preview sent from E.R.I.S.E. Email Studio.',
           departments: 'Projects, Organization',
           studentId: '202400000001',
+          ...(variables || {}),
         },
       });
 
@@ -237,6 +247,20 @@ export default async function handler(req: any, res: any) {
         text: rendered.text,
       });
 
+      return res.status(200).json({ success: true, id: gmailResult.id, sender: gmailResult.sender });
+    }
+
+    if (action === 'send_raw') {
+      const { to, subject, html, text } = body;
+      if (!to || typeof to !== 'string' || !subject || !html) {
+        return res.status(400).json({ error: 'to, subject, and html are required' });
+      }
+      const gmailResult = await sendGmailAsErise({
+        to: to.trim(),
+        subject: String(subject),
+        html: String(html),
+        text: String(text || subject),
+      });
       return res.status(200).json({ success: true, id: gmailResult.id, sender: gmailResult.sender });
     }
 

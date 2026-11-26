@@ -298,7 +298,10 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
           category: editing.category,
           subject: editing.subject.trim(),
           blocks: editing.blocks,
-          theme_config: editing.theme_config,
+          theme_config: {
+            ...editing.theme_config,
+            eventDetails,
+          },
           is_default: Boolean(editing.is_default),
         }),
       });
@@ -398,7 +401,19 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
                 return (
                   <div
                     key={tpl.id}
-                    onClick={() => setEditing(tpl)}
+                    onClick={() => {
+                      setEditing(tpl);
+                      const savedDetails = (tpl as any)?.theme_config?.eventDetails;
+                      if (savedDetails) {
+                        setEventDetails({
+                          eventTitle: savedDetails.eventTitle || '',
+                          day: savedDetails.day || '',
+                          time: savedDetails.time || '',
+                          place: savedDetails.place || '',
+                          notes: savedDetails.notes || '',
+                        });
+                      }
+                    }}
                     className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                       isSelected
                         ? 'bg-secondary border-accent'

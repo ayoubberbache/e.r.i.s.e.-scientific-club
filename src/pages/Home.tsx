@@ -303,7 +303,7 @@ export function Home() {
             >
               <div className="h-48 relative overflow-hidden bg-dominant border-b border-subtle">
                 <img
-                  src={`${import.meta.env.BASE_URL}team-assets/our team.jpg?v=2`}
+                  src={`${import.meta.env.BASE_URL}team-assets/our%20team.JPG?v=2`}
                   alt="Team"
                   className="w-full h-full object-cover object-top group-hover:scale-103 transition-transform duration-300"
                 />

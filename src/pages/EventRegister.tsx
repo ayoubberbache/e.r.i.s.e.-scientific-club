@@ -64,8 +64,10 @@ export function EventRegister() {
   const [eventError, setEventError] = useState<string | null>(null);
 
   // Form State
+  const HNS_RE2SD_NAME = 'Higher National School of Renewable Energies, Environment & Sustainable Development (HNS-RE2SD)';
   const [teamName, setTeamName] = useState('');
-  const [institution, setInstitution] = useState('');
+  const [isLocalStudent, setIsLocalStudent] = useState(true);
+  const [institution, setInstitution] = useState(HNS_RE2SD_NAME);
   const [customInstitution, setCustomInstitution] = useState('');
   const [studyYear, setStudyYear] = useState('');
   const [participationMode, setParticipationMode] = useState<'team' | 'individual'>('team');
@@ -264,9 +266,11 @@ export function EventRegister() {
       }
     }
 
-    const selectedInst = institution === 'Other Institution / University' || institution === 'تحديد مؤسسة أخرى'
-      ? sanitizeString(customInstitution)
-      : sanitizeString(institution);
+    const selectedInst = isLocalStudent
+      ? HNS_RE2SD_NAME
+      : (institution === 'Other Institution / University' || institution === 'تحديد مؤسسة أخرى'
+        ? sanitizeString(customInstitution)
+        : sanitizeString(institution));
 
     if (!selectedInst) {
       setError(language === 'ar' ? 'يرجى اختيار أو كتابة اسم المؤسسة / الجامعة.' : 'Please select or specify your institution/university.');
@@ -342,43 +346,15 @@ export function EventRegister() {
         phone: m.phone
       }));
 
-      let submitted = false;
-
       // 1. Primary: Serverless API proxy
-      try {
-        const res = await fetch('/api/submit-event-registration', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ regPayload, memberPayloads })
-        });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success) submitted = true;
-        }
-      } catch (e) {
-        // Fallback to client Supabase insert
-      }
-
-      // 2. Direct Supabase Fallback
-      if (!submitted) {
-        const { data: regData, error: regError } = await supabase
-          .from('event_registrations')
-          .insert([regPayload])
-          .select()
-          .single();
-
-        if (regError) throw regError;
-
-        const membersWithRegId = memberPayloads.map(m => ({
-          ...m,
-          registration_id: regData.id
-        }));
-
-        const { error: membersError } = await supabase
-          .from('event_registration_members')
-          .insert(membersWithRegId);
-
-        if (membersError) throw membersError;
+      const res = await fetch('/api/submit-event-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regPayload, memberPayloads })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `Registration failed (${res.status})`);
       }
 
       // Send confirmation email asynchronously
@@ -737,8 +713,64 @@ export function EventRegister() {
                   </div>
                 )}
 
+                {/* Local (HNS-RE2SD) vs Non-Local Toggle */}
+                <div className="space-y-2">
+                  <label className={`block text-xs font-bold uppercase tracking-wider ${
+                    isDark ? 'text-slate-300' : 'text-slate-700'
+                  }`}>
+                    {language === 'ar' ? 'الانتماء الجامعي *' : 'Student Affiliation *'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLocalStudent(true);
+                        setInstitution(HNS_RE2SD_NAME);
+                      }}
+                      className={`p-3 border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                        isLocalStudent
+                          ? (isDark ? 'bg-[#00e5ff]/10 border-[#00e5ff] text-white' : 'bg-[#0d5c63]/10 border-[#0d5c63] text-[#0d5c63]')
+                          : (isDark ? 'bg-slate-950 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-300 text-slate-600')
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 ${
+                        isLocalStudent ? 'bg-[#0d5c63] border-[#0d5c63] text-white' : 'border-slate-400'
+                      }`}>
+                        {isLocalStudent && <Check className="w-3 h-3" />}
+                      </span>
+                      <div>
+                        <div className="text-xs font-bold">{language === 'ar' ? 'طالب محلي (HNS-RE2SD)' : 'Local (HNS-RE2SD)'}</div>
+                        <div className="text-[10px] opacity-75">{language === 'ar' ? 'المدرسة الوطنية العليا للطاقات المتجددة' : 'Default: HNS-RE2SD Batna'}</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLocalStudent(false);
+                        if (institution === HNS_RE2SD_NAME) setInstitution('');
+                      }}
+                      className={`p-3 border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                        !isLocalStudent
+                          ? (isDark ? 'bg-[#00e5ff]/10 border-[#00e5ff] text-white' : 'bg-[#0d5c63]/10 border-[#0d5c63] text-[#0d5c63]')
+                          : (isDark ? 'bg-slate-950 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-300 text-slate-600')
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 ${
+                        !isLocalStudent ? 'bg-[#0d5c63] border-[#0d5c63] text-white' : 'border-slate-400'
+                      }`}>
+                        {!isLocalStudent && <Check className="w-3 h-3" />}
+                      </span>
+                      <div>
+                        <div className="text-xs font-bold">{language === 'ar' ? 'خارج المدرسة (غير محلي)' : 'Non-Local (External)'}</div>
+                        <div className="text-[10px] opacity-75">{language === 'ar' ? 'اختر جامعتك أو مؤسستك' : 'Select your university'}</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Academic Institution & Study Year */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`grid grid-cols-1 ${!isLocalStudent ? 'md:grid-cols-2' : ''} gap-4`}>
+                  {!isLocalStudent && (
                   <div>
                     <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${
                       isDark ? 'text-slate-300' : 'text-slate-700'
@@ -778,6 +810,7 @@ export function EventRegister() {
                       />
                     )}
                   </div>
+                  )}
 
                   <div>
                     <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${

@@ -1228,6 +1228,16 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       }
 
       if (activeTab === 'events') {
+        const linkedTpl = savedEmailTemplates.find((t) => t.id === payload.email_template_id) as any;
+        const tplDetails = linkedTpl?.theme_config?.eventDetails;
+        if (!payload.title && tplDetails?.eventTitle) payload.title = tplDetails.eventTitle;
+        if (!payload.location && tplDetails?.place) payload.location = tplDetails.place;
+        if (payload.description == null || payload.description === '') {
+          payload.description = tplDetails?.notes || payload.title || 'E.R.I.S.E. Event';
+        }
+        if (payload.title_ar == null) payload.title_ar = '';
+        if (payload.description_ar == null) payload.description_ar = '';
+        if (payload.location_ar == null) payload.location_ar = '';
         if (!payload.status) payload.status = 'UPCOMING';
         if (payload.no_registration === undefined) payload.no_registration = false;
         if (payload.registration_enabled === undefined) payload.registration_enabled = true;

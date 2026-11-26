@@ -97,7 +97,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
       try {
         const [mems, projs, nameMap] = await Promise.all([
           fetchDepartmentMembers('Projects'),
-          fetchStoredProjects(),
+          fetchStoredProjects('Projects'),
           getMemberNamesMap()
         ]);
         setMembers(mems);
@@ -154,7 +154,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
     setProjectsLoading(true);
     try {
       const [list, nameMap] = await Promise.all([
-        fetchStoredProjects(),
+        fetchStoredProjects('Projects'),
         getMemberNamesMap()
       ]);
       setMemberNamesMap(nameMap);

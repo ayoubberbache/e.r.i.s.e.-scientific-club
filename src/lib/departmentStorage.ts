@@ -295,14 +295,19 @@ export async function fetchStoredProjects(department?: Department): Promise<Club
             updated_at: p.updated_at || new Date().toISOString(),
           };
         });
-        saveStoredProjects(mapped);
-        return mapped;
+        if (!department) saveStoredProjects(mapped);
+        return department
+          ? mapped.filter((p) => (p.department || 'Projects') === department)
+          : mapped;
       }
     }
   } catch (err) {
     console.warn('Could not fetch projects from API:', err);
   }
-  return getStoredProjects();
+  const fallback = getStoredProjects();
+  return department
+    ? fallback.filter((p) => (p.department || 'Projects') === department)
+    : fallback;
 }
 
 export async function addOrUpdateProject(

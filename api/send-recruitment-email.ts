@@ -1,981 +1,362 @@
-import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
+import { getAdminClient } from './_lib/supabaseAdmin.js';
+import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth.js';
+import {
+  getGoogleConfigStatus,
+  listSentGmailMessages,
+  sendGmailAsErise,
+} from './_lib/googleWorkspace.js';
+import { EmailBlock, renderEmailFromBlocks } from './_lib/emailRenderer.js';
 
-function getAdminClient() {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://ygougrhejaesbtifacdk.supabase.co';
-  const serviceKey = 
-    process.env.SUPABASE_SECRET_KEY || 
-    process.env.SUPABASE_SERVICE_ROLE_KEY || 
-    Buffer.from('c2Jfc2VjcmV0XzBVbFlfQUp5b2dUSVhFN1Q2MklDVlFfR3ItRGJQZWw=', 'base64').toString('utf8');
-  return createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false }
-  });
-}
+const RecipientSchema = z.object({
+  id: z.union([z.number().int(), z.string()]).optional(),
+  email: z.string().email(),
+  name: z.string().max(180).optional(),
+  departments: z.any().optional(),
+});
 
-// Rate Limiting Map
-const rateLimitMap = new Map<string, number[]>();
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 min
-const MAX_REQUESTS_PER_WINDOW = 500; // Increased for admin operations
+const SendEmailSchema = z.object({
+  emailType: z.string().max(80).optional(),
+  type: z.string().max(80).optional(),
+  toEmail: z.string().email().optional(),
+  fullName: z.string().max(180).optional(),
+  department: z.string().max(120).optional(),
+  departments: z.any().optional(),
+  registrationId: z.union([z.number().int(), z.string()]).optional(),
+  templateId: z.string().max(120).optional(),
+  recipients: z.array(RecipientSchema).max(60).optional(),
+  customSubject: z.string().max(240).optional(),
+  customMessage: z.string().max(10000).optional(),
+  interviewDate: z.string().max(120).optional(),
+  interviewTime: z.string().max(120).optional(),
+  dateTime: z.string().max(160).optional(),
+  location: z.string().max(200).optional(),
+  interviewLocation: z.string().max(200).optional(),
+  eventTitle: z.string().max(200).optional(),
+  eventDateTime: z.string().max(200).optional(),
+  eventLocation: z.string().max(200).optional(),
+  eventNotes: z.string().max(3000).optional(),
+  notes: z.string().max(3000).optional(),
+});
 
-const CURRENT_SESSION_EPOCH = 'ERISE_REVOKED_2026_09_V2';
-
-function verifyAdminAuth(req: any): boolean {
-  const authHeader = req.headers?.authorization || req.headers?.Authorization;
-  if (!authHeader || typeof authHeader !== 'string') return false;
-
-  const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') return false;
-
-  const tokenStr = parts[1];
-  try {
-    const parsed = JSON.parse(Buffer.from(tokenStr, 'base64').toString('utf8'));
-    if (!parsed || parsed.epoch !== CURRENT_SESSION_EPOCH) return false;
-    if (!parsed.expiresAt || Date.now() > parsed.expiresAt) return false;
-    if (!parsed.user || (parsed.user.role !== 'admin' && !parsed.user.role?.startsWith('head_'))) {
-      return false;
-    }
-    return true;
-  } catch (err) {
-    return false;
+async function sendViaResendFallback(params: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<{ id: string; provider: 'resend' }> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error('Neither Google Workspace Gmail API (erise.club@hns-re2sd.dz) nor RESEND_API_KEY is configured.');
   }
-}
 
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const timestamps = rateLimitMap.get(ip) || [];
-  const validTimestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-  
-  if (validTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
-    return true;
-  }
-  
-  validTimestamps.push(now);
-  rateLimitMap.set(ip, validTimestamps);
-  return false;
-}
+  const fromEmail = process.env.SENDER_EMAIL || 'E.R.I.S.E. Scientific Club <recruitment@erise-scientific-club.site>';
+  const replyTo = process.env.REPLY_TO_EMAIL || 'erise.club@hns-re2sd.dz';
 
-function escapeHtml(unsafe: any): string {
-  if (typeof unsafe !== 'string') return '';
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-// Hosted Public Images on website domain (CDN enabled)
-const LOGO_URL = "https://erise-scientific-club.site/logo-cyan-full.png";
-const ACCEPTANCE_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Acceptance.png";
-const MEETING_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Meeting.png";
-const EVENT_MASCOT_URL = "https://erise-scientific-club.site/gmail-pics/Event-invitation.png";
-
-const MAIN_TELEGRAM_LINK = "https://t.me/+ju8GDh4k9VdkYzQ0";
-const MAIN_DISCORD_LINK = "https://discord.gg/JHy7WGj";
-
-interface DepartmentConfig {
-  name: string;
-  telegram?: string;
-  discord?: string;
-  todoApp?: string;
-  specialNote?: string;
-}
-
-const DEPARTMENT_CONFIGS: Record<string, DepartmentConfig> = {
-  "projects": {
-    name: "Projects",
-    telegram: "https://t.me/+0ZBYbHRdKvpjZDU0",
-    discord: "https://discord.gg/Gz9yEfrFdS",
-  },
-  "organization": {
-    name: "Organization",
-    telegram: "https://t.me/+lL1uqjsRBNpiNWVk",
-    discord: "https://discord.gg/TevuwXxmAW",
-    todoApp: "https://erise-todo.vercel.app/",
-    specialNote: "Every Organization member is required to sign up in the E.R.I.S.E. To-Do App (https://erise-todo.vercel.app/).",
-  },
-  "media": {
-    name: "Media",
-    telegram: "https://t.me/+8yYJwqTQAWo0YTg0",
-    discord: "https://discord.gg/YJSUAvj2kg",
-  },
-};
-
-function normalizeDeptKey(dept: string): string {
-  const clean = dept.trim().toLowerCase();
-  if (clean.includes('proj')) return 'projects';
-  if (clean.includes('org') || clean.includes('organ')) return 'organization';
-  if (clean.includes('med')) return 'media';
-  return clean;
-}
-
-// ==========================================
-// PLAIN TEXT GENERATORS (Anti-Spam Multi-part)
-// ==========================================
-
-function generateAcceptanceText(name: string, departmentsRaw: any): string {
-  let deptList: string[] = [];
-  if (Array.isArray(departmentsRaw)) {
-    deptList = departmentsRaw.map(d => String(d).trim()).filter(d => d.length > 0);
-  } else if (typeof departmentsRaw === 'string') {
-    deptList = departmentsRaw.split(',').map(d => d.trim()).filter(d => d.length > 0);
-  } else if (departmentsRaw) {
-    deptList = [String(departmentsRaw).trim()];
-  }
-  const depts = deptList.length > 0 ? deptList.join(', ') : 'E.R.I.S.E. Team';
-
-  let deptSectionsText = '';
-  let hasOrg = false;
-
-  deptList.forEach(dept => {
-    const key = normalizeDeptKey(dept);
-    const config = DEPARTMENT_CONFIGS[key];
-    if (config) {
-      deptSectionsText += `\n--- [${config.name} Department Access] ---\n`;
-      if (config.telegram) deptSectionsText += `• ${config.name} Telegram: ${config.telegram}\n`;
-      if (config.discord) deptSectionsText += `• ${config.name} Discord: ${config.discord}\n`;
-      if (config.todoApp) deptSectionsText += `• E.R.I.S.E. To-Do App: ${config.todoApp}\n`;
-      if (config.specialNote) {
-        hasOrg = true;
-        deptSectionsText += `• MANDATORY ACTION: ${config.specialNote}\n`;
-      }
-    }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: [params.to],
+      reply_to: replyTo,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+    }),
   });
 
-  return `Congratulations ${name}!
-
-You have been officially accepted into E.R.I.S.E. Scientific Club!
-
-Assigned Department(s): ${depts}
-
-=========================================
-1. ALL-MEMBER ESSENTIAL LINKS (FOR EVERYONE)
-=========================================
-• Main Telegram Channel: ${MAIN_TELEGRAM_LINK}
-• Main Discord Community: ${MAIN_DISCORD_LINK}
-  (Note: Joining Discord is required to assign your official role so that when meetings are held, you will meet in your department's specific room).
-${deptSectionsText}
-=========================================
-NEXT STEPS
-=========================================
-1. Join the Main Telegram Channel and Discord Server (your department roles and meeting rooms will be assigned on Discord).
-${hasOrg ? '2. Create an account / sign up on the E.R.I.S.E. To-Do App (required for all Organization members).\n3. Connect with your department leads and teammates in your first meeting.' : '2. Connect with your department leads and teammates in your first meeting.'}
-
-We are thrilled to welcome you on board!
-
-Best regards,
-E.R.I.S.E. Recruitment Team
-Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
-
----
-To manage your notification preferences or contact us, visit https://erise-scientific-club.site/contact`;
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || `Resend HTTP ${res.status}`);
+  return { id: data.id || `resend_${Date.now()}`, provider: 'resend' };
 }
 
-function generateMeetingText(name: string, location: string, dateTime: string): string {
-  return `Hello ${name},
+async function sendWithPrimaryProvider(params: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<{ id: string; provider: 'gmail' | 'resend'; sender: string }> {
+  const googleStatus = getGoogleConfigStatus();
+  if (googleStatus.gmailConfigured) {
+    const result = await sendGmailAsErise(params);
+    return { id: result.id, provider: 'gmail', sender: result.sender };
+  }
 
-You're invited for a recruitment interview with E.R.I.S.E. Scientific Club!
-
-Interview Details:
-- Date & Time: ${dateTime}
-- Location: ${location}
-
-Interview Tips:
-- Please arrive 5-10 minutes before your scheduled slot.
-- Feel free to share your technical projects, interests, and motivation.
-
-We look forward to meeting you!
-
-Best regards,
-E.R.I.S.E. Recruitment Team
-Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
-
----
-To manage your notification preferences, visit https://erise-scientific-club.site/contact`;
+  const resendRes = await sendViaResendFallback(params);
+  return {
+    id: resendRes.id,
+    provider: 'resend',
+    sender: process.env.SENDER_EMAIL || 'onboarding@resend.dev',
+  };
 }
 
-function generateEventInvitationText(teamOrName: string, eventTitle: string, location: string, dateTime: string, notes?: string): string {
-  return `Congratulations ${teamOrName}!
-
-You / your team have been officially selected & invited to participate in ${eventTitle} organized by E.R.I.S.E. Scientific Club.
-
-Event Details:
-- Event Name: ${eventTitle}
-- Date & Time: ${dateTime}
-- Venue / Location: ${location}
-${notes ? `- Important Note: ${notes}\n` : ''}
-Event Guidelines:
-- Please arrive 15 minutes before the scheduled start time for check-in.
-- Bring your student ID card and any requested event materials.
-
-See you at the event!
-
-Best regards,
-E.R.I.S.E. Events Team
-Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
-
----
-To manage your notification preferences, visit https://erise-scientific-club.site/contact`;
-}
-
-// ==========================================
-// HTML TEMPLATES (Optimized Text-to-Image & Footers)
-// ==========================================
-
-function generateAcceptanceHtml(name: string, departmentsRaw: any): string {
-  let deptList: string[] = [];
-  if (Array.isArray(departmentsRaw)) {
-    deptList = departmentsRaw.map(d => String(d).trim()).filter(d => d.length > 0);
-  } else if (typeof departmentsRaw === 'string') {
-    deptList = departmentsRaw.split(',').map(d => d.trim()).filter(d => d.length > 0);
-  } else if (departmentsRaw) {
-    deptList = [String(departmentsRaw).trim()];
-  }
-  deptList = deptList.slice(0, 4);
-
-  const deptBadgesHtml = deptList.map(dept => `
-    <span style="background-color: #1A315B; color: #FFFFFF; padding: 6px 14px; border-radius: 8px; display: inline-block; margin: 3px; font-size: 13px; font-weight: 700;">
-      ${escapeHtml(dept)} Department
-    </span>
-  `).join('');
-
-  // Department-specific blocks
-  let deptSpecificCardsHtml = '';
-  deptList.forEach(dept => {
-    const key = normalizeDeptKey(dept);
-    const config = DEPARTMENT_CONFIGS[key];
-    if (config) {
-      let buttons = '';
-      if (config.telegram) {
-        buttons += `
-          <a href="${config.telegram}" target="_blank" style="background-color: #1C8ADB; color: #FFFFFF; text-decoration: none; padding: 11px 16px; border-radius: 10px; display: block; margin: 6px auto; max-width: 290px; font-weight: 700; font-size: 13px; text-align: center;">
-            Join ${escapeHtml(config.name)} Telegram
-          </a>
-        `;
-      }
-      if (config.discord) {
-        buttons += `
-          <a href="${config.discord}" target="_blank" style="background-color: #5865F2; color: #FFFFFF; text-decoration: none; padding: 11px 16px; border-radius: 10px; display: block; margin: 6px auto; max-width: 290px; font-weight: 700; font-size: 13px; text-align: center;">
-            Join ${escapeHtml(config.name)} Discord
-          </a>
-        `;
-      }
-      if (config.todoApp) {
-        buttons += `
-          <a href="${config.todoApp}" target="_blank" style="background-color: #0D9488; color: #FFFFFF; text-decoration: none; padding: 11px 16px; border-radius: 10px; display: block; margin: 6px auto; max-width: 290px; font-weight: 700; font-size: 13px; text-align: center;">
-            Open E.R.I.S.E. To-Do App
-          </a>
-        `;
-      }
-
-      let noteHtml = '';
-      if (config.specialNote) {
-        noteHtml = `
-          <div style="background-color: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 10px 12px; margin-top: 10px; text-align: left;">
-            <p style="color: #92400E; font-size: 12px; font-weight: 700; margin: 0; line-height: 16px;">
-              ⚠️ <strong>Mandatory Step:</strong> Every Organization member is required to sign up in the <a href="https://erise-todo.vercel.app/" target="_blank" style="color: #B45309; text-decoration: underline;">E.R.I.S.E. To-Do App</a>.
-            </p>
-          </div>
-        `;
-      }
-
-      deptSpecificCardsHtml += `
-        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; margin-top: 12px;">
-          <p style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #1A315B; font-weight: 800; text-align: center;">
-            ${escapeHtml(config.name)} Department Channels
-          </p>
-          ${buttons}
-          ${noteHtml}
-        </div>
-      `;
-    }
-  });
-
-  const cleanName = escapeHtml(name);
-
-  return `
-  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-  <html xmlns="http://www.w3.org/1999/xhtml" lang="en" style="background-color: #0F172A;">
-  <head>
-      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style type="text/css">
-          body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #0F172A; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-          table { border-collapse: collapse; }
-          img { border: 0; height: auto; outline: none; text-decoration: none; display: block; }
-      </style>
-  </head>
-  <body bgcolor="#0F172A" style="margin: 0 !important; padding: 0 !important; background-color: #0F172A;">
-  <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0F172A">
-      <tr>
-          <td align="center" style="padding: 20px 10px;">
-              <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1E293B" style="max-width: 500px; background-color: #1E293B; border-radius: 16px; overflow: hidden; border: 1px solid #334155;">
-                  
-                  <!-- HEADER LOGO & TEXT -->
-                  <tr>
-                      <td bgcolor="#1E293B" style="padding: 28px 20px 16px 20px; background-color: #1E293B; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="120" style="margin: 0 auto 12px auto; width: 120px; height: auto;" />
-                          <h1 style="color: #FFFFFF; font-size: 20px; font-weight: 800; margin: 0; letter-spacing: 0.5px;">E.R.I.S.E. Scientific Club</h1>
-                          <p style="color: #94A3B8; font-size: 12px; font-weight: 600; margin: 4px 0 0 0;">Official Recruitment Decision</p>
-                      </td>
-                  </tr>
-
-                  <!-- HERO MASCOT -->
-                  <tr>
-                      <td align="center" bgcolor="#1E293B" style="padding: 0; margin: 0; background-color: #1E293B; width: 100%;">
-                          <img src="${ACCEPTANCE_MASCOT_URL}" alt="Welcome to E.R.I.S.E." width="100%" style="width: 100%; max-width: 500px; height: auto; display: block; margin: 0 auto;" />
-                      </td>
-                  </tr>
-
-                  <!-- WELCOME CARD (Seamless match with bottom clouds #8CC9CA) -->
-                  <tr>
-                      <td bgcolor="#8CC9CA" style="padding: 24px 20px; background-color: #8CC9CA; text-align: center;">
-                          
-                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Official Acceptance</span>
-
-                          <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              Congratulations, ${cleanName}!
-                          </h2>
-
-                          <p style="color: #1A315B; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
-                              You are officially accepted into <strong>E.R.I.S.E. Scientific Club</strong>! We are thrilled to welcome your energy, ambition, and creativity to the team.
-                          </p>
-
-                          <!-- DEPARTMENTS CONTAINER -->
-                          <div style="margin: 14px 0;">
-                              <p style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #1A315B; font-weight: 800;">Assigned Department(s)</p>
-                              <div>${deptBadgesHtml}</div>
-                          </div>
-
-                      </td>
-                  </tr>
-
-                  <!-- ACTION CHANNELS (WHITE CARD) -->
-                  <tr>
-                      <td style="padding: 24px 20px; background-color: #FFFFFF;">
-                          
-                          <!-- General Community (Everyone) -->
-                          <div style="text-align: center; margin-bottom: 16px;">
-                              <h3 style="color: #0F172A; font-size: 14px; font-weight: 800; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-                                  1. General Community (All Members)
-                              </h3>
-                              <p style="color: #64748B; font-size: 12px; margin: 0 0 12px 0;">
-                                  Every accepted member must join our main community spaces:
-                              </p>
-
-                              <a href="${MAIN_TELEGRAM_LINK}" target="_blank" style="background-color: #24A1DE; color: #FFFFFF; text-decoration: none; padding: 12px 18px; border-radius: 10px; display: block; margin: 0 auto 8px auto; max-width: 290px; font-weight: 700; font-size: 13px; text-align: center;">
-                                  Join Main Telegram Channel
-                              </a>
-
-                              <a href="${MAIN_DISCORD_LINK}" target="_blank" style="background-color: #5865F2; color: #FFFFFF; text-decoration: none; padding: 12px 18px; border-radius: 10px; display: block; margin: 0 auto; max-width: 290px; font-weight: 700; font-size: 13px; text-align: center;">
-                                  Join Main Discord Community
-                              </a>
-
-                              <p style="color: #64748B; font-size: 11px; line-height: 16px; margin: 8px auto 0 auto; max-width: 320px; text-align: center;">
-                                  💡 <em>Joining Discord is required to assign roles to everyone in the club so each department has access to its specific meeting room.</em>
-                              </p>
-                          </div>
-
-                          <!-- Department Specific -->
-                          ${deptSpecificCardsHtml ? `
-                            <div style="margin-top: 18px;">
-                                <h3 style="color: #0F172A; font-size: 14px; font-weight: 800; margin: 0 0 4px 0; text-align: center; text-transform: uppercase; letter-spacing: 0.5px;">
-                                    2. Department Tools & Channels
-                                </h3>
-                                ${deptSpecificCardsHtml}
-                            </div>
-                          ` : ''}
-
-                      </td>
-                  </tr>
-
-                  <!-- WHAT'S NEXT -->
-                  <tr>
-                      <td style="padding: 20px 20px; background-color: #F8FAFC; border-top: 1px solid #E2E8F0;">
-                          <h4 style="color: #0F172A; font-size: 13px; font-weight: 800; text-align: center; margin: 0 0 12px 0; letter-spacing: 0.5px; text-transform: uppercase;">Next Steps</h4>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFFFFF" style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; margin-bottom: 8px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 10px 14px;">
-                                      <p style="color: #0F172A; font-size: 12px; font-weight: 700; margin: 0 0 2px 0;">1. Connect on Telegram & Discord</p>
-                                      <p style="color: #64748B; font-size: 11px; margin: 0; line-height: 15px;">Join the server to receive your club role and access your dedicated department meeting rooms.</p>
-                                  </td>
-                              </tr>
-                          </table>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFFFFF" style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 10px 14px;">
-                                      <p style="color: #0F172A; font-size: 12px; font-weight: 700; margin: 0 0 2px 0;">2. First Onboarding Session</p>
-                                      <p style="color: #64748B; font-size: 11px; margin: 0; line-height: 15px;">Meet your team lead and learn about the annual project roadmaps.</p>
-                                  </td>
-                              </tr>
-                          </table>
-                      </td>
-                  </tr>
-
-                  <!-- FOOTER -->
-                  <tr>
-                      <td bgcolor="#0F172A" style="padding: 20px 16px; background-color: #0F172A; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Footer Logo" width="90" style="margin: 0 auto 10px auto; width: 90px;" />
-                          <p style="color: #E2E8F0; font-size: 11px; font-weight: 700; margin: 4px 0 0 0; line-height: 15px;">
-                              Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
-                          </p>
-                          <p style="color: #64748B; font-size: 10px; margin: 10px 0 0 0; line-height: 14px;">
-                              You received this transactional email because of your membership application with E.R.I.S.E. Scientific Club.<br/>
-                              <a href="https://erise-scientific-club.site/contact" style="color: #38BDF8; text-decoration: underline;">Contact Club Administration</a>
-                          </p>
-                      </td>
-                  </tr>
-
-              </table>
-          </td>
-      </tr>
-  </table>
-  </body>
-  </html>`;
-}
-
-function generateMeetingHtml(name: string, location: string, dateTime: string): string {
-  const cleanName = escapeHtml(name);
-  const cleanLoc = escapeHtml(location);
-  const cleanDT = escapeHtml(dateTime);
-
-  return `
-  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-  <html xmlns="http://www.w3.org/1999/xhtml" lang="en" style="background-color: #1F2937;">
-  <head>
-      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style type="text/css">
-          body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #1F2937; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-          table { border-collapse: collapse; }
-          img { border: 0; height: auto; outline: none; text-decoration: none; display: block; }
-      </style>
-  </head>
-  <body bgcolor="#1F2937" style="margin: 0 !important; padding: 0 !important; background-color: #1F2937;">
-  <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1F2937">
-      <tr>
-          <td align="center" style="padding: 12px 0;">
-              <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1A2432" style="max-width: 480px; background-color: #1A2432; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
-                  
-                  <!-- HEADER LOGO -->
-                  <tr>
-                      <td bgcolor="#1A2432" style="padding: 24px 16px 16px 16px; background-color: #1A2432; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="130" style="margin: 0 auto 10px auto; width: 130px; height: auto;" />
-                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px;">E.R.I.S.E. Scientific Club</h1>
-                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0;">Recruitment Interview Invitation</p>
-                      </td>
-                  </tr>
-
-                  <!-- HERO DESK MASCOT -->
-                  <tr>
-                      <td align="center" bgcolor="#1A2432" style="padding: 0; margin: 0; background-color: #1A2432; width: 100%;">
-                          <img src="${MEETING_MASCOT_URL}" alt="E.R.I.S.E. Interview Session" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
-                      </td>
-                  </tr>
-
-                  <!-- MEETING CARD -->
-                  <tr>
-                      <td bgcolor="#8CC9CA" style="padding: 24px 18px; background-color: #8CC9CA; border-radius: 0; text-align: center;">
-                          
-                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Interview Schedule</span>
-
-                          <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              You're Invited, ${cleanName}!
-                          </h2>
-
-                          <p style="color: #FFFFFF; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
-                              We reviewed your application and would love to meet you in person for a quick conversation!
-                          </p>
-
-                          <!-- DETAILS CONTAINER -->
-                          <div style="background-color: #1A315B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: left;">
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Date &amp; Time</p>
-                              <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanDT}</p>
-
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Location</p>
-                              <p style="margin: 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanLoc}</p>
-                          </div>
-
-                      </td>
-                  </tr>
-
-                  <!-- TIPS -->
-                  <tr>
-                      <td style="padding: 24px 16px 16px 16px; background-color: #FFFFFF;">
-                          <h3 style="color: #1A315B; font-size: 15px; font-weight: 800; text-align: center; margin: 0 0 16px 0; letter-spacing: 0.5px; text-transform: uppercase;">Interview Tips</h3>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px; margin-bottom: 10px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">1. Be Punctual</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Please arrive 5–10 minutes before your scheduled slot.</p>
-                                  </td>
-                              </tr>
-                          </table>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">2. Share Your Passion</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Tell us about your interests, technical projects, or skills!</p>
-                                  </td>
-                              </tr>
-                          </table>
-                      </td>
-                  </tr>
-
-                  <!-- FOOTER -->
-                  <tr>
-                      <td bgcolor="#1A2432" style="padding: 20px 16px; background-color: #1A2432; border-top: 1px solid #2D3748; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Footer Logo" width="100" style="margin: 0 auto 10px auto; width: 100px;" />
-                          <p style="color: #E5E7EB; font-size: 11px; font-weight: 700; margin: 4px 0 0 0; line-height: 15px;">
-                              Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
-                          </p>
-                          <p style="color: #6B7280; font-size: 10px; margin: 12px 0 0 0; line-height: 14px;">
-                              You received this transactional notification regarding your interview schedule.<br/>
-                              <a href="https://erise-scientific-club.site/contact" style="color: #8CC9CA; text-decoration: underline;">Manage notification preferences</a>
-                          </p>
-                      </td>
-                  </tr>
-
-              </table>
-          </td>
-      </tr>
-  </table>
-  </body>
-  </html>`;
-}
-
-function generateEventInvitationHtml(teamOrName: string, eventTitle: string, location: string, dateTime: string, notes?: string): string {
-  const cleanName = escapeHtml(teamOrName);
-  const cleanTitle = escapeHtml(eventTitle);
-  const cleanLoc = escapeHtml(location);
-  const cleanDT = escapeHtml(dateTime);
-  const cleanNotes = notes ? escapeHtml(notes) : null;
-
-  return `
-  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-  <html xmlns="http://www.w3.org/1999/xhtml" lang="en" style="background-color: #1F2937;">
-  <head>
-      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style type="text/css">
-          body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #1F2937; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-          table { border-collapse: collapse; }
-          img { border: 0; height: auto; outline: none; text-decoration: none; display: block; }
-      </style>
-  </head>
-  <body bgcolor="#1F2937" style="margin: 0 !important; padding: 0 !important; background-color: #1F2937;">
-  <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1F2937">
-      <tr>
-          <td align="center" style="padding: 12px 0;">
-              <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1A2432" style="max-width: 480px; background-color: #1A2432; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
-                  
-                  <!-- HEADER LOGO -->
-                  <tr>
-                      <td bgcolor="#1A2432" style="padding: 24px 16px 16px 16px; background-color: #1A2432; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Logo" width="130" style="margin: 0 auto 10px auto; width: 130px; height: auto;" />
-                          <h1 style="color: #FFFFFF; font-size: 18px; font-weight: 800; margin: 8px 0 0 0; letter-spacing: 1px;">E.R.I.S.E. Scientific Club</h1>
-                          <p style="color: #9CA3AF; font-size: 12px; font-weight: 600; margin: 4px 0 0 0;">Official Event Pass &amp; Invitation</p>
-                      </td>
-                  </tr>
-
-                  <!-- HERO MASCOT -->
-                  <tr>
-                      <td align="center" bgcolor="#1A2432" style="padding: 0; margin: 0; background-color: #1A2432; width: 100%;">
-                          <img src="${EVENT_MASCOT_URL}" alt="E.R.I.S.E. Event Session" width="100%" style="width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto;" />
-                      </td>
-                  </tr>
-
-                  <!-- INVITATION & SELECTION CARD -->
-                  <tr>
-                      <td bgcolor="#8CC9CA" style="padding: 24px 18px; background-color: #8CC9CA; border-radius: 0; text-align: center;">
-                          
-                          <span style="background-color: rgba(26,49,91,0.15); color: #1A315B; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">Selection Pass Confirmed</span>
-
-                          <h2 style="color: #1A315B; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0; line-height: 28px;">
-                              Congratulations, ${cleanName}!
-                          </h2>
-
-                          <p style="color: #FFFFFF; font-size: 14px; line-height: 21px; margin: 0 0 16px 0; font-weight: 500;">
-                              You / your team have been officially <strong>selected &amp; invited</strong> to join <strong>${cleanTitle}</strong> organized by E.R.I.S.E. Scientific Club!
-                          </p>
-
-                          <!-- DETAILS CONTAINER -->
-                          <div style="background-color: #1A315B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: left;">
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Event Name</p>
-                              <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanTitle}</p>
-
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Date &amp; Time</p>
-                              <p style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanDT}</p>
-
-                              <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Venue / Location</p>
-                              <p style="margin: 0; font-size: 15px; font-weight: 700; color: #FFFFFF;">${cleanLoc}</p>
-
-                              ${cleanNotes ? `
-                                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(140,201,202,0.3);">
-                                  <p style="margin: 0 0 2px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8CC9CA; font-weight: 700;">Important Note</p>
-                                  <p style="margin: 0; font-size: 13px; font-weight: 500; color: #E2F0F1;">${cleanNotes}</p>
-                                </div>
-                              ` : ''}
-                          </div>
-
-                      </td>
-                  </tr>
-
-                  <!-- GUIDELINES -->
-                  <tr>
-                      <td style="padding: 24px 16px 16px 16px; background-color: #FFFFFF;">
-                          <h3 style="color: #1A315B; font-size: 15px; font-weight: 800; text-align: center; margin: 0 0 16px 0; letter-spacing: 0.5px; text-transform: uppercase;">Event Guidelines</h3>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px; margin-bottom: 10px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">1. Arrival &amp; Check-In</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Please arrive 15 minutes before the scheduled time for check-in.</p>
-                                  </td>
-                              </tr>
-                          </table>
-
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F8FCFC" style="background-color: #F8FCFC; border: 1px solid #E2F0F1; border-radius: 12px;">
-                              <tr>
-                                  <td valign="middle" style="padding: 12px;">
-                                      <h4 style="color: #1A315B; font-size: 13px; font-weight: 700; margin: 0 0 2px 0;">2. Student ID &amp; Preparation</h4>
-                                      <p style="color: #556677; font-size: 11px; margin: 0; line-height: 15px;">Bring your student ID card and any required materials.</p>
-                                  </td>
-                              </tr>
-                          </table>
-                      </td>
-                  </tr>
-
-                  <!-- FOOTER -->
-                  <tr>
-                      <td bgcolor="#1A2432" style="padding: 20px 16px; background-color: #1A2432; border-top: 1px solid #2D3748; text-align: center;">
-                          <img src="${LOGO_URL}" alt="E.R.I.S.E. Footer Logo" width="100" style="margin: 0 auto 10px auto; width: 100px;" />
-                          <p style="color: #E5E7EB; font-size: 11px; font-weight: 700; margin: 4px 0 0 0; line-height: 15px;">
-                              Higher National School of Renewable Energies, Environment and Sustainable Development — Batna, Algeria
-                          </p>
-                          <p style="color: #6B7280; font-size: 10px; margin: 12px 0 0 0; line-height: 14px;">
-                              You received this event pass notification regarding your event registration.<br/>
-                              <a href="https://erise-scientific-club.site/contact" style="color: #8CC9CA; text-decoration: underline;">Manage notification preferences</a>
-                          </p>
-                      </td>
-                  </tr>
-
-              </table>
-          </td>
-      </tr>
-  </table>
-  </body>
-  </html>`;
-}
-
-// ==========================================
-// 6. SERVERLESS API ROUTE HANDLER
-// ==========================================
-export default async function handler(req: any, res: any) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  // Rate Limiting: Skip for authenticated admin
-  const isAdmin = verifyAdminAuth(req);
-  if (!isAdmin) {
-    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || 'unknown';
-    if (isRateLimited(clientIp)) {
-      return res.status(429).json({ error: 'Too many email requests. Please wait a bit.' });
-    }
-  }
-
-  const RESEND_API_KEY = process.env.RESEND_API_KEY;
-  if (!RESEND_API_KEY) {
-    return res.status(500).json({ error: 'Resend API key is not configured' });
-  }
-
-  const { type, email, name, departments, location, dateTime, eventTitle, notes, registrationId, recipients } = req.body || {};
-
-  interface RecipientEntry {
-    id?: number | string;
-    email: string;
-    name: string;
-    departments?: any;
-  }
-
-  let targetRecipients: RecipientEntry[] = [];
-  if (Array.isArray(recipients) && recipients.length > 0) {
-    targetRecipients = recipients
-      .filter((r: any) => r && r.email)
-      .map((r: any) => ({
-        id: r.id,
-        email: String(r.email).trim().toLowerCase(),
-        name: r.name ? String(r.name).trim() : 'Candidate',
-        departments: r.departments || departments
-      }));
-  } else if (email && name) {
-    targetRecipients = [{
-      id: registrationId,
-      email: String(email).trim().toLowerCase(),
-      name: String(name).trim(),
-      departments: departments
-    }];
-  }
-
-  if (!type || targetRecipients.length === 0) {
-    return res.status(400).json({ error: 'Missing required parameters (type, email/name or recipients array)' });
-  }
-
-  if (type === 'meeting' && (!location || !dateTime)) {
-    return res.status(400).json({ error: 'Meeting email requires location and dateTime' });
-  }
-
-  if ((type === 'event_invitation' || type === 'event_acceptance') && (!eventTitle || !location || !dateTime)) {
-    return res.status(400).json({ error: 'Event email requires eventTitle, location, and dateTime' });
-  }
-
-  // Authentic Humanized Sender & Trusted Reply-To
-  const SENDER_EMAIL = process.env.SENDER_EMAIL || 'E.R.I.S.E. Recruitment Team <recruitment@erise-scientific-club.site>';
-  const REPLY_TO_EMAIL = process.env.REPLY_TO_EMAIL || 'erise.club@gmail.com';
-
-  const emailPayloads = targetRecipients.map((rec) => {
-    let subject = '';
-    let htmlContent = '';
-    let textContent = '';
-
-    if (type === 'acceptance') {
-      subject = 'Welcome to E.R.I.S.E. Scientific Club!';
-      htmlContent = generateAcceptanceHtml(rec.name, rec.departments || departments);
-      textContent = generateAcceptanceText(rec.name, rec.departments || departments);
-    } else if (type === 'meeting') {
-      subject = 'Interview Invitation — E.R.I.S.E. Scientific Club';
-      htmlContent = generateMeetingHtml(rec.name, location, dateTime);
-      textContent = generateMeetingText(rec.name, location, dateTime);
-    } else if (type === 'event_invitation' || type === 'event_acceptance') {
-      subject = `Invitation & Selection Confirmed: ${eventTitle} — E.R.I.S.E. Scientific Club`;
-      htmlContent = generateEventInvitationHtml(rec.name, eventTitle, location, dateTime, notes);
-      textContent = generateEventInvitationText(rec.name, eventTitle, location, dateTime, notes);
-    }
-
+function buildBuiltinEmail(params: {
+  emailType: string;
+  fullName: string;
+  department: string;
+  customSubject?: string;
+  customMessage?: string;
+  dateTime?: string;
+  location?: string;
+  eventTitle?: string;
+  eventNotes?: string;
+}): { subject: string; blocks: EmailBlock[]; variables: Record<string, string> } {
+  const waLink = 'https://chat.whatsapp.com/I8vT4H3E27w3aM0V3kQ7wO';
+  const variables: Record<string, string> = {
+    name: params.fullName || 'Member',
+    fullName: params.fullName || 'Member',
+    department: params.department || 'General',
+    departments: params.department || 'General',
+    eventTitle: params.eventTitle || 'E.R.I.S.E. Club Activity',
+    dateTime: params.dateTime || 'TBA',
+    location: params.location || 'HNSRE Campus, Batna',
+    notes: params.eventNotes || params.customMessage || '',
+    customMessage: params.customMessage || '',
+  };
+
+  const normType = params.emailType === 'meeting' ? 'interview_invite' : params.emailType;
+
+  if (normType === 'interview_invite') {
     return {
-      from: SENDER_EMAIL,
-      reply_to: REPLY_TO_EMAIL,
-      to: [rec.email],
-      subject,
-      html: htmlContent,
-      text: textContent,
-      recipient: rec
+      subject: params.customSubject || `E.R.I.S.E. Scientific Club — Interview Invitation ({{department}})`,
+      variables,
+      blocks: [
+        { id: 'b1', type: 'heading', text: 'Interview Invitation — {{department}}', color: '#0d5c63' },
+        { id: 'b2', type: 'paragraph', text: 'Dear {{name}},\n\nThank you for applying to E.R.I.S.E. Scientific Club. We would like to invite you for an interview.' },
+        { id: 'b3', type: 'event_card', title: 'Interview Schedule', showDateTime: true, showLocation: true, showNotes: true },
+      ],
     };
-  });
+  }
 
-  const sentResults: Array<{ id: string; email: string }> = [];
-  const errors: any[] = [];
+  if (normType === 'accepted' || normType === 'acceptance' || normType === 'welcome_member') {
+    return {
+      subject: params.customSubject || `Welcome to E.R.I.S.E. Scientific Club ({{department}})`,
+      variables,
+      blocks: [
+        { id: 'b1', type: 'heading', text: 'Welcome to E.R.I.S.E. Scientific Club!', color: '#0d5c63' },
+        { id: 'b2', type: 'paragraph', text: 'Congratulations {{name}}!\n\nYour application to the {{department}} Department at E.R.I.S.E. Scientific Club has been officially accepted.' },
+        { id: 'b3', type: 'button', text: 'Join Club Community', url: waLink, align: 'center' },
+      ],
+    };
+  }
+
+  if (normType === 'rejected' || normType === 'interview_rejected') {
+    return {
+      subject: params.customSubject || 'E.R.I.S.E. Scientific Club — Application Update',
+      variables,
+      blocks: [
+        { id: 'b1', type: 'heading', text: 'Application Update', color: '#0d5c63' },
+        { id: 'b2', type: 'paragraph', text: 'Dear {{name}},\n\nThank you for applying to E.R.I.S.E. Scientific Club. We are unable to offer a spot in {{department}} this cycle, and we encourage you to join our upcoming public workshops.' },
+      ],
+    };
+  }
+
+  return {
+    subject: params.customSubject || `E.R.I.S.E. Scientific Club — {{eventTitle}}`,
+    variables,
+    blocks: [
+      { id: 'b1', type: 'heading', text: '{{eventTitle}}', color: '#0d5c63' },
+      { id: 'b2', type: 'paragraph', text: 'Hello {{name}},\n\n{{customMessage}}' },
+      { id: 'b3', type: 'event_card', title: 'Session Information', showDateTime: true, showLocation: true, showNotes: true },
+    ],
+  };
+}
+
+export default async function handler(req: any, res: any) {
+  applySecurityCors(req, res, 'POST, OPTIONS');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const session = verifyAdminAuth(req);
+  if (!session) {
+    return res.status(401).json({ error: 'Unauthorized: valid signed admin session required' });
+  }
+
+  const parsed = SendEmailSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid request payload', details: parsed.error.flatten() });
+  }
+
+  const input = parsed.data;
+  const effectiveType = input.emailType || input.type || 'acceptance';
+  const supabase = getAdminClient();
 
   try {
-    if (emailPayloads.length === 1) {
-      const payload = emailPayloads[0];
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: payload.from,
-          reply_to: payload.reply_to,
-          to: payload.to,
-          subject: payload.subject,
-          html: payload.html,
-          text: payload.text,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        console.error('Resend API Error:', data);
-        return res.status(response.status).json({ error: 'Failed to send email via Resend', details: data });
-      }
-      sentResults.push({ id: data.id, email: payload.to[0] });
-      console.log(`[EMAIL_SENT] Type: ${type}, Recipient: ${payload.to[0]}, Name: ${payload.recipient.name}, ResendId: ${data.id}`);
-    } else {
-      // Chunk batches of up to 100
-      const CHUNK_SIZE = 100;
-      for (let i = 0; i < emailPayloads.length; i += CHUNK_SIZE) {
-        const chunk = emailPayloads.slice(i, i + CHUNK_SIZE);
-        const batchBody = chunk.map(p => ({
-          from: p.from,
-          reply_to: p.reply_to,
-          to: p.to,
-          subject: p.subject,
-          html: p.html,
-          text: p.text,
-        }));
-
-        let batchSuccess = false;
-        try {
-          const batchRes = await fetch('https://api.resend.com/emails/batch', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${RESEND_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(batchBody),
-          });
-
-          if (batchRes.ok) {
-            const batchData = await batchRes.json();
-            const items = Array.isArray(batchData?.data) ? batchData.data : [];
-            chunk.forEach((p, idx) => {
-              sentResults.push({ id: items[idx]?.id || 'batch-sent', email: p.to[0] });
-            });
-            batchSuccess = true;
-          }
-        } catch (bErr) {
-          console.warn('Batch endpoint failed, falling back to individual sends:', bErr);
-        }
-
-        if (!batchSuccess) {
-          for (const item of chunk) {
-            try {
-              const singleRes = await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${RESEND_API_KEY}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  from: item.from,
-                  reply_to: item.reply_to,
-                  to: item.to,
-                  subject: item.subject,
-                  html: item.html,
-                  text: item.text,
-                }),
-              });
-              const sData = await singleRes.json();
-              if (singleRes.ok) {
-                sentResults.push({ id: sData.id, email: item.to[0] });
-              } else {
-                errors.push({ email: item.to[0], error: sData });
-              }
-            } catch (err: any) {
-              errors.push({ email: item.to[0], error: err.message });
-            }
-          }
-        }
-      }
-    }
-
-    const sentAt = new Date().toISOString();
-
-    // 1. Persist tracking in club_settings JSON store
-    try {
-      const supabase = getAdminClient();
+    if (effectiveType === 'get_logs') {
       const { data: settingsRow } = await supabase
         .from('club_settings')
         .select('value')
-        .eq('key', 'sent_recruitment_emails')
-        .single();
+        .eq('key', 'email_logs')
+        .maybeSingle();
 
-      const currentMap = (settingsRow?.value && typeof settingsRow.value === 'object') ? settingsRow.value : {};
-
-      for (const sent of sentResults) {
-        const cleanEmail = sent.email;
-        const rec = targetRecipients.find(r => r.email === cleanEmail);
-        const userRecord = currentMap[cleanEmail] || {};
-        const history = Array.isArray(userRecord.history) ? userRecord.history : [];
-
-        history.push({
-          type,
-          sent_at: sentAt,
-          resend_id: sent.id,
-          recipient_name: rec?.name || 'Member',
-          subject: type === 'meeting' ? 'Interview Invitation' : (type === 'acceptance' ? 'Welcome to E.R.I.S.E.' : 'Event Notification'),
-        });
-
-        currentMap[cleanEmail] = {
-          ...userRecord,
-          meeting_email_sent: type === 'meeting' ? true : Boolean(userRecord.meeting_email_sent),
-          meeting_email_sent_at: type === 'meeting' ? sentAt : (userRecord.meeting_email_sent_at || null),
-          acceptance_email_sent: type === 'acceptance' ? true : Boolean(userRecord.acceptance_email_sent),
-          acceptance_email_sent_at: type === 'acceptance' ? sentAt : (userRecord.acceptance_email_sent_at || null),
-          last_sent_at: sentAt,
-          last_type: type,
-          history,
-        };
-      }
-
-      await supabase.from('club_settings').upsert({
-        key: 'sent_recruitment_emails',
-        value: currentMap,
-        updated_at: sentAt,
-      });
-    } catch (storeErr) {
-      console.warn('Failed to update sent_recruitment_emails in club_settings:', storeErr);
-    }
-
-    // 2. Also update registrations table directly
-    try {
-      const supabase = getAdminClient();
-      const regUpdate: any = {};
-      if (type === 'meeting') {
-        regUpdate.meeting_email_sent = true;
-        regUpdate.meeting_email_sent_at = sentAt;
-      } else if (type === 'acceptance') {
-        regUpdate.acceptance_email_sent = true;
-        regUpdate.acceptance_email_sent_at = sentAt;
-        regUpdate.status = 'approved';
-      }
-
-      if (Object.keys(regUpdate).length > 0) {
-        const validNumericIds = targetRecipients
-          .filter(r => sentResults.some(s => s.email === r.email))
-          .map(r => Number(r.id))
-          .filter(id => !isNaN(id) && id > 0);
-
-        if (validNumericIds.length > 0) {
-          await supabase.from('registrations').update(regUpdate).in('id', validNumericIds);
-        }
-
-        const sentEmails = sentResults.map(s => s.email);
-        if (sentEmails.length > 0) {
-          await supabase.from('registrations').update(regUpdate).in('email', sentEmails);
-        }
-      }
-    } catch (tableErr) {
-      console.warn('Registrations table direct update skipped:', tableErr);
-    }
-
-    if (targetRecipients.length === 1 && sentResults.length === 1) {
       return res.status(200).json({
         success: true,
-        id: sentResults[0].id,
-        type,
-        recipient: sentResults[0].email,
-        sentAt,
-        isResend: true
+        logs: Array.isArray(settingsRow?.value) ? settingsRow.value : [],
+        googleStatus: getGoogleConfigStatus(),
       });
     }
+
+    if (effectiveType === 'sync_resend' || effectiveType === 'sync_gmail') {
+      const googleStatus = getGoogleConfigStatus();
+      if (!googleStatus.gmailConfigured) {
+        return res.status(200).json({ success: true, synced: 0, message: 'Gmail API not configured yet' });
+      }
+      const gmailLogs = await listSentGmailMessages(50);
+      return res.status(200).json({ success: true, synced: gmailLogs.length, logs: gmailLogs });
+    }
+
+    const targets: Array<{ id?: number | string; email: string; name: string; dept: string }> =
+      Array.isArray(input.recipients) && input.recipients.length > 0
+        ? input.recipients.map(r => ({
+            id: r.id,
+            email: r.email.trim().toLowerCase(),
+            name: r.name || 'Member',
+            dept: Array.isArray(r.departments)
+              ? r.departments.join(', ')
+              : String(r.departments || input.department || 'General'),
+          }))
+        : input.toEmail
+          ? [{
+              id: input.registrationId,
+              email: input.toEmail.trim().toLowerCase(),
+              name: input.fullName || 'Member',
+              dept: Array.isArray(input.departments)
+                ? input.departments.join(', ')
+                : (input.department || 'General'),
+            }]
+          : [];
+
+    if (targets.length === 0) {
+      return res.status(400).json({ error: 'At least one recipient email is required' });
+    }
+
+    let tpl: any = null;
+    if (input.templateId) {
+      const { data } = await supabase
+        .from('email_templates')
+        .select('*')
+        .eq('id', input.templateId)
+        .maybeSingle();
+      tpl = data;
+    }
+
+    const results: any[] = [];
+    const { data: settingsRow } = await supabase
+      .from('club_settings')
+      .select('value')
+      .eq('key', 'email_logs')
+      .maybeSingle();
+    const prevLogs: any[] = Array.isArray(settingsRow?.value) ? settingsRow.value : [];
+    const newLogs: any[] = [];
+
+    for (const target of targets) {
+      const combinedDateTime =
+        input.dateTime ||
+        input.eventDateTime ||
+        [input.interviewDate, input.interviewTime].filter(Boolean).join(' ') ||
+        'TBA';
+      const combinedLocation = input.location || input.eventLocation || input.interviewLocation || 'HNSRE Campus, Batna';
+      const combinedNotes = input.notes || input.eventNotes || input.customMessage || '';
+
+      let rendered;
+      if (tpl) {
+        rendered = renderEmailFromBlocks({
+          subject: input.customSubject || tpl.subject,
+          blocks: Array.isArray(tpl.blocks) ? tpl.blocks : [],
+          themeConfig: tpl.theme_config || {},
+          variables: {
+            name: target.name,
+            fullName: target.name,
+            department: target.dept,
+            departments: target.dept,
+            eventTitle: input.eventTitle || tpl.name || 'E.R.I.S.E. Event',
+            dateTime: combinedDateTime,
+            location: combinedLocation,
+            notes: combinedNotes,
+          },
+        });
+      } else {
+        const builtin = buildBuiltinEmail({
+          emailType: effectiveType,
+          fullName: target.name,
+          department: target.dept,
+          customSubject: input.customSubject,
+          customMessage: input.customMessage,
+          dateTime: combinedDateTime,
+          location: combinedLocation,
+          eventTitle: input.eventTitle,
+          eventNotes: combinedNotes,
+        });
+        rendered = renderEmailFromBlocks({
+          subject: builtin.subject,
+          blocks: builtin.blocks,
+          variables: builtin.variables,
+        });
+      }
+
+      const sendRes = await sendWithPrimaryProvider({
+        to: target.email,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+      });
+
+      if (target.id !== undefined && target.id !== '') {
+        const regUpdates: Record<string, any> = {};
+        if (effectiveType === 'meeting' || effectiveType === 'interview_invite') {
+          regUpdates.meeting_email_sent = true;
+          regUpdates.meeting_email_sent_at = new Date().toISOString();
+          regUpdates.interview_status = 'invited';
+        } else if (effectiveType === 'acceptance' || effectiveType === 'accepted' || effectiveType === 'welcome_member') {
+          regUpdates.status = 'approved';
+          regUpdates.acceptance_email_sent = true;
+          regUpdates.acceptance_email_sent_at = new Date().toISOString();
+          regUpdates.interview_status = 'passed';
+        } else if (effectiveType === 'rejected' || effectiveType === 'interview_rejected') {
+          regUpdates.status = 'rejected';
+          regUpdates.interview_status = 'rejected';
+        }
+        if (Object.keys(regUpdates).length > 0) {
+          await supabase.from('registrations').update(regUpdates).eq('id', target.id);
+        }
+      }
+
+      const logEntry = {
+        id: sendRes.id,
+        to: target.email,
+        fullName: target.name,
+        subject: rendered.subject,
+        emailType: effectiveType,
+        templateId: input.templateId || null,
+        provider: sendRes.provider,
+        sender: sendRes.sender,
+        sentBy: session.user.username,
+        status: 'sent',
+        created_at: new Date().toISOString(),
+      };
+      newLogs.push(logEntry);
+      results.push({ email: target.email, id: sendRes.id, provider: sendRes.provider });
+    }
+
+    await supabase
+      .from('club_settings')
+      .upsert({ key: 'email_logs', value: [...newLogs, ...prevLogs].slice(0, 250) }, { onConflict: 'key' });
+
+    await logAuditEvent(supabase, session, `send_email_${effectiveType}`, 'email_logs', undefined, {
+      count: results.length,
+    });
 
     return res.status(200).json({
       success: true,
-      totalSent: sentResults.length,
-      sentRecipients: sentResults.map(s => s.email),
-      errors: errors.length > 0 ? errors : undefined,
-      type,
-      sentAt,
-      isResend: true
+      sent: results.length,
+      results,
     });
-  } catch (error: any) {
-    console.error('Send Email Error:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+  } catch (err: any) {
+    console.error('[api/send-recruitment-email]', err);
+    return res.status(500).json({ error: err?.message || 'Failed to send email' });
   }
 }

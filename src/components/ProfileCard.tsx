@@ -471,7 +471,7 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
               )}
               {showUserInfo && (
                 <div
-                  className="absolute z-[2] flex items-center justify-between backdrop-blur-[30px] border border-white/10 pointer-events-auto"
+                  className="absolute z-[2] flex items-center justify-between border border-white/15 pointer-events-auto"
                   style={
                     {
                       '--ui-inset': '20px',
@@ -479,7 +479,7 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
                       bottom: 'var(--ui-inset)',
                       left: 'var(--ui-inset)',
                       right: 'var(--ui-inset)',
-                      background: 'rgba(255, 255, 255, 0.1)',
+                      background: 'rgba(6, 15, 28, 0.88)',
                       borderRadius: 'calc(max(0px, var(--card-radius) - var(--ui-inset) + var(--ui-radius-bias)))',
                       padding: '12px 14px'
                     } as React.CSSProperties
@@ -508,7 +508,7 @@ const ProfileCardComponent: React.FC<ProfileCardProps> = ({
                     )}
                     {!socials && contactText && (
                       <button
-                        className="border border-white/10 rounded-lg px-4 py-2 text-xs font-semibold text-white/90 cursor-pointer backdrop-blur-[10px] transition-all duration-200 ease-out hover:border-white/40 hover:-translate-y-px"
+                        className="border border-white/20 bg-[#0a192a] rounded-lg px-4 py-2 text-xs font-semibold text-white cursor-pointer transition-all duration-200 ease-out hover:border-[#00e5ff] hover:-translate-y-px"
                         onClick={handleContactClick}
                         type="button"
                         aria-label={`Contact ${name || 'user'}`}

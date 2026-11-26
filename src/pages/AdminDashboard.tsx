@@ -1,48 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { 
+import {
   User, LogIn, LogOut, Loader2, Save, Trash2, Plus, X, Upload, Edit, 
   ToggleLeft, ToggleRight, ChevronDown, ChevronUp, ClipboardList, Users, 
   Award, Calendar, Star, Download, CheckCircle, XCircle, Menu, Car, 
   Building2, UserCheck, Clock, Filter, FileText, Check, Copy, Phone, 
   Mail, GraduationCap, Search, ExternalLink, Cpu, Camera, Building,
-  ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound, Sliders, RefreshCw
+  ShieldCheck, Wrench, Film, Layers, Sparkles, Lock, Eye, EyeOff, KeyRound, Sliders, RefreshCw, Palette, Sun, Moon
 } from 'lucide-react';
-import { authenticateUser, DEPARTMENT_HEADS, SUPER_ADMIN_CONFIG } from '../data/departmentHeads';
-import { Department, UserRole, DepartmentHeadUser } from '../types/portals';
+import { useTheme } from '../contexts/ThemeContext';
+import { Logo } from '../components/Logo';
+import { DEPARTMENT_HEADS } from '../data/departmentHeads';
+import { Department, EmailTemplateRecord, UserRole, DepartmentHeadUser } from '../types/portals';
 import { OrganizationPortal } from '../components/portals/OrganizationPortal';
 import { MediaPortal } from '../components/portals/MediaPortal';
 import { ProjectsPortal } from '../components/portals/ProjectsPortal';
 import { PortalMemberEvaluationModal } from '../components/portals/PortalMemberEvaluationModal';
-import { 
-  getValidAuthSession, 
-  saveAuthSession, 
-  clearAuthSession, 
-  clearLegacySessions,
-  verifyPasswordHash
+import { EmailTemplateStudio } from '../components/admin/EmailTemplateStudio';
+import { DepartmentTransferControl } from '../components/admin/DepartmentTransferControl';
+import {
+  loginWithServer,
+  getStoredSession,
+  clearAuthSession,
+  getAuthHeader,
 } from '../lib/authCrypto';
 
 // Configuration toggle to mask/hide Projects, Organization, and Media portals from Super Admin panel
 const MASK_PORTAL_BUTTONS = false;
 
-const getAdminAuthHeaders = (): Record<string, string> => {
-  const session = getValidAuthSession();
-  if (!session) return { 'Content-Type': 'application/json' };
-  try {
-    const tokenStr = btoa(unescape(encodeURIComponent(JSON.stringify(session))));
-    return {
-      'Authorization': `Bearer ${tokenStr}`,
-      'Content-Type': 'application/json'
-    };
-  } catch (e) {
-    return { 'Content-Type': 'application/json' };
-  }
-};
+const getAdminAuthHeaders = (): Record<string, string> => ({
+  ...getAuthHeader(),
+  'Content-Type': 'application/json',
+});
 
 export function AdminDashboard() {
   const { portalSlug } = useParams<{ portalSlug?: string }>();
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<DepartmentHeadUser | null>(null);
@@ -65,8 +60,10 @@ export function AdminDashboard() {
   }, [lockoutSeconds]);
   
   const [activeTab, setActiveTab] = useState<
-    'leaders' | 'events' | 'event_registrations' | 'achievements' | 'star_members' | 'registrations' | 'portal_projects' | 'portal_organization' | 'portal_media'
+    'leaders' | 'events' | 'event_registrations' | 'achievements' | 'star_members' | 'registrations' | 'email_studio' | 'portal_projects' | 'portal_organization' | 'portal_media'
   >('leaders');
+  const [savedEmailTemplates, setSavedEmailTemplates] = useState<EmailTemplateRecord[]>([]);
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [data, setData] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
@@ -546,6 +543,7 @@ export function AdminDashboard() {
           eventTitle: eventTitle,
           notes: eventNotes,
           departments: acceptanceDepts,
+          templateId: selectedEmailTemplateId || undefined,
         };
 
         const res = await fetch('/api/send-recruitment-email', {
@@ -718,11 +716,18 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     URL.revokeObjectURL(url);
   };
 
-  useEffect(() => {
-    // Instantly wipe all legacy insecure sessions from all devices
-    clearLegacySessions();
+  const fetchEmailTemplatesList = async () => {
+    try {
+      const res = await fetch('/api/email-templates', { headers: getAdminAuthHeaders() });
+      const json = await res.json();
+      if (res.ok && Array.isArray(json.data)) {
+        setSavedEmailTemplates(json.data);
+      }
+    } catch {}
+  };
 
-    const validSession = getValidAuthSession();
+  useEffect(() => {
+    const validSession = getStoredSession();
     if (validSession) {
       setIsAuthenticated(true);
       setUserRole(validSession.user.role);
@@ -731,6 +736,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       if (validSession.user.role === 'admin') {
         fetchRegistrationStatus();
         fetchEventsList();
+        fetchEmailTemplatesList();
         if (!portalSlug) {
           navigate('/admin/super', { replace: true });
         }
@@ -920,65 +926,27 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     setError('');
 
     try {
-      // 1. Check local authentication helper for department heads & super admin (cryptographic salted hash verification)
-      const localAuth = await authenticateUser(username, password);
-      if (localAuth) {
-        setFailedAttempts(0);
-        setPassword('');
-        await saveAuthSession(localAuth);
-        setIsAuthenticated(true);
-        setUserRole(localAuth.role);
-        setCurrentUser(localAuth);
+      const session = await loginWithServer(username.trim(), password.trim());
+      setFailedAttempts(0);
+      setPassword('');
+      setIsAuthenticated(true);
+      setUserRole(session.user.role);
+      setCurrentUser(session.user);
 
-        if (localAuth.role === 'admin') {
-          fetchRegistrationStatus();
-          fetchEventsList();
-          navigate('/admin/super');
-        } else if (localAuth.role === 'head_projects') {
-          navigate('/admin/projects');
-        } else if (localAuth.role === 'head_organization') {
-          navigate('/admin/organization');
-        } else if (localAuth.role === 'head_media') {
-          navigate('/admin/media');
-        }
-        return;
+      if (session.user.role === 'admin') {
+        fetchRegistrationStatus();
+        fetchEventsList();
+        fetchEmailTemplatesList();
+        navigate('/admin/super');
+      } else if (session.user.role === 'head_projects') {
+        navigate('/admin/projects');
+      } else if (session.user.role === 'head_organization') {
+        navigate('/admin/organization');
+      } else if (session.user.role === 'head_media') {
+        navigate('/admin/media');
       }
-
-      // 2. Fallback to Supabase admin_users table (if DB-managed admin exists)
-      if (username.trim()) {
-        const { data, error: dbErr } = await supabase
-          .from('admin_users')
-          .select('*')
-          .eq('username', username.trim())
-          .single();
-
-        if (data && !dbErr) {
-          const isMatch = await verifyPasswordHash(password.trim(), SUPER_ADMIN_CONFIG.salt, data.password);
-          if (isMatch || password.trim() === data.password) {
-            setFailedAttempts(0);
-            setPassword('');
-            const adminUser: DepartmentHeadUser = {
-              id: 'admin-' + data.id,
-              name: 'E.R.I.S.E. Administrator',
-              username: data.username,
-              role: 'admin',
-              roleTitle: 'Club Administrator',
-              department: 'All',
-              email: 'erise.club@gmail.com',
-            };
-            await saveAuthSession(adminUser);
-            setIsAuthenticated(true);
-            setUserRole('admin');
-            setCurrentUser(adminUser);
-            fetchRegistrationStatus();
-            fetchEventsList();
-            navigate('/admin/super');
-            return;
-          }
-        }
-      }
-
-      // Failed attempt: increment counter, wipe password input field
+      return;
+    } catch (err: any) {
       const newAttempts = failedAttempts + 1;
       setFailedAttempts(newAttempts);
       setPassword('');
@@ -989,10 +957,8 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
       } else if (newAttempts >= 3) {
         setError(`Invalid credentials. ${5 - newAttempts} attempt(s) remaining before security lockout.`);
       } else {
-        setError('Invalid credentials. Please verify your password.');
+        setError(err?.message || 'Invalid credentials. Please verify your password.');
       }
-    } catch (err) {
-      setError('An error occurred during authentication.');
     } finally {
       setLoading(false);
     }
@@ -2121,6 +2087,24 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                     />
                   </div>
                 )}
+
+                <div className="pt-2 border-t border-slate-200 mt-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Linked Confirmation Email Template (Optional)
+                  </label>
+                  <select
+                    value={formData.email_template_id || ''}
+                    onChange={(e) => handleInputChange('email_template_id', e.target.value || null)}
+                    className="w-full bg-white border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-800"
+                  >
+                    <option value="">Default E.R.I.S.E. Event Confirmation</option>
+                    {savedEmailTemplates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.name} ({tpl.category})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           </>
@@ -3095,19 +3079,27 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
   if (!isAuthenticated) {
     return (
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-[#f8fcfd] flex items-center justify-center p-4 [color-scheme:light] font-sans text-slate-900">
-        <div className="bg-white p-6 sm:p-8 border border-slate-300 w-full max-w-md space-y-5 shadow-sm">
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 bg-slate-100 text-slate-800 border border-slate-300 flex items-center justify-center mx-auto">
-              <ShieldCheck className="w-6 h-6" />
+      <div className="erise-admin-shell fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 font-sans">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="fixed top-4 right-4 p-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:border-[#0d5c63] dark:hover:border-[#00e5ff] transition-colors cursor-pointer"
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4 text-[#00e5ff]" /> : <Moon className="w-4 h-4 text-[#0d5c63]" />}
+        </button>
+
+        <div className="bg-white p-6 sm:p-8 border border-slate-300 rounded-2xl w-full max-w-md space-y-5 shadow-sm">
+          <div className="text-center space-y-2.5">
+            <div className="flex justify-center">
+              <Logo variant="full" className="h-12 w-auto" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+            <h1 className="font-display text-xl font-bold text-slate-900 tracking-tight">
               E.R.I.S.E. Administrative Portals
             </h1>
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-              <span className="font-mono text-slate-600">Connected</span>
-              <span>•</span>
-              <span>Secure Gateway</span>
+            <div className="inline-flex items-center justify-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-600">
+              <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+              <span>President, HR &amp; Department Leaders Gateway</span>
             </div>
           </div>
 
@@ -3227,6 +3219,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
     { key: 'achievements', label: 'Achievements', icon: Award },
     { key: 'star_members', label: 'Star Members', icon: Star },
     { key: 'registrations', label: 'Club Intake', icon: ClipboardList },
+    { key: 'email_studio', label: 'Email Studio', icon: Palette },
   ] as const;
 
   const departmentLinks = [
@@ -3236,23 +3229,24 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
   ];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-[#f8fcfd] text-slate-900 flex flex-col [color-scheme:light] font-sans">
+    <div className="erise-admin-shell fixed inset-0 z-50 overflow-hidden flex flex-col font-sans">
       {/* Top Static Header */}
       <header className="h-14 shrink-0 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-20">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <div className="w-8 h-8 bg-slate-100 border border-slate-300 text-slate-800 flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-[#0d5c63] text-white dark:bg-[#00e5ff] dark:text-[#060f1c] flex items-center justify-center shrink-0">
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-900 text-sm sm:text-base truncate">
+              <span className="font-display font-bold text-slate-900 text-sm sm:text-base truncate">
                 {isViewingProjects ? 'Projects Administration' :
                  isViewingOrganization ? 'Organization & Logistics' :
                  isViewingMedia ? 'Media & Production' : 'E.R.I.S.E. Administrative Portal'}
               </span>
               <span className="text-slate-300 hidden xs:inline">•</span>
-              <span className="text-xs font-mono text-slate-500 hidden xs:inline">
-                Connected
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hidden xs:inline-flex">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Live
               </span>
             </div>
             <p className="text-[11px] text-slate-500 truncate">
@@ -3262,13 +3256,22 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-[#00e5ff]" /> : <Moon className="w-4 h-4 text-[#0d5c63]" />}
+          </button>
+
           {userRole === 'admin' && (isViewingProjects || isViewingOrganization || isViewingMedia) && (
             <button
               onClick={() => {
                 setActiveTab('leaders');
                 navigate('/admin/super');
               }}
-              className="px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-colors cursor-pointer"
+              className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-colors cursor-pointer"
             >
               <span className="hidden sm:inline">← Return to </span>Core Admin
             </button>
@@ -3276,7 +3279,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
           <button
             onClick={handleLogout}
-            className="px-2.5 sm:px-3 py-1.5 bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-white hover:bg-rose-500/10 text-slate-700 hover:text-rose-600 border border-slate-300 hover:border-rose-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Logout</span>
           </button>
@@ -3345,7 +3348,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                       setActiveTab(tab.key as any);
                       if (portalSlug !== 'super') navigate('/admin/super');
                     }}
-                    className={`w-full text-left px-3 py-2 text-xs font-bold flex items-center gap-2.5 transition-colors cursor-pointer border ${
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2.5 transition-colors cursor-pointer border ${
                       isActive
                         ? 'bg-slate-900 text-white border-slate-900'
                         : 'text-slate-700 hover:bg-slate-100 border-transparent'
@@ -3371,7 +3374,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                           setActiveTab(`portal_${dept.slug}` as any);
                           navigate(`/admin/${dept.slug}`);
                         }}
-                        className="w-full text-left px-3 py-2 text-xs font-bold flex items-center gap-2.5 text-slate-700 hover:bg-slate-100 border border-transparent transition-colors cursor-pointer"
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2.5 text-slate-700 hover:bg-slate-100 border border-transparent transition-colors cursor-pointer"
                       >
                         <Icon className="w-4 h-4" />
                         <span>{dept.label}</span>
@@ -3382,15 +3385,15 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
               )}
             </div>
 
-            <div className="p-2.5 bg-slate-50 border border-slate-200 text-[11px] text-slate-500 space-y-1">
-              <div className="font-semibold text-slate-700">Status: <span className="font-mono text-slate-900">Connected</span></div>
-              <div>Direct DB Connection</div>
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500 space-y-1">
+              <div className="font-semibold text-slate-700">Status: <span className="font-mono text-emerald-600 dark:text-emerald-400">Connected</span></div>
+              <div>Unified Primary Club DB</div>
             </div>
           </aside>
         )}
 
         {/* Scrollable Content Viewport */}
-        <main className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 bg-[#f8fcfd]">
+        <main className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 bg-dominant">
           {isViewingProjects ? (
             <ProjectsPortal isSuperAdmin={userRole === 'admin'} onBackToAdmin={() => { setActiveTab('leaders'); navigate('/admin/super'); }} />
           ) : isViewingOrganization ? (
@@ -3404,6 +3407,14 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 <p className="text-xs text-slate-500">Manage participant and team registrations per event.</p>
               </div>
               {renderEventRegistrationsTab()}
+            </>
+          ) : activeTab === 'email_studio' ? (
+            <>
+              <div className="mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">WordPress-Style Email Template Studio</h2>
+                <p className="text-xs text-slate-500">Design branded workshop, bootcamp, competition, and recruitment templates with custom colors, fonts, and placed images.</p>
+              </div>
+              <EmailTemplateStudio onTemplatesChanged={setSavedEmailTemplates} />
             </>
           ) : activeTab === 'registrations' ? (
             <>
@@ -3775,24 +3786,23 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
                 </div>
               </div>
 
-              {/* Departments */}
+              {/* Departments (Multi-Department Transfer Control) */}
               <div>
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Selected Department(s)</h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {Array.isArray(selectedMember.departments) && selectedMember.departments.length > 0 ? (
-                    selectedMember.departments.map((d: string) => (
-                      <span key={d} className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 font-bold text-xs">
-                        {d}
-                      </span>
-                    ))
-                  ) : typeof selectedMember.departments === 'string' && selectedMember.departments ? (
-                    <span className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 font-bold text-xs">
-                      {selectedMember.departments}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">No department selected</span>
-                  )}
-                </div>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Department Assignment &amp; Transfer</h4>
+                <DepartmentTransferControl
+                  registrationId={selectedMember.id}
+                  currentDepartments={
+                    Array.isArray(selectedMember.departments)
+                      ? selectedMember.departments
+                      : typeof selectedMember.departments === 'string' && selectedMember.departments
+                        ? [selectedMember.departments]
+                        : []
+                  }
+                  onUpdated={(nextDepts) => {
+                    setSelectedMember((prev: any) => prev ? { ...prev, departments: nextDepts } : prev);
+                    setData((prev) => prev.map((m) => m.id === selectedMember.id ? { ...m, departments: nextDepts } : m));
+                  }}
+                />
               </div>
 
               {/* Registration Date */}
@@ -4233,6 +4243,23 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
 
             {!emailSuccessMsg && (
               <div className="space-y-3 pt-1">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Registered Email Template (Optional Override)
+                  </label>
+                  <select
+                    value={selectedEmailTemplateId}
+                    onChange={(e) => setSelectedEmailTemplateId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 focus:border-slate-800 focus:bg-white text-xs font-semibold text-slate-900"
+                  >
+                    <option value="">Use Default Built-in Layout</option>
+                    {savedEmailTemplates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.name} ({tpl.category})
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 {!isBulkEmailMode && (
                   <>
                     <div>

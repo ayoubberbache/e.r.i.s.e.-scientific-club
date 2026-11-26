@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { getApiAuthHeaders } from '../../lib/departmentStorage';
 import { 
   Award, 
   X, 
@@ -122,18 +123,22 @@ export const PortalMemberEvaluationModal: React.FC<PortalMemberEvaluationModalPr
       const presenceDelta = existing?.presence_score ?? 0;
       const overallRating = Math.min(100, Math.max(0, 50 + presenceDelta + avgHeadDelta + behaviorDelta + disciplineDelta));
 
-      const { error } = await supabase.from('member_ratings').upsert({
-        member_id: cleanMemberId,
-        presence_score: presenceDelta,
-        head_rating_score: avgHeadDelta,
-        department_head_ratings: updatedDeptRatings,
-        behavior_score: behaviorDelta,
-        discipline_score: disciplineDelta,
-        overall_rating: overallRating,
-        updated_at: new Date().toISOString(),
+      const res = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: getApiAuthHeaders(),
+        body: JSON.stringify({
+          action: 'save_evaluation',
+          memberId: cleanMemberId,
+          presenceScore: presenceDelta,
+          headRatingScore: avgHeadDelta,
+          departmentHeadRatings: updatedDeptRatings,
+          behaviorScore: behaviorDelta,
+          disciplineScore: disciplineDelta,
+          overallRating,
+        }),
       });
-
-      if (error) throw error;
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to save evaluation');
 
       setToastMessage('Evaluation saved successfully!');
       if (onSaved) onSaved();

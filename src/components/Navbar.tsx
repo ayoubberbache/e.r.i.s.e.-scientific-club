@@ -69,7 +69,7 @@ export function Navbar() {
                 <Link
                   key={link.path}
                   to={link.path}
-                  className="inline-flex items-center gap-1.5 ml-3 rtl:ml-0 rtl:mr-3 px-4 py-2 rounded-lg bg-accent text-white text-xs sm:text-sm font-bold hover:bg-accent-muted transition-colors active:scale-98"
+                  className="inline-flex items-center gap-1.5 ml-3 rtl:ml-0 rtl:mr-3 px-4 py-2 rounded-lg bg-accent btn-on-accent text-xs sm:text-sm font-bold hover:bg-accent-muted transition-colors active:scale-98"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>{link.name}</span>
@@ -159,7 +159,7 @@ export function Navbar() {
               onClick={() => setIsOpen(false)}
               className={`block px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
                 link.isHighlight
-                  ? 'bg-accent text-white font-bold text-center'
+                  ? 'bg-accent btn-on-accent font-bold text-center'
                   : isActive(link.path)
                   ? 'bg-accent-tint/60 text-accent font-bold'
                   : 'text-secondary hover:bg-dominant hover:text-primary'

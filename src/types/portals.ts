@@ -1,6 +1,9 @@
 export type Department = 'Projects' | 'Organization' | 'Media';
+export type DepartmentName = Department;
 
 export type UserRole = 'admin' | 'head_projects' | 'head_organization' | 'head_media';
+
+export type TaskStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface DepartmentHeadUser {
   id: string;
@@ -11,6 +14,7 @@ export interface DepartmentHeadUser {
   department: Department | 'All';
   email: string;
   avatar?: string;
+  defaultMemberRoles?: string[];
 }
 
 export interface DepartmentMember {
@@ -19,6 +23,7 @@ export interface DepartmentMember {
   email: string;
   phone: string;
   study_year: number | string;
+  study_year_label?: string;
   specialization?: string;
   departments: string[];
   role: string;
@@ -27,7 +32,7 @@ export interface DepartmentMember {
   joined_at?: string;
   avatar?: string;
   notes?: string;
-  rating?: number; // General Overall Percentage (Baseline 50%)
+  rating?: number;
 }
 
 export interface EventStaffAssignment {
@@ -62,11 +67,12 @@ export interface ClubProject {
   department?: string;
   category?: string;
   status: 'Active' | 'Finished' | 'Discarded' | 'Planning' | 'In Development' | 'Completed' | 'On Hold' | string;
+  todo_status?: TaskStatus;
   progress?: number;
   leader_member_id?: number | string;
   leader_name?: string;
   team_member_ids?: (string | number)[];
-  member_custom_roles?: Record<string, string>;
+  member_custom_roles?: Record<string, any>;
   start_date?: string;
   target_date?: string;
   goals?: string[];
@@ -85,6 +91,7 @@ export interface ClubTask {
   priority: 'Low' | 'Medium' | 'High';
   deadline?: string;
   status: 'Pending' | 'In Progress' | 'Completed';
+  todo_status?: TaskStatus;
   is_evaluated?: boolean;
   evaluation_score?: number;
   evaluation_notes?: string;
@@ -104,3 +111,67 @@ export interface AttendanceRecord {
   created_at?: string;
 }
 
+export type ImagePlacement =
+  | 'header_banner'
+  | 'hero'
+  | 'inline_top'
+  | 'inline_left'
+  | 'inline_right'
+  | 'inline_bottom'
+  | 'footer_banner';
+
+export interface EmailBlock {
+  id: string;
+  type: 'heading' | 'paragraph' | 'image' | 'button' | 'event_card' | 'divider' | 'spacer';
+  text?: string;
+  level?: 'h1' | 'h2' | 'h3';
+  color?: string;
+  fontFamily?: string;
+  fontSize?: string;
+  fontWeight?: string;
+  align?: 'left' | 'center' | 'right';
+  url?: string;
+  alt?: string;
+  placement?: ImagePlacement;
+  width?: string;
+  borderRadius?: string;
+  title?: string;
+  showLocation?: boolean;
+  showDateTime?: boolean;
+  showNotes?: boolean;
+  height?: number;
+}
+
+export interface EmailThemeConfig {
+  bgColor: string;
+  cardBg: string;
+  headerBg: string;
+  headerText: string;
+  accentColor: string;
+  textColor: string;
+  fontFamily: string;
+  buttonBg: string;
+  buttonText: string;
+}
+
+export interface EmailTemplateRecord {
+  id: string;
+  name: string;
+  slug?: string;
+  category:
+    | 'workshop'
+    | 'bootcamp'
+    | 'competition'
+    | 'hackathon'
+    | 'recruitment_meeting'
+    | 'recruitment_acceptance'
+    | 'custom';
+  subject: string;
+  blocks: EmailBlock[];
+  theme_config: EmailThemeConfig;
+  is_default?: boolean;
+  html_preview?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}

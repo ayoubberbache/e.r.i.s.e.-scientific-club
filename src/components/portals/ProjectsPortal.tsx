@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { 
   fetchDepartmentMembers, 
@@ -6,6 +7,7 @@ import {
   fetchStoredProjects, 
   addOrUpdateProject, 
   deleteProject,
+  removeMemberFromProject,
   fetchWorkshopAttendance,
   saveAttendanceCheck,
   getMemberNamesMap
@@ -15,7 +17,8 @@ import { DepartmentMember, ClubProject, AttendanceRecord } from '../../types/por
 import { 
   FolderGit2, Users, CheckSquare, Plus, 
   Search, Trash2, Edit3, Check, X, Loader2, 
-  Mail, Phone, UserPlus, UserCheck, Download, Award, Sliders, Filter
+  Mail, Phone, UserPlus, UserCheck, Download, Award, Sliders, Filter,
+  UserMinus
 } from 'lucide-react';
 import { PortalMemberEvaluationModal } from './PortalMemberEvaluationModal';
 
@@ -70,6 +73,10 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
   const [assignSearchQuery, setAssignSearchQuery] = useState('');
   const [assignYearFilter, setAssignYearFilter] = useState<string>('all');
   const [assignSelectionFilter, setAssignSelectionFilter] = useState<'all' | 'selected' | 'unselected'>('all');
+
+  // Removal & Feedback State
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   // Add Member Modal State
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -410,6 +417,75 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
     }
   };
 
+  // Remove Member from Project (Mistake correction / unassignment)
+  const handleRemoveMemberFromProject = async (
+    projectId: string | number,
+    memberId: string | number,
+    memberName?: string
+  ) => {
+    const proj = projects.find((p) => String(p.id) === String(projectId));
+    const projTitle = proj?.title || 'Project';
+    const displayName = memberName || memberNamesMap[String(memberId)] || `Member #${memberId}`;
+
+    if (!window.confirm(`Are you sure you want to remove ${displayName} from "${projTitle}"?`)) {
+      return;
+    }
+
+    const mIdStr = String(memberId);
+    setRemovingMemberId(mIdStr);
+
+    try {
+      await removeMemberFromProject(projectId, memberId);
+
+      // Optimistically update projects state
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (String(p.id) !== String(projectId)) return p;
+
+          const updatedTeam = (p.team_members || []).filter(
+            (m) => String(m.member_id ?? (m as any).id) !== mIdStr
+          );
+          const updatedIds = (Array.isArray(p.team_member_ids) ? p.team_member_ids : []).filter(
+            (id) => String(id) !== mIdStr
+          );
+          const updatedRoles = { ...(p.member_custom_roles || {}) };
+          delete updatedRoles[mIdStr];
+
+          const newLeader =
+            String(p.leader_member_id) === mIdStr
+              ? (updatedIds[0] ? String(updatedIds[0]) : '')
+              : (p.leader_member_id || '');
+
+          return {
+            ...p,
+            team_members: updatedTeam,
+            team_member_ids: updatedIds,
+            member_custom_roles: updatedRoles,
+            leader_member_id: newLeader,
+          };
+        })
+      );
+
+      // Sync modal selection if open
+      if (targetProject && String(targetProject.id) === String(projectId)) {
+        setSelectedTeamMemberIds((prev) => prev.filter((id) => String(id) !== mIdStr));
+        setMemberRolesMap((prev) => {
+          const next = { ...prev };
+          delete next[mIdStr];
+          return next;
+        });
+      }
+
+      setActionFeedback(`Removed ${displayName} from "${projTitle}".`);
+      setTimeout(() => setActionFeedback(null), 4000);
+    } catch (err) {
+      console.error('Failed to remove member from project:', err);
+      alert('Failed to remove member from project. Please try again.');
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
+
   const handleAddMemberSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddingMember(true);
@@ -592,6 +668,30 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
         </div>
       </div>
 
+      {/* Action Notification Banner */}
+      <AnimatePresence>
+        {actionFeedback && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-2.5 text-xs font-semibold flex items-center justify-between shadow-xs"
+          >
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{actionFeedback}</span>
+            </div>
+            <button
+              onClick={() => setActionFeedback(null)}
+              className="text-emerald-700 hover:text-emerald-950 p-0.5 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ─── TAB 1: PROJECTS & TEAM GROUPS ─────────────────────────────────── */}
       {activeTab === 'projects' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -729,6 +829,11 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                       <Users className="w-3.5 h-3.5 text-slate-600" />
                       <span>Assigned Project Working Group ({assignedTeamList.length})</span>
                     </h4>
+                    {assignedTeamList.length > 0 && (
+                      <span className="text-[11px] text-slate-500 hidden sm:inline">
+                        Click Remove to unassign if mistakenly added
+                      </span>
+                    )}
                   </div>
 
                   {assignedTeamList.length === 0 ? (
@@ -737,22 +842,55 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {assignedTeamList.map((tm, idx) => (
-                        <div
-                          key={tm.member_id || idx}
-                          className="p-3 bg-slate-50 border border-slate-200 flex items-start gap-2.5"
-                        >
-                          <div className="w-7 h-7 bg-white text-slate-700 border border-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
-                            {idx + 1}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h5 className="font-semibold text-xs text-slate-900 line-clamp-1">{tm.member_name}</h5>
-                            <p className="text-xs text-slate-600 font-medium line-clamp-1 mt-0.5">{tm.role_in_project}</p>
-                            {tm.academic && <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{tm.academic}</p>}
-                            {tm.email && <p className="text-[11px] text-slate-400 line-clamp-1">{tm.email}</p>}
-                          </div>
-                        </div>
-                      ))}
+                      <AnimatePresence>
+                        {assignedTeamList.map((tm, idx) => {
+                          const isRemoving = removingMemberId === String(tm.member_id);
+                          return (
+                            <motion.div
+                              key={tm.member_id || idx}
+                              layout
+                              initial={{ opacity: 0, scale: 0.96 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.15 } }}
+                              className="p-3 bg-slate-50 border border-slate-200 flex items-start justify-between gap-2.5 group hover:border-slate-300 transition-colors"
+                            >
+                              <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                <div className="w-7 h-7 bg-white text-slate-700 border border-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                  {idx + 1}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <h5 className="font-semibold text-xs text-slate-900 line-clamp-1">{tm.member_name}</h5>
+                                    {String(activeProject.leader_member_id) === String(tm.member_id) && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-800 border border-amber-300">
+                                        Lead
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-slate-600 font-medium line-clamp-1 mt-0.5">{tm.role_in_project}</p>
+                                  {tm.academic && <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{tm.academic}</p>}
+                                  {tm.email && <p className="text-[11px] text-slate-400 line-clamp-1">{tm.email}</p>}
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMemberFromProject(activeProject.id, tm.member_id, tm.member_name)}
+                                disabled={isRemoving}
+                                className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-red-700 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                                title={`Remove ${tm.member_name} from project`}
+                              >
+                                {isRemoving ? (
+                                  <Loader2 className="w-3 h-3 animate-spin text-red-600" />
+                                ) : (
+                                  <UserMinus className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-600" />
+                                )}
+                                <span className="hidden sm:inline">Remove</span>
+                              </button>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
                     </div>
                   )}
                 </div>
@@ -1195,14 +1333,33 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                         <span className="text-[10px] text-slate-400 italic">None</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
-                          {assignedProjects.map((p) => (
-                            <span
-                              key={p.id}
-                              className="text-[10px] px-1.5 py-0.5 bg-white text-slate-700 border border-slate-200 truncate max-w-[180px]"
-                            >
-                              {p.title}
-                            </span>
-                          ))}
+                          {assignedProjects.map((p) => {
+                            const isRemoving = removingMemberId === String(mem.id);
+                            return (
+                              <span
+                                key={p.id}
+                                className="text-[10px] px-1.5 py-0.5 bg-white text-slate-700 border border-slate-200 truncate max-w-[200px] inline-flex items-center gap-1 group/chip"
+                              >
+                                <span className="truncate">{p.title}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveMemberFromProject(p.id, mem.id, mem.full_name);
+                                  }}
+                                  disabled={isRemoving}
+                                  className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-0.5 rounded transition-colors cursor-pointer"
+                                  title={`Remove ${mem.full_name} from ${p.title}`}
+                                >
+                                  {isRemoving ? (
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin text-red-600" />
+                                  ) : (
+                                    <X className="w-2.5 h-2.5" />
+                                  )}
+                                </button>
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1427,6 +1584,52 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
               </div>
             </div>
 
+            {/* Currently Selected Members Quick Review Tray */}
+            {selectedTeamMemberIds.length > 0 && (
+              <div className="p-2.5 bg-slate-50 border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-slate-700">
+                    Assigned to this project ({selectedTeamMemberIds.length}):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Clear all assigned members for this project?')) {
+                        setSelectedTeamMemberIds([]);
+                      }
+                    }}
+                    className="text-red-600 hover:underline text-[11px] font-semibold cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {selectedTeamMemberIds.map((id) => {
+                    const m = members.find((mem) => String(mem.id) === String(id));
+                    const name = m?.full_name || memberNamesMap[String(id)] || `Member #${id}`;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-white border border-slate-300 text-xs text-slate-800 font-medium shadow-2xs"
+                      >
+                        <span className="max-w-[140px] truncate">{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTeamMemberIds(selectedTeamMemberIds.filter((mId) => String(mId) !== String(id)));
+                          }}
+                          className="text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                          title={`Remove ${name} from assignment`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
               {assignFilteredMembers.length === 0 ? (
                 <div className="p-6 text-center text-slate-500 text-xs border border-dashed border-slate-200 bg-slate-50">
@@ -1474,7 +1677,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                     </div>
 
                     {isSelected && (
-                      <div className="w-full sm:w-56">
+                      <div className="w-full sm:w-64 flex items-center gap-1.5">
                         <input
                           type="text"
                           value={memberRolesMap[String(mem.id)] || ''}
@@ -1485,8 +1688,19 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                             })
                           }
                           placeholder="Role (e.g. Embedded, CAD)"
-                          className="w-full px-2 py-1 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none"
+                          className="flex-1 px-2 py-1 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none"
                         />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTeamMemberIds(selectedTeamMemberIds.filter((id) => String(id) !== String(mem.id)));
+                          }}
+                          className="px-2 py-1 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-300 hover:border-red-200 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                          title="Remove from assignment"
+                        >
+                          <UserMinus className="w-3 h-3" />
+                          <span className="text-[10px]">Remove</span>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1576,7 +1790,7 @@ export function ProjectsPortal({ onBackToAdmin, isSuperAdmin }: ProjectsPortalPr
                   onChange={(e) => setNewMemberData({ ...newMemberData, role: e.target.value })}
                   className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none"
                 >
-                  {headConfig.defaultMemberRoles.map((r, i) => (
+                  {(headConfig.defaultMemberRoles || ['Projects Member']).map((r, i) => (
                     <option key={i} value={r}>{r}</option>
                   ))}
                 </select>

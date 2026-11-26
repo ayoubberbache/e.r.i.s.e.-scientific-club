@@ -1,19 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Public client uses ONLY anon/publishable credentials.
+// Never place SUPABASE_SECRET_KEY in frontend code.
 const supabaseUrl =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) ||
-  '';
-
+  import.meta.env.VITE_SUPABASE_URL || 'https://ygougrhejaesbtifacdk.supabase.co';
 const supabaseAnonKey =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) ||
-  '';
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  'sb_publishable_MIl6WWMSsnArxxjzOTB4hw_FK1sBh3z';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️ Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables.');
-}
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-
+export const ORG_DB_ENABLED = Boolean(supabaseUrl && supabaseAnonKey);
+export const orgSupabase = supabase;

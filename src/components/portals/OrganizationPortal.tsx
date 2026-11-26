@@ -3,9 +3,11 @@ import {
   fetchDepartmentMembers, 
   fetchDepartmentTasks, 
   createDepartmentTask, 
-  markDepartmentTaskDone, 
+  markDepartmentTaskDone,
+  updateDepartmentTaskStatus,
   deleteDepartmentTask 
 } from '../../lib/departmentStorage';
+import { DepartmentTransferControl } from '../admin/DepartmentTransferControl';
 import { DEPARTMENT_HEADS } from '../../data/departmentHeads';
 import { DepartmentMember, ClubTask } from '../../types/portals';
 import { 
@@ -126,6 +128,21 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
       );
     } catch (err) {
       console.error('Failed to mark task done:', err);
+    }
+  };
+
+  const handleSetTaskStatus = async (taskId: string, status: 'Pending' | 'In Progress' | 'Completed') => {
+    try {
+      await updateDepartmentTaskStatus('Organization', taskId, status);
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? { ...t, status, completed_at: status === 'Completed' ? new Date().toISOString() : undefined }
+            : t
+        )
+      );
+    } catch (err) {
+      console.error('Failed to update task status:', err);
     }
   };
 
@@ -435,16 +452,30 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
                         </button>
                       </div>
 
-                      {/* Action Button */}
-                      {!isCompleted && (
-                        <button
-                          onClick={() => handleMarkDone(task.id)}
-                          className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer mt-1"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Mark Task as Executed</span>
-                        </button>
-                      )}
+                      {/* Interactive 3-State Task Status (Synced with To-Do App & RH) */}
+                      <div className="grid grid-cols-3 gap-1 pt-1">
+                        {(['Pending', 'In Progress', 'Completed'] as const).map((st) => {
+                          const isCurrent = task.status === st;
+                          return (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => handleSetTaskStatus(task.id, st)}
+                              className={`py-1 px-1.5 text-[11px] font-bold border transition-colors cursor-pointer ${
+                                isCurrent
+                                  ? st === 'Completed'
+                                    ? 'bg-emerald-700 text-white border-emerald-700'
+                                    : st === 'In Progress'
+                                      ? 'bg-amber-600 text-white border-amber-600'
+                                      : 'bg-slate-900 text-white border-slate-900'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                              }`}
+                            >
+                              {st === 'Pending' ? 'Undone' : st === 'In Progress' ? 'In Progress' : 'Done'}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 );
@@ -633,9 +664,19 @@ export function OrganizationPortal({ onBackToAdmin, isSuperAdmin }: Organization
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Assigned Tasks:</span>
-                      <span className="font-bold text-slate-900 font-mono">{assignedCount}</span>
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Assigned Tasks:</span>
+                        <span className="font-bold text-slate-900 font-mono">{assignedCount}</span>
+                      </div>
+                      <DepartmentTransferControl
+                        compact
+                        registrationId={mem.id}
+                        currentDepartments={mem.departments || ['Organization']}
+                        onUpdated={(next) => {
+                          setMembers((prev) => prev.map((x) => x.id === mem.id ? { ...x, departments: next } : x));
+                        }}
+                      />
                     </div>
                   </div>
                 );

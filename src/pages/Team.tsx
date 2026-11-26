@@ -199,9 +199,8 @@ export function Team() {
               </div>
 
               {/* Right Half: Medal Pose 3D Model */}
-              <div className="lg:col-span-6 h-[380px] sm:h-[450px] bg-surface/50 rounded-3xl border border-subtle p-6 relative overflow-hidden shadow-xl flex flex-col items-center justify-center text-center">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-400 text-xs font-bold mb-2 border border-yellow-500/20 z-10">
+              <div className="lg:col-span-6 h-[380px] sm:h-[450px] bg-surface rounded-2xl border border-default p-6 relative overflow-hidden flex flex-col items-center justify-center text-center">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold mb-2 border border-amber-500/25 z-10">
                   <Trophy className="w-3.5 h-3.5" /> {t.teamPage.starMedalBadge}
                 </div>
                 <p className="text-sm font-medium text-secondary text-center mb-2 z-10">
@@ -223,10 +222,7 @@ export function Team() {
       {/* Impact Section */}
       <section className="py-24 bg-dominant">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-surface rounded-3xl p-12 relative overflow-hidden border border-subtle shadow-xl text-left rtl:text-right">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full -mr-32 -mt-32 blur-3xl" />
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent/5 rounded-full -ml-32 -mb-32 blur-3xl" />
-            
+          <div className="bg-surface rounded-2xl p-8 sm:p-12 relative overflow-hidden border border-default text-left rtl:text-right">
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div>
                 <h2 className="text-3xl md:text-4xl font-bold text-primary mb-6">{t.teamPage.joinMissionTitle}</h2>

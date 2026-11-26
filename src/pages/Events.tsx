@@ -177,10 +177,9 @@ export function Events() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Top 3D Hero Section - Butterfly Pose */}
-        <div className="mb-12 bg-surface rounded-3xl p-6 sm:p-10 border border-subtle relative overflow-hidden shadow-xl flex flex-col lg:flex-row items-center gap-8 text-left rtl:text-right">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-accent/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+        <div className="mb-12 bg-surface rounded-2xl p-6 sm:p-10 border border-default relative overflow-hidden flex flex-col lg:flex-row items-center gap-8 text-left rtl:text-right">
           <div className="flex-1 text-center lg:text-left rtl:lg:text-right z-10">
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold uppercase tracking-wider mb-4 border border-accent/20">
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-secondary text-accent text-xs font-bold uppercase tracking-wider mb-4 border border-default">
               <CalendarIcon className="w-3.5 h-3.5" /> {t.eventsPage.heroBadge}
             </span>
             <h1 className="text-4xl font-extrabold text-primary tracking-tight sm:text-5xl mb-4">

@@ -216,7 +216,7 @@ export function RegistrationModal({ isOpen, onClose }: RegistrationModalProps) {
           onClick={onClose}
         >
           {/* Glass Backdrop */}
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="fixed inset-0 bg-[#060f1c]/75" />
 
           {/* Modal Container */}
           <motion.div

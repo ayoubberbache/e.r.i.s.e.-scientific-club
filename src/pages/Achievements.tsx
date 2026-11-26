@@ -55,9 +55,8 @@ export function Achievements() {
           
           {/* Left Column: Non-scrollable / Sticky 3D Certificate Model (~40% horizontal width) */}
           <div className="w-full lg:w-[40%] lg:sticky lg:top-28 shrink-0">
-            <div className="bg-surface rounded-3xl p-6 border border-subtle shadow-xl relative overflow-hidden flex flex-col items-center">
-              <div className="absolute top-0 left-0 w-64 h-64 bg-accent/10 rounded-full blur-3xl -ml-20 -mt-20 pointer-events-none" />
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-bold uppercase tracking-wider mb-4 border border-accent/20">
+            <div className="bg-surface rounded-2xl p-6 border border-default relative overflow-hidden flex flex-col items-center">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-secondary text-accent text-xs font-bold uppercase tracking-wider mb-4 border border-default">
                 <Award className="w-4 h-4" /> {t.achievementsPage.certificateBadge}
               </div>
               <p className="text-sm font-medium text-secondary text-center mb-4">

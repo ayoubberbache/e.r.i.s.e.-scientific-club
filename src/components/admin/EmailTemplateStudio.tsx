@@ -129,6 +129,24 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
   const [testEmail, setTestEmail] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [editorTab, setEditorTab] = useState<'design' | 'details'>('design');
+  const [eventDetails, setEventDetails] = useState({
+    eventTitle: 'Solar IoT Workshop 2026',
+    day: 'Saturday',
+    time: '10:00 AM',
+    place: 'HNSRE Amphitheater B, Batna',
+    notes: 'Bring your laptop and student ID card.',
+  });
+
+  const resolvedVariables = {
+    name: 'Amine Benali',
+    eventTitle: eventDetails.eventTitle.trim() || editing.name || 'E.R.I.S.E. Event',
+    dateTime: [eventDetails.day.trim(), eventDetails.time.trim()].filter(Boolean).join(', ') || 'TBA',
+    location: eventDetails.place.trim() || 'HNSRE Batna',
+    notes: eventDetails.notes.trim(),
+    departments: 'Projects, Organization',
+    studentId: '202431048291',
+  };
 
   const loadTemplates = async () => {
     setLoading(true);
@@ -162,6 +180,7 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
             subject: editing.subject,
             blocks: editing.blocks,
             theme_config: editing.theme_config,
+            variables: resolvedVariables,
           }),
         });
         if (res.ok) {
@@ -171,7 +190,7 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
       } catch {}
     }, 280);
     return () => clearTimeout(timer);
-  }, [editing.subject, editing.blocks, editing.theme_config]);
+  }, [editing.subject, editing.blocks, editing.theme_config, eventDetails]);
 
   const addBlock = (type: EmailBlock['type']) => {
     const id = `blk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -323,6 +342,10 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
           subject: editing.subject,
           blocks: editing.blocks,
           theme_config: editing.theme_config,
+          variables: {
+            ...resolvedVariables,
+            name: 'Test Member',
+          },
         }),
       });
       const json = await res.json();
@@ -451,6 +474,93 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
               {editing.id ? 'Update Template' : 'Create & Register'}
             </button>
           </div>
+
+          <div className="flex gap-1.5 p-1 rounded-lg bg-dominant border border-subtle">
+            <button
+              type="button"
+              onClick={() => setEditorTab('design')}
+              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-bold cursor-pointer transition-colors ${
+                editorTab === 'design' ? 'bg-[#0d5c63] text-white' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Design &amp; Blocks
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditorTab('details')}
+              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                editorTab === 'details' ? 'bg-[#0d5c63] text-white' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" /> Event / Session Details
+            </button>
+          </div>
+
+          {editorTab === 'details' ? (
+            <div className="p-4 rounded-lg bg-dominant border border-subtle space-y-3 text-xs">
+              <div className="font-bold text-accent flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" /> Event / Workshop / Competition Info
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">
+                  Event / Workshop / Competition Name
+                </label>
+                <input
+                  type="text"
+                  value={eventDetails.eventTitle}
+                  onChange={e => setEventDetails(prev => ({ ...prev, eventTitle: e.target.value }))}
+                  placeholder="e.g. Solar IoT Workshop 2026"
+                  className="input-standard text-xs py-2 font-semibold"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">Day / Date</label>
+                  <input
+                    type="text"
+                    value={eventDetails.day}
+                    onChange={e => setEventDetails(prev => ({ ...prev, day: e.target.value }))}
+                    placeholder="e.g. Saturday, Nov 28"
+                    className="input-standard text-xs py-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">Time</label>
+                  <input
+                    type="text"
+                    value={eventDetails.time}
+                    onChange={e => setEventDetails(prev => ({ ...prev, time: e.target.value }))}
+                    placeholder="e.g. 10:00 AM"
+                    className="input-standard text-xs py-2"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">Place / Venue</label>
+                <input
+                  type="text"
+                  value={eventDetails.place}
+                  onChange={e => setEventDetails(prev => ({ ...prev, place: e.target.value }))}
+                  placeholder="e.g. HNSRE Amphitheater B, Batna"
+                  className="input-standard text-xs py-2"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">Notes</label>
+                <textarea
+                  rows={3}
+                  value={eventDetails.notes}
+                  onChange={e => setEventDetails(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Instructions, materials to bring, or special notes..."
+                  className="input-standard text-xs py-2"
+                />
+              </div>
+              <p className="text-[11px] text-muted">
+                These fields populate <code>{'{{eventTitle}}'}</code>, <code>{'{{dateTime}}'}</code>, <code>{'{{location}}'}</code>, and <code>{'{{notes}}'}</code> in the Live Preview and Test Send.
+              </p>
+            </div>
+          ) : (
+            <>
 
           {/* Template Metadata */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -802,6 +912,8 @@ export function EmailTemplateStudio({ onTemplatesChanged }: EmailTemplateStudioP
               </div>
             ))}
           </div>
+          </>
+          )}
         </div>
 
         {/* RIGHT COLUMN: Live Email Render */}

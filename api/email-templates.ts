@@ -73,7 +73,7 @@ export default async function handler(req: any, res: any) {
     rhKey.length === serverSecret.length &&
     crypto.timingSafeEqual(Buffer.from(rhKey), Buffer.from(serverSecret));
 
-  const session = verifyAdminAuth(req) || (isRhDesktop ? { user: { username: 'erise_rh_desktop', name: 'E.R.I.S.E. RH', role: 'admin' } } : null);
+  const session = verifyAdminAuth(req) || (isRhDesktop ? ({ user: { username: 'erise_rh_desktop', name: 'E.R.I.S.E. RH', role: 'admin' } } as any) : null);
   if (!session) {
     return res.status(401).json({ error: 'Unauthorized. Valid admin session required.' });
   }
@@ -240,14 +240,18 @@ export default async function handler(req: any, res: any) {
         },
       });
 
-      const gmailResult = await sendGmailAsErise({
-        to: to.trim(),
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-      });
+      try {
+        const gmailResult = await sendGmailAsErise({
+          to: to.trim(),
+          subject: rendered.subject,
+          html: rendered.html,
+          text: rendered.text,
+        });
 
-      return res.status(200).json({ success: true, id: gmailResult.id, sender: gmailResult.sender });
+        return res.status(200).json({ success: true, id: gmailResult.id, sender: gmailResult.sender });
+      } catch (err: any) {
+        return res.status(500).json({ error: err?.message || 'Failed to send test email' });
+      }
     }
 
     if (action === 'send_raw') {
@@ -255,13 +259,17 @@ export default async function handler(req: any, res: any) {
       if (!to || typeof to !== 'string' || !subject || !html) {
         return res.status(400).json({ error: 'to, subject, and html are required' });
       }
-      const gmailResult = await sendGmailAsErise({
-        to: to.trim(),
-        subject: String(subject),
-        html: String(html),
-        text: String(text || subject),
-      });
-      return res.status(200).json({ success: true, id: gmailResult.id, sender: gmailResult.sender });
+      try {
+        const gmailResult = await sendGmailAsErise({
+          to: to.trim(),
+          subject: String(subject),
+          html: String(html),
+          text: String(text || subject),
+        });
+        return res.status(200).json({ success: true, id: gmailResult.id, sender: gmailResult.sender });
+      } catch (err: any) {
+        return res.status(500).json({ error: err?.message || 'Failed to send email' });
+      }
     }
 
     return res.status(400).json({ error: 'Unsupported action' });

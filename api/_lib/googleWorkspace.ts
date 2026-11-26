@@ -157,7 +157,32 @@ export async function sendGmailAsErise(params: {
 }): Promise<{ id: string; sender: string }> {
   const auth = await getGoogleAccessToken();
   if (!auth) {
-    throw new Error('Google Cloud credentials are not configured');
+    const resendKey = (process.env.RESEND_API_KEY || '').trim();
+    if (resendKey) {
+      const fromAddr = process.env.SENDER_EMAIL || 'E.R.I.S.E. Scientific Club <recruitment@erise-scientific-club.site>';
+      const replyTo = params.replyTo || process.env.GOOGLE_IMPERSONATE_EMAIL || 'erise.club@hns-re2sd.dz';
+      const rRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromAddr,
+          to: [params.to],
+          reply_to: replyTo,
+          subject: params.subject,
+          html: params.html,
+          text: params.text,
+        }),
+      });
+      const rData: any = await rRes.json().catch(() => ({}));
+      if (!rRes.ok) {
+        throw new Error(`Resend API error (${rRes.status}): ${rData?.message || JSON.stringify(rData)}`);
+      }
+      return { id: rData.id || `resend_${Date.now()}`, sender: fromAddr };
+    }
+    throw new Error('Neither Google Cloud credentials nor RESEND_API_KEY are configured');
   }
 
   const senderAddr = process.env.GOOGLE_IMPERSONATE_EMAIL || 'erise.club@hns-re2sd.dz';

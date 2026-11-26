@@ -3447,7 +3447,7 @@ Registered Date: ${member.registered_at ? formatDate(member.registered_at) : 'N/
           ) : activeTab === 'email_studio' ? (
             <>
               <div className="mb-4">
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900">WordPress-Style Email Template Studio</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">Email Template Studio</h2>
                 <p className="text-xs text-slate-500">Design branded workshop, bootcamp, competition, and recruitment templates with custom colors, fonts, and placed images.</p>
               </div>
               <EmailTemplateStudio onTemplatesChanged={setSavedEmailTemplates} />

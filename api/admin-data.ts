@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { getAdminClient } from './_lib/supabaseAdmin';
-import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth';
+import { getAdminClient } from './_lib/supabaseAdmin.js';
+import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth.js';
 
 const READ_TABLES = new Set([
   'registrations',

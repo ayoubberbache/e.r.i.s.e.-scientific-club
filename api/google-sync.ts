@@ -1,11 +1,11 @@
-import { getAdminClient } from './_lib/supabaseAdmin';
-import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth';
+import { getAdminClient } from './_lib/supabaseAdmin.js';
+import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth.js';
 import {
   getGoogleConfigStatus,
   listSentGmailMessages,
   replaceSheetTab,
   sendGmailAsErise,
-} from './_lib/googleWorkspace';
+} from './_lib/googleWorkspace.js';
 
 export default async function handler(req: any, res: any) {
   applySecurityCors(req, res, 'GET, POST, OPTIONS');

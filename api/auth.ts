@@ -4,7 +4,7 @@ import {
   authenticateCredentials,
   signSessionToken,
   verifyAdminAuth,
-} from './_lib/auth';
+} from './_lib/auth.js';
 
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 const MAX_ATTEMPTS = 5;

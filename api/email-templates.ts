@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { getAdminClient } from './_lib/supabaseAdmin';
-import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth';
-import { renderEmailFromBlocks, type EmailBlock, type EmailThemeConfig } from './_lib/emailRenderer';
-import { sendGmailAsErise } from './_lib/googleWorkspace';
+import { getAdminClient } from './_lib/supabaseAdmin.js';
+import { applySecurityCors, logAuditEvent, verifyAdminAuth } from './_lib/auth.js';
+import { renderEmailFromBlocks, type EmailBlock, type EmailThemeConfig } from './_lib/emailRenderer.js';
+import { sendGmailAsErise } from './_lib/googleWorkspace.js';
 
 const BlockSchema = z.object({
   id: z.string(),
